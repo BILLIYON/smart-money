@@ -14,7 +14,7 @@ export async function proxy(request: NextRequest) {
   // Unauthenticated user hitting a protected route → /login
   if (!user && !isPublicPath) {
     const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = "/auth/login";
+    loginUrl.pathname = "/login";
     loginUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(loginUrl);
   }
@@ -30,7 +30,7 @@ export async function proxy(request: NextRequest) {
   if (pathname.startsWith("/admin")) {
     if (!user) {
       const loginUrl = request.nextUrl.clone();
-      loginUrl.pathname = "/auth/login";
+      loginUrl.pathname = "/login";
       loginUrl.searchParams.set("next", pathname);
       return NextResponse.redirect(loginUrl);
     }
