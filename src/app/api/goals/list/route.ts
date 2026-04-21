@@ -1,0 +1,50 @@
+import { NextResponse } from "next/server";
+
+export async function GET() {
+  return NextResponse.json([
+    {
+      id: "goal-emergency",
+      emoji: "🏦",
+      title: "Emergency Fund — 6 Months",
+      meta: "Started Jan 2026 · Target: Jun 2026",
+      buddy: "The Contrarian Investor",
+      buddyEmoji: "🎯",
+      buddyColor: "#132952",
+      current: 480000,
+      target: 900000,
+      deadline: "Jun 2026",
+      barColor: null,
+      milestoneMessage: "You're more than halfway to financial security. Most Nigerians never build this. Keep the pace.",
+    },
+    {
+      id: "goal-investment",
+      emoji: "📈",
+      title: "Investment Seed Fund",
+      meta: "Started Feb 2026 · Target: Dec 2026",
+      buddy: "The Asset Architect",
+      buddyEmoji: "🏛️",
+      buddyColor: "#1A3A6B",
+      current: 225000,
+      target: 500000,
+      deadline: "Dec 2026",
+      barColor: null,
+      milestoneMessage: "45% in — you're ahead of the curve. At this rate, you'll hit your seed fund target two months early.",
+    },
+    {
+      id: "goal-subscriptions",
+      emoji: "✂️",
+      title: "Subscription Audit",
+      meta: "Started Mar 2026 · Target: Mar 31",
+      buddy: "The Contrarian Investor",
+      buddyEmoji: "🎯",
+      buddyColor: "#132952",
+      current: 12000,
+      target: 34000,
+      deadline: "Mar 31, 2026",
+      barColor: "linear-gradient(90deg,#F5A623,#FFC107)",
+      label: "35% · 3 of 8 subs reviewed",
+      sublabel: "5 remaining",
+      milestoneMessage: "Every cancelled subscription compounds. You've already freed ₦12,000 — that's money working for you now.",
+    },
+  ]);
+}

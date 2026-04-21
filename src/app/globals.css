@@ -1,26 +1,91 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ─── Tailwind v4 Theme: static brand tokens ─────────────────────────────── */
+@theme {
+  /* Brand colors (fixed across light/dark) */
+  --color-navy:   #0B1E3D;
+  --color-navy-2: #132952;
+  --color-green:  #00C48C;
+  --color-green-2: #00A677;
+  --color-gold:   #F5A623;
+
+  /* Border radius */
+  --radius-card:  16px;
+  --radius-inner: 10px;
+
+  /* Fonts — CSS variables injected by next/font/google in layout.tsx */
+  --font-sans:  var(--font-sora), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-dm-serif), ui-serif, serif;
 }
 
+/* ─── Tailwind v4 Theme: semantic tokens (resolve to current CSS var) ────── */
+/* These let you write bg-bg, text-content, border-border, etc.             */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg:       var(--bg);
+  --color-card:     var(--card);
+  --color-content:  var(--text);
+  --color-muted:    var(--muted);
+  --color-border:   var(--border);
+  --color-input-bg: var(--input-bg);
+  --color-sidebar:  var(--sidebar-bg);
+  --color-topbar:   var(--topbar-bg);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ─── Light mode CSS custom properties ──────────────────────────────────── */
+:root {
+  --navy:            #0B1E3D;
+  --navy2:           #132952;
+  --green:           #00C48C;
+  --green2:          #00A677;
+  --gold:            #F5A623;
+
+  --bg:              #F4F6FB;
+  --card:            #ffffff;
+  --text:            #0B1E3D;
+  --muted:           #5A6A87;
+  --border:          #E2E7F0;
+  --input-bg:        #F4F6FB;
+  --shadow:          rgba(11, 30, 61, 0.08);
+
+  --sidebar-bg:      #0B1E3D;
+  --sidebar-icon:    #8A9BBE;
+  --topbar-bg:       #ffffff;
+  --onboard-overlay: rgba(11, 30, 61, 0.55);
+
+  --radius:          16px;
 }
 
+/* ─── Dark mode CSS custom properties ───────────────────────────────────── */
+[data-theme="dark"] {
+  --bg:              #0D1117;
+  --card:            #13191F;
+  --text:            #E8EFF7;
+  --muted:           #8A96A8;
+  --border:          rgba(255, 255, 255, 0.08);
+  --input-bg:        #1C2330;
+  --shadow:          rgba(0, 0, 0, 0.4);
+
+  --sidebar-bg:      #080C10;
+  --sidebar-icon:    #5A6478;
+  --topbar-bg:       #13191F;
+  --onboard-overlay: rgba(0, 0, 0, 0.7);
+
+  --navy:            #1C2C4A;
+  --navy2:           #243558;
+}
+
+/* ─── Animations ─────────────────────────────────────────────────────────── */
+@keyframes fadeDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Base styles ────────────────────────────────────────────────────────── */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sora), ui-sans-serif, system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+  transition: background 0.25s, color 0.25s;
 }
