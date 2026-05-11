@@ -1,26 +1,42 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { OnboardingModal, type OnboardingResult } from "./OnboardingModal";
+import { OnboardingModal, type OnboardingResult, type RestoredState } from "./OnboardingModal";
 
-/**
- * Drop this into the dashboard layout.
- * It checks if the current user has completed onboarding, and if not,
- * renders the OnboardingModal on top of everything.
- */
+const SESSION_KEY = "onboarding_state";
+
 export function OnboardingGate() {
+  const router = useRouter();
   const [show, setShow] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [restored, setRestored] = useState<RestoredState | null>(null);
 
   useEffect(() => {
+    // Detect return from Gmail OAuth — restore saved state
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("gmail") === "connected") {
+      const raw = sessionStorage.getItem(SESSION_KEY);
+      if (raw) {
+        try {
+          const saved = JSON.parse(raw) as RestoredState;
+          setRestored({ ...saved, initialConnected: [...(saved.initialConnected ?? []), "gmail"] });
+          sessionStorage.removeItem(SESSION_KEY);
+        } catch { /* ignore parse errors */ }
+      }
+      // Strip the query param without a full navigation
+      const url = new URL(window.location.href);
+      url.searchParams.delete("gmail");
+      window.history.replaceState({}, "", url.toString());
+    }
+
     supabase.auth.getUser().then(({ data }) => {
       const user = data?.user;
-      if (!user) return; // not logged in — auth layer handles redirect
+      if (!user) return;
 
       setUserId(user.id);
 
-      // Check onboarding_complete in the users table
       supabase
         .from("users")
         .select("onboarding_complete")
@@ -45,9 +61,31 @@ export function OnboardingGate() {
       // non-blocking — user still proceeds
     } finally {
       setShow(false);
+      router.push(`/chat?buddy=${result.buddyId}`);
+    }
+  }
+
+  async function handleClose() {
+    if (!userId) { setShow(false); return; }
+    try {
+      await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, buddyId: "buffett" }),
+      });
+    } catch {
+      // non-blocking
+    } finally {
+      setShow(false);
     }
   }
 
   if (!show) return null;
-  return <OnboardingModal onComplete={handleComplete} />;
+  return (
+    <OnboardingModal
+      onComplete={handleComplete}
+      onClose={handleClose}
+      restored={restored}
+    />
+  );
 }

@@ -37,6 +37,13 @@ export type OnboardingResult = {
   connectedSources: string[];
 };
 
+export type RestoredState = {
+  initialStep?: 1 | 2 | 3;
+  initialGoal?: string | null;
+  initialBuddy?: string;
+  initialConnected?: string[];
+};
+
 // ─── Data ────────────────────────────────────────────────────────────────────
 
 const GOALS: Goal[] = [
@@ -162,23 +169,69 @@ function Actions({
 
 export function OnboardingModal({
   onComplete,
+  onClose,
+  restored,
 }: {
   onComplete: (result: OnboardingResult) => void;
+  onClose: () => void;
+  restored?: RestoredState | null;
 }) {
-  const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [selectedGoal, setSelectedGoal] = useState<string | null>(null);
-  const [selectedBuddy, setSelectedBuddy] = useState<string>("buffett");
-  const [connected, setConnected] = useState<Set<string>>(new Set());
+  const [step, setStep] = useState<1 | 2 | 3>(restored?.initialStep ?? 1);
+  const [selectedGoal, setSelectedGoal] = useState<string | null>(restored?.initialGoal ?? null);
+  const [selectedBuddy, setSelectedBuddy] = useState<string>(restored?.initialBuddy ?? "buffett");
+  const [connected, setConnected] = useState<Set<string>>(new Set(restored?.initialConnected ?? []));
   const [connecting, setConnecting] = useState<string | null>(null);
 
-  function handleConnect(sourceId: string) {
-    if (connected.has(sourceId)) return;
-    setConnecting(sourceId);
-    // Simulate async connect (replace with real OAuth / upload flow)
-    setTimeout(() => {
-      setConnected((prev) => new Set([...prev, sourceId]));
-      setConnecting(null);
-    }, 900);
+  async function handleConnect(sourceId: string) {
+    if (connected.has(sourceId) || connecting) return;
+
+    if (sourceId === "gmail") {
+      // Save current state so it can be restored after OAuth redirect
+      sessionStorage.setItem("onboarding_state", JSON.stringify({
+        initialStep: 3,
+        initialGoal: selectedGoal,
+        initialBuddy: selectedBuddy,
+        initialConnected: [...connected],
+      }));
+      window.location.href = `/api/auth/gmail?return=${encodeURIComponent(window.location.pathname)}`;
+      return;
+    }
+
+    if (sourceId === "bank") {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".pdf,.csv";
+      input.onchange = async (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (!file) return;
+        setConnecting("bank");
+        const formData = new FormData();
+        formData.append("file", file);
+        try {
+          const res = await fetch("/api/databank/upload", { method: "POST", body: formData });
+          if (res.ok) setConnected((prev) => new Set([...prev, "bank"]));
+        } finally {
+          setConnecting(null);
+        }
+      };
+      input.click();
+      return;
+    }
+
+    if (sourceId === "news") {
+      setConnecting("news");
+      try {
+        const res = await fetch("/api/signals/enable", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sourceId: "news" }),
+        });
+        if (res.ok) setConnected((prev) => new Set([...prev, "news"]));
+      } finally {
+        setConnecting(null);
+      }
+      return;
+    }
   }
 
   async function handleFinish() {
@@ -386,12 +439,22 @@ export function OnboardingModal({
     >
       {/* Modal */}
       <div
-        className="w-[520px] max-w-[92vw] rounded-3xl overflow-hidden"
+        className="relative w-[520px] max-w-[92vw] rounded-3xl overflow-hidden"
         style={{
           background: "var(--card)",
           boxShadow: "0 24px 80px rgba(0,0,0,.25)",
         }}
       >
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 z-10 w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-150"
+          style={{ background: "rgba(255,255,255,.15)", color: "#fff" }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,.25)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,.15)"; }}
+          aria-label="Close"
+        >
+          ✕
+        </button>
         {step === 1 && step1}
         {step === 2 && step2}
         {step === 3 && step3}

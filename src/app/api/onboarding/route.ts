@@ -6,13 +6,13 @@ export async function POST(req: Request) {
   if (error) return error;
 
   const { goal, buddyId } = await req.json() as {
-    goal: string;
+    goal?: string;
     buddyId: string;
     connectedSources?: string[]; // reserved for future source-linking step
   };
 
-  if (!goal || !buddyId) {
-    return NextResponse.json({ error: "goal and buddyId required" }, { status: 400 });
+  if (!buddyId) {
+    return NextResponse.json({ error: "buddyId required" }, { status: 400 });
   }
 
   // Run all mutations in parallel
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
       .from("users")
       .update({
         onboarding_complete: true,
-        primary_goal: goal,
+        ...(goal ? { primary_goal: goal } : {}),
       })
       .eq("id", userId),
 

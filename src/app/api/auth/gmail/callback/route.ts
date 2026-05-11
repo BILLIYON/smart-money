@@ -70,5 +70,7 @@ export async function GET(req: Request) {
   // Kick off first sync in the background — do not await
   syncGmailForUser(session.user.id).catch(console.error);
 
-  return Response.redirect(`${BASE_URL}/databank?gmail=connected`);
+  const state = searchParams.get("state");
+  const returnPath = state?.startsWith("/") ? state : "/databank";
+  return Response.redirect(`${BASE_URL}${returnPath}?gmail=connected`);
 }
