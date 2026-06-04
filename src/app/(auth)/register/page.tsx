@@ -50,7 +50,7 @@ export default function RegisterPage() {
     // Supabase may require email confirmation — check if session was created
     if (data.session) {
       // Auto-confirmed (e.g. email auth disabled in Supabase settings)
-      router.push("/marketplace");
+      router.push("/");
       router.refresh();
     } else {
       // Email confirmation required — show success state

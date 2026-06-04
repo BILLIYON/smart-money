@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Smart Money",
     short_name: "SmartMoney",
     description: "AI-powered personal finance advisor",
-    start_url: "/marketplace",
+    start_url: "/",
     display: "standalone",
     background_color: "#0B1E3D",
     theme_color: "#00C48C",

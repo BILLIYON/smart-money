@@ -27,9 +27,33 @@ export async function POST(req: Request) {
     });
   }
 
+  // Fetch primary_goal for personalization if authenticated
+  let primaryGoal: string | undefined;
+  if (userId) {
+    try {
+      const { data: profile } = await supabase
+        .from("users")
+        .select("primary_goal")
+        .eq("id", userId)
+        .single();
+      if (profile?.primary_goal) {
+        primaryGoal = profile.primary_goal;
+      }
+    } catch (dbErr) {
+      console.error("[/api/chat/group] Failed to fetch user primary goal:", dbErr);
+    }
+  }
+
   let streams: ReadableStream<Uint8Array>[];
   try {
-    streams = await sendGroupMessage({ buddyIds, messages, databankContext });
+    streams = await sendGroupMessage({
+      buddyIds,
+      messages,
+      databankContext: {
+        ...databankContext,
+        ...(primaryGoal ? { primaryGoal } : {}),
+      },
+    });
   } catch (e) {
     console.error("[/api/chat/group] sendGroupMessage failed:", e);
     return NextResponse.json({ error: "AI service error" }, { status: 502 });

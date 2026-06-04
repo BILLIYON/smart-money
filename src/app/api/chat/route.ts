@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/lib/supabase-server";
+import { createClient } from "@/lib/supabase/server";
 import { sendMessage, type Message, type DatabankContext } from "@/lib/ai";
 
 export async function POST(req: Request) {
-  const { supabase, userId, error } = await requireAuth();
-  if (error) return error;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
   const { buddyId, messages, databankContext, sessionId } = await req.json() as {
     buddyId: string;
@@ -17,9 +17,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "buddyId and messages required" }, { status: 400 });
   }
 
-  // Persist the user's last message before streaming
+  // Persist the user's last message before streaming (only for authenticated users with sessionId)
   const userMessage = messages[messages.length - 1];
-  if (sessionId && userMessage?.role === "user") {
+  if (user && sessionId && userMessage?.role === "user") {
     await supabase.from("messages").insert({
       session_id: sessionId,
       role: "user",
@@ -27,10 +27,34 @@ export async function POST(req: Request) {
     });
   }
 
+  // Fetch primary_goal for personalization if authenticated
+  let primaryGoal: string | undefined;
+  if (user) {
+    try {
+      const { data: profile } = await supabase
+        .from("users")
+        .select("primary_goal")
+        .eq("id", user.id)
+        .single();
+      if (profile?.primary_goal) {
+        primaryGoal = profile.primary_goal;
+      }
+    } catch (dbErr) {
+      console.error("[/api/chat] Failed to fetch user primary goal:", dbErr);
+    }
+  }
+
   // Stream from AI
   let stream: ReadableStream<Uint8Array>;
   try {
-    stream = await sendMessage({ buddyId, messages, databankContext });
+    stream = await sendMessage({
+      buddyId,
+      messages,
+      databankContext: {
+        ...databankContext,
+        ...(primaryGoal ? { primaryGoal } : {}),
+      },
+    });
   } catch (e) {
     console.error("[/api/chat] sendMessage failed:", e);
     return NextResponse.json({ error: "AI service error" }, { status: 502 });
@@ -39,8 +63,8 @@ export async function POST(req: Request) {
   // Tee the stream: one side goes to the client, the other accumulates for DB save
   const [clientStream, dbStream] = stream.tee();
 
-  // Fire-and-forget: collect the full AI response and persist it
-  if (sessionId) {
+  // Fire-and-forget: collect the full AI response and persist it (only for authenticated users with sessionId)
+  if (user && sessionId) {
     (async () => {
       try {
         const chunks: Uint8Array[] = [];

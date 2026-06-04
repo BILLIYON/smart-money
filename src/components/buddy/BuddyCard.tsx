@@ -10,11 +10,11 @@ function ModelDot({ color }: { color: string }) {
   );
 }
 
+/** Standard Archetype / Community buddy card */
 export function BuddyCard({ buddy }: { buddy: Buddy }) {
   const {
     id, name, tag, desc, badge, badgeType, bannerColor, avatarBg,
     avatarContent, avatarIsSerif, model, modelColor, rating, reviewCount,
-    isFanSim,
   } = buddy;
 
   return (
@@ -84,39 +84,12 @@ export function BuddyCard({ buddy }: { buddy: Buddy }) {
 
       {/* Body */}
       <div className="px-4 pt-7 pb-4">
-        {/* Name + fan badge */}
-        <div className="text-[15px] font-semibold mb-[2px] flex items-center flex-wrap gap-1" style={{ color: "var(--text)" }}>
+        <div className="text-[15px] font-semibold mb-[2px]" style={{ color: "var(--text)" }}>
           {name}
-          {isFanSim && (
-            <span
-              className="inline-flex items-center px-2 py-[2px] rounded-full text-[9px] font-semibold uppercase tracking-[.5px] border"
-              style={{
-                background: "rgba(245,166,35,.1)",
-                borderColor: "rgba(245,166,35,.25)",
-                color: "#C47F00",
-              }}
-            >
-              Fan Sim
-            </span>
-          )}
         </div>
 
         <div className="text-[11px] mb-[10px]" style={{ color: "var(--muted)" }}>{tag}</div>
         <div className="text-[12px] leading-relaxed mb-[14px]" style={{ color: "var(--muted)" }}>{desc}</div>
-
-        {/* Fan disclaimer */}
-        {isFanSim && (
-          <div
-            className="text-[10px] leading-snug mt-[-6px] mb-[10px] px-[10px] py-[7px] rounded-[8px] border"
-            style={{
-              color: "var(--muted)",
-              background: "var(--bg)",
-              borderColor: "var(--border)",
-            }}
-          >
-            🔒 Fan-created simulation. Not affiliated with or endorsed by {name}.
-          </div>
-        )}
 
         {/* Footer */}
         <div className="flex items-center justify-between mb-[10px]">
@@ -139,6 +112,135 @@ export function BuddyCard({ buddy }: { buddy: Buddy }) {
           tabIndex={-1}
         >
           View Profile
+        </button>
+      </div>
+    </Link>
+  );
+}
+
+/** Premium Celebrity AI Simulation card — gold accent, larger serif avatar, no inline disclaimer */
+export function CelebrityCard({ buddy }: { buddy: Buddy }) {
+  const {
+    id, name, tag, desc, badge, badgeType, bannerColor, avatarBg,
+    avatarContent, model, modelColor, rating, reviewCount,
+  } = buddy;
+
+  return (
+    <Link
+      href={`/marketplace/${id}`}
+      className="block rounded-[16px] overflow-hidden cursor-pointer transition-all duration-[250ms] group"
+      style={{
+        background: "var(--card)",
+        border: "1px solid rgba(245,166,35,.35)",
+        boxShadow: "0 0 0 0 rgba(245,166,35,0)",
+      }}
+      onMouseEnter={(e) => {
+        const el = e.currentTarget as HTMLAnchorElement;
+        el.style.transform = "translateY(-3px)";
+        el.style.boxShadow = "0 12px 40px rgba(245,166,35,.18)";
+        el.style.borderColor = "rgba(245,166,35,.7)";
+      }}
+      onMouseLeave={(e) => {
+        const el = e.currentTarget as HTMLAnchorElement;
+        el.style.transform = "";
+        el.style.boxShadow = "0 0 0 0 rgba(245,166,35,0)";
+        el.style.borderColor = "rgba(245,166,35,.35)";
+      }}
+      onFocus={(e) => {
+        const el = e.currentTarget as HTMLAnchorElement;
+        el.style.transform = "translateY(-3px)";
+        el.style.boxShadow = "0 12px 40px rgba(245,166,35,.18)";
+        el.style.borderColor = "rgba(245,166,35,.7)";
+      }}
+      onBlur={(e) => {
+        const el = e.currentTarget as HTMLAnchorElement;
+        el.style.transform = "";
+        el.style.boxShadow = "0 0 0 0 rgba(245,166,35,0)";
+        el.style.borderColor = "rgba(245,166,35,.35)";
+      }}
+    >
+      {/* Taller banner for celebrity presence */}
+      <div
+        className="h-[96px] relative overflow-hidden"
+        style={{ background: bannerColor }}
+      >
+        {/* Gold "Fan Sim" pill top-left */}
+        <span
+          className="absolute top-[10px] left-[10px] px-[8px] py-[3px] rounded-full text-[9px] font-bold uppercase tracking-[.8px]"
+          style={{ background: "rgba(245,166,35,.2)", color: "#F5A623" }}
+        >
+          ⭐ Fan Sim
+        </span>
+
+        {/* Price badge top-right */}
+        <span
+          className="absolute top-[10px] right-[10px] px-[10px] py-[3px] rounded-full text-[10px] font-semibold uppercase tracking-[.5px]"
+          style={
+            badgeType === "free"
+              ? { background: "rgba(0,196,140,.15)", color: "#00A677" }
+              : { background: "rgba(245,166,35,.15)", color: "#C47F00" }
+          }
+        >
+          {badge}
+        </span>
+
+        {/* Larger serif avatar — overlaps banner bottom */}
+        <div
+          className="absolute bottom-[-26px] left-5 w-[70px] h-[70px] rounded-[16px] border-[3px] flex items-center justify-center"
+          style={{
+            background: avatarBg,
+            borderColor: "var(--card)",
+            fontFamily: "var(--font-dm-serif)",
+            fontSize: "24px",
+            color: "rgba(255,255,255,.92)",
+            letterSpacing: "-0.5px",
+          }}
+        >
+          {avatarContent}
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="px-4 pt-9 pb-4">
+        <div
+          className="text-[15px] font-semibold mb-[2px]"
+          style={{ color: "var(--text)", fontFamily: "var(--font-dm-serif)" }}
+        >
+          {name}
+        </div>
+
+        <div className="text-[11px] mb-[10px]" style={{ color: "var(--muted)" }}>{tag}</div>
+        <div className="text-[12px] leading-relaxed mb-[14px]" style={{ color: "var(--muted)" }}>{desc}</div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between mb-[10px]">
+          <div className="flex items-center gap-[5px] text-[11px]" style={{ color: "var(--muted)" }}>
+            <ModelDot color={modelColor} />
+            {model}
+          </div>
+          <div className="flex items-center gap-1 text-[12px] font-medium" style={{ color: "var(--text)" }}>
+            <span style={{ color: "var(--gold)" }}>★</span>
+            {rating} · {reviewCount}
+          </div>
+        </div>
+
+        {/* Gold CTA */}
+        <button
+          className="w-full py-[9px] rounded-[10px] text-[12px] font-semibold border-none cursor-pointer transition-all duration-200"
+          style={{ background: "rgba(245,166,35,.12)", color: "#C47F00", border: "1px solid rgba(245,166,35,.3)" }}
+          onMouseEnter={(e) => {
+            const btn = e.currentTarget as HTMLButtonElement;
+            btn.style.background = "rgba(245,166,35,.22)";
+            btn.style.borderColor = "rgba(245,166,35,.6)";
+          }}
+          onMouseLeave={(e) => {
+            const btn = e.currentTarget as HTMLButtonElement;
+            btn.style.background = "rgba(245,166,35,.12)";
+            btn.style.borderColor = "rgba(245,166,35,.3)";
+          }}
+          tabIndex={-1}
+        >
+          Chat with {name.split(" ")[0]}
         </button>
       </div>
     </Link>

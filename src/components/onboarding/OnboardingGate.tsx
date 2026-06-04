@@ -46,6 +46,15 @@ export function OnboardingGate() {
           if (!row?.onboarding_complete) setShow(true);
         });
     });
+
+    const handleTriggerTour = () => {
+      setShow(true);
+    };
+    window.addEventListener("trigger-onboarding-tour", handleTriggerTour);
+
+    return () => {
+      window.removeEventListener("trigger-onboarding-tour", handleTriggerTour);
+    };
   }, []);
 
   async function handleComplete(result: OnboardingResult) {

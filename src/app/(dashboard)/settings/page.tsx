@@ -972,6 +972,38 @@ export default function SettingsPage() {
             </div>
           );
         })}
+
+        {/* Log Out Button */}
+        <div
+          onClick={async () => {
+            const { createClient } = await import("@/lib/supabase/client");
+            const supabase = createClient();
+            await supabase.auth.signOut();
+            window.location.href = "/";
+          }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "10px 20px",
+            fontSize: 13,
+            color: "#E24B4A",
+            cursor: "pointer",
+            transition: "all .15s",
+            marginTop: 20,
+            borderTop: "1px solid var(--border)",
+            paddingTop: 16,
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLDivElement).style.background = "rgba(226,75,74,.05)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLDivElement).style.background = "transparent";
+          }}
+        >
+          <span style={{ fontSize: 15, width: 18, textAlign: "center" }}>🚪</span>
+          Log Out
+        </div>
       </div>
 
       {/* Right content */}

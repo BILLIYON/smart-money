@@ -58,7 +58,7 @@ function LoginForm() {
       return;
     }
 
-    const next = searchParams.get("next") ?? "/marketplace";
+    const next = searchParams.get("next") ?? "/";
     router.push(next);
     router.refresh();
   }
@@ -66,10 +66,11 @@ function LoginForm() {
   async function handleGoogle() {
     setError(null);
     setOauthLoading(true);
+    const next = searchParams.get("next") ?? "/";
     const { error: authError } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${location.origin}/auth/callback`,
+        redirectTo: `${location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
       },
     });
     if (authError) {

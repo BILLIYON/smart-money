@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { Home, MessageSquare, Database, Target, Settings } from "lucide-react";
 
 const NAV = [
-  { href: "/marketplace", icon: Home,         label: "Market" },
+  { href: "/",            icon: Home,         label: "Market" },
   { href: "/chat",        icon: MessageSquare, label: "Buddies" },
   { href: "/databank",    icon: Database,      label: "DataBank" },
   { href: "/goals",       icon: Target,        label: "Goals" },
@@ -24,7 +24,7 @@ export function BottomNav() {
       }}
     >
       {NAV.map(({ href, icon: Icon, label }) => {
-        const active = pathname === href || pathname.startsWith(href + "/");
+        const active = href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
         return (
           <Link
             key={href}

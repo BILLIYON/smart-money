@@ -1,18 +1,31 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
-const PUBLIC_PATHS = new Set(["/login", "/register"]);
-const AUTH_REDIRECT = "/marketplace";
+const PUBLIC_PATHS = new Set(["/", "/login", "/register", "/chat"]);
+const AUTH_PATHS = new Set(["/login", "/register"]);
+const AUTH_REDIRECT = "/";
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const { supabaseResponse, user, supabase } = await updateSession(request);
 
-  const isPublicPath = PUBLIC_PATHS.has(pathname);
+  const isPublicPath =
+    PUBLIC_PATHS.has(pathname) ||
+    pathname.startsWith("/marketplace/") ||
+    pathname.startsWith("/buddies/") ||
+    pathname.startsWith("/chat/") ||
+    pathname === "/api/studio" ||
+    pathname === "/api/hidden-buddies" ||
+    pathname === "/api/databank/sources-summary";
 
-  // Unauthenticated user hitting a protected route → /login
+  const isAuthPath = AUTH_PATHS.has(pathname);
+
+  // Unauthenticated user hitting a protected route → /login or return 401 for API
   if (!user && !isPublicPath) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.searchParams.set("next", pathname);
@@ -20,7 +33,7 @@ export async function proxy(request: NextRequest) {
   }
 
   // Authenticated user hitting login/register → redirect to app
-  if (user && isPublicPath) {
+  if (user && isAuthPath) {
     const appUrl = request.nextUrl.clone();
     appUrl.pathname = AUTH_REDIRECT;
     return NextResponse.redirect(appUrl);
@@ -43,7 +56,7 @@ export async function proxy(request: NextRequest) {
 
     if (!data?.is_admin) {
       const marketplaceUrl = request.nextUrl.clone();
-      marketplaceUrl.pathname = "/marketplace";
+      marketplaceUrl.pathname = "/";
       return NextResponse.redirect(marketplaceUrl);
     }
   }

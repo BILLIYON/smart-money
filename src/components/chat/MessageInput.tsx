@@ -3,6 +3,7 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { useChatStore, GROUPS } from "@/store/chatStore";
 import { getBuddy } from "@/lib/buddies";
+import { createClient } from "@/lib/supabase/client";
 
 const INVESTING_SUGGESTIONS = [
   "How should I allocate my salary?",
@@ -65,7 +66,27 @@ export function MessageInput() {
 
   const [input, setInput] = useState("");
   const [atOpen, setAtOpen] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      setIsAuthenticated(!!data.user);
+    });
+  }, []);
+
+  const getGuestMessageCount = useCallback(() => {
+    if (typeof window === "undefined") return 0;
+    return parseInt(localStorage.getItem("smart_money_guest_messages_sent") || "0", 10);
+  }, []);
+
+  const incrementGuestMessageCount = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const current = getGuestMessageCount();
+    localStorage.setItem("smart_money_guest_messages_sent", (current + 1).toString());
+  }, [getGuestMessageCount]);
 
   const isGroup = chatMode === "group";
   const buddy = getBuddy(activeBuddyId);
@@ -192,11 +213,21 @@ export function MessageInput() {
   const send = useCallback(async () => {
     const text = input.trim();
     if (!text || isStreaming) return;
+
+    if (isAuthenticated === false) {
+      const guestCount = getGuestMessageCount();
+      if (guestCount >= 3) {
+        setShowAuthModal(true);
+        return;
+      }
+      incrementGuestMessageCount();
+    }
+
     setInput("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     if (isGroup) await sendGroup(text);
     else await send1to1(text);
-  }, [input, isStreaming, isGroup, send1to1, sendGroup]);
+  }, [input, isStreaming, isGroup, send1to1, sendGroup, isAuthenticated, getGuestMessageCount, incrementGuestMessageCount]);
 
   function handleKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
@@ -350,6 +381,91 @@ export function MessageInput() {
           </svg>
         </button>
       </div>
+
+      {/* Premium Auth Intercept Modal */}
+      {showAuthModal && (
+        <div
+          className="fixed inset-0 z-[280] flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,.45)", backdropFilter: "blur(4px)" }}
+          onClick={() => setShowAuthModal(false)}
+        >
+          <div
+            className="overflow-hidden"
+            style={{
+              background: "var(--card)",
+              borderRadius: 20,
+              width: 440,
+              maxWidth: "92vw",
+              boxShadow: "0 20px 60px rgba(0,0,0,.25)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div
+              className="px-[26px] py-[24px] relative overflow-hidden"
+              style={{ background: "linear-gradient(135deg,var(--navy),var(--navy2))" }}
+            >
+              <span
+                className="pointer-events-none absolute -right-[20px] -top-[20px] w-[100px] h-[100px] rounded-full"
+                style={{ background: "rgba(0,196,140,.12)" }}
+              />
+              <div className="flex items-center gap-3 mb-2 relative z-[1]">
+                <div
+                  className="flex items-center justify-center rounded-lg text-lg flex-shrink-0"
+                  style={{ width: 34, height: 34, background: "rgba(255,255,255,.1)" }}
+                >
+                  🔒
+                </div>
+                <h3
+                  className="text-[20px] text-white font-semibold"
+                  style={{ fontFamily: "var(--font-dm-serif)" }}
+                >
+                  Unlock Full Access
+                </h3>
+              </div>
+              <p className="relative z-[1] text-[12px] leading-relaxed" style={{ color: "rgba(255,255,255,.6)" }}>
+                You have reached the guest limit of 3 free messages. Sign up or log in to keep chatting with your Finance buddies.
+              </p>
+            </div>
+
+            {/* Body */}
+            <div className="px-[26px] py-[22px]">
+              <div className="flex flex-col gap-3 mb-5">
+                {[
+                  "Retain your full conversation history",
+                  "Connect bank details and statement files to your DataBank",
+                  "Form customized budgets and execute agentic actions",
+                ].map((feature, idx) => (
+                  <div key={idx} className="flex items-start gap-2.5 text-[12px]" style={{ color: "var(--muted)" }}>
+                    <span style={{ color: "var(--green)", fontWeight: 700 }}>✓</span>
+                    <span className="leading-relaxed">{feature}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-[10px]">
+                <a
+                  href="/login?next=/chat"
+                  className="flex-1 flex items-center justify-center py-[11px] rounded-[10px] text-[13px] font-semibold text-white transition-all duration-200"
+                  style={{ background: "var(--green)", textDecoration: "none" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "var(--green2)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "var(--green)"; }}
+                >
+                  Log In / Sign Up →
+                </a>
+                <button
+                  onClick={() => setShowAuthModal(false)}
+                  className="px-4 py-[11px] rounded-[10px] text-[13px] border cursor-pointer transition-colors duration-200"
+                  style={{ color: "var(--muted)", borderColor: "var(--border)", background: "transparent" }}
+                >
+                  Maybe Later
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

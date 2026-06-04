@@ -73,7 +73,7 @@ export function BuddyProfile({ buddy }: { buddy: Buddy }) {
       {/* Back link */}
       <div className="mb-4">
         <Link
-          href="/marketplace"
+          href="/"
           className="inline-flex items-center gap-1 text-[13px] transition-colors duration-200"
           style={{ color: "var(--muted)" }}
         >

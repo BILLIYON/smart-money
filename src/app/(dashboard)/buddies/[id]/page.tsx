@@ -14,5 +14,5 @@ export default async function BuddyProfilePage({
   const { id } = await params;
   const buddy = getBuddy(id);
   if (!buddy) notFound();
-  return <BuddyProfile buddy={buddy!} />;
+  return <BuddyProfile buddy={buddy} />;
 }

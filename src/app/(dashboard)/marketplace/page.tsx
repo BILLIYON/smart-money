@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { CelebrityHero } from "@/components/buddy/CelebrityHero";
-import { BuddyCard, CreateYourOwnCard } from "@/components/buddy/BuddyCard";
+import { BuddyCard, CelebrityCard, CreateYourOwnCard } from "@/components/buddy/BuddyCard";
 import { ARCHETYPE_BUDDIES, CELEBRITY_BUDDIES, type Buddy, type BuddyCategory } from "@/lib/buddies";
 import type { CommunityBuddyRow } from "@/lib/db";
 import Link from "next/link";
@@ -78,6 +78,7 @@ export default function MarketplacePage() {
   const visibleArchetypes = ARCHETYPE_BUDDIES.filter((b) => !hiddenIds.has(b.id));
   const visibleCelebs = CELEBRITY_BUDDIES.filter((b) => !hiddenIds.has(b.id));
 
+  // In "All" mode, show archetypes + celebs merged. Otherwise filter separately.
   const filteredArchetypes = useMemo(() => {
     if (activeFilter === "All") return visibleArchetypes;
     if (activeFilter === "Free Only") return visibleArchetypes.filter((b) => b.badgeType === "free");
@@ -98,6 +99,14 @@ export default function MarketplacePage() {
     return communityBuddies.filter((b) => b.categories.includes(activeFilter as BuddyCategory));
   }, [activeFilter, communityBuddies]);
 
+  // Merged "All" grid: archetypes first, then celebs
+  const showMergedAll = activeFilter === "All";
+  const allMergedBuddies = showMergedAll
+    ? [...filteredArchetypes, ...filteredCelebs, ...filteredCommunity]
+    : [];
+
+  const hasCelebs = filteredCelebs.length > 0;
+
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8 w-full">
       {/* Celebrity Hero */}
@@ -109,7 +118,11 @@ export default function MarketplacePage() {
           className="text-[18px] font-semibold"
           style={{ color: "var(--text)", fontFamily: "var(--font-dm-serif)" }}
         >
-          Or choose an Archetype Buddy
+          {activeFilter === "Celebrity Sim"
+            ? "Celebrity AI Simulations"
+            : activeFilter === "All"
+            ? "All Finance Buddies"
+            : `${activeFilter} Buddies`}
         </h2>
         <Link
           href="/studio"
@@ -144,84 +157,115 @@ export default function MarketplacePage() {
         })}
       </div>
 
-      {/* Archetype grid */}
-      {filteredArchetypes.length > 0 ? (
-        <div
-          className="grid gap-5 mb-8"
-          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}
-        >
-          {filteredArchetypes.map((buddy) => (
-            <BuddyCard key={buddy.id} buddy={buddy} />
-          ))}
-          <CreateYourOwnCard />
-        </div>
-      ) : activeFilter !== "Celebrity Sim" && activeFilter !== "Free Only" ? (
-        <div
-          className="text-center py-12 mb-8 rounded-[16px] border"
-          style={{ borderColor: "var(--border)", color: "var(--muted)" }}
-        >
-          <div className="text-[32px] mb-3">🔍</div>
-          <div className="text-[14px]">No Archetype Buddies match this filter yet.</div>
-        </div>
-      ) : null}
-
-      {/* Community Buddies section */}
-      {filteredCommunity.length > 0 && (
+      {/* ── MERGED "All" grid ── */}
+      {showMergedAll && (
         <>
-          <div className="flex items-center gap-4 mb-5">
-            <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
-            <span className="text-[11px] uppercase tracking-[2px]" style={{ color: "var(--muted)" }}>
-              Community Buddies
-            </span>
-            <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
-          </div>
-          <div
-            className="grid gap-5 mb-8"
-            style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}
-          >
-            {filteredCommunity.map((buddy) => (
-              <BuddyCard key={buddy.id} buddy={buddy} />
-            ))}
-          </div>
+          {allMergedBuddies.length > 0 ? (
+            <div
+              className="grid gap-5 mb-8"
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}
+            >
+              {filteredArchetypes.map((buddy) => (
+                <BuddyCard key={buddy.id} buddy={buddy} />
+              ))}
+              {filteredCelebs.map((buddy) => (
+                <CelebrityCard key={buddy.id} buddy={buddy} />
+              ))}
+              {filteredCommunity.map((buddy) => (
+                <BuddyCard key={buddy.id} buddy={buddy} />
+              ))}
+              <CreateYourOwnCard />
+            </div>
+          ) : (
+            <div
+              className="text-center py-12 mb-8 rounded-[16px] border"
+              style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+            >
+              <div className="text-[32px] mb-3">🔍</div>
+              <div className="text-[14px]">No Buddies found.</div>
+            </div>
+          )}
         </>
       )}
 
-      {/* Celebrity section divider */}
-      {filteredCelebs.length > 0 && (
+      {/* ── FILTERED views (non-All) ── */}
+      {!showMergedAll && (
         <>
-          <div className="flex items-center gap-4 mb-5">
-            <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
-            <span className="text-[11px] uppercase tracking-[2px]" style={{ color: "var(--muted)" }}>
-              Celebrity AI Simulations
-            </span>
-            <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
-          </div>
+          {/* Fan disclaimer banner — only when celebs are visible */}
+          {hasCelebs && (
+            <div
+              className="flex items-start gap-3 px-4 py-3 rounded-[12px] border mb-5 text-[12px] leading-relaxed"
+              style={{
+                background: "rgba(245,166,35,.06)",
+                borderColor: "rgba(245,166,35,.2)",
+                color: "var(--muted)",
+              }}
+            >
+              <span className="text-[16px] flex-shrink-0">⚠️</span>
+              <span>
+                <strong style={{ color: "var(--text)" }}>Fan-created simulations.</strong>{" "}
+                These AI personas are trained on publicly available books, interviews, and speeches.
+                They are not affiliated with, endorsed by, or representative of the named individuals.
+              </span>
+            </div>
+          )}
 
-          {/* Fan disclaimer banner */}
-          <div
-            className="flex items-start gap-3 px-4 py-3 rounded-[12px] border mb-5 text-[12px] leading-relaxed"
-            style={{
-              background: "rgba(245,166,35,.06)",
-              borderColor: "rgba(245,166,35,.2)",
-              color: "var(--muted)",
-            }}
-          >
-            <span className="text-[16px] flex-shrink-0">⚠️</span>
-            <span>
-              <strong style={{ color: "var(--text)" }}>Fan-created simulations.</strong>{" "}
-              These AI personas are trained on publicly available books, interviews, and speeches. They are not affiliated with, endorsed by, or representative of the named individuals.
-            </span>
-          </div>
+          {/* Archetype grid */}
+          {filteredArchetypes.length > 0 && (
+            <div
+              className="grid gap-5 mb-8"
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}
+            >
+              {filteredArchetypes.map((buddy) => (
+                <BuddyCard key={buddy.id} buddy={buddy} />
+              ))}
+              {activeFilter !== "Celebrity Sim" && <CreateYourOwnCard />}
+            </div>
+          )}
+
+          {/* Community Buddies section */}
+          {filteredCommunity.length > 0 && (
+            <>
+              <div className="flex items-center gap-4 mb-5">
+                <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
+                <span className="text-[11px] uppercase tracking-[2px]" style={{ color: "var(--muted)" }}>
+                  Community Buddies
+                </span>
+                <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
+              </div>
+              <div
+                className="grid gap-5 mb-8"
+                style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}
+              >
+                {filteredCommunity.map((buddy) => (
+                  <BuddyCard key={buddy.id} buddy={buddy} />
+                ))}
+              </div>
+            </>
+          )}
 
           {/* Celebrity grid */}
-          <div
-            className="grid gap-5 mb-8"
-            style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}
-          >
-            {filteredCelebs.map((buddy) => (
-              <BuddyCard key={buddy.id} buddy={buddy} />
-            ))}
-          </div>
+          {filteredCelebs.length > 0 && (
+            <div
+              className="grid gap-5 mb-8"
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}
+            >
+              {filteredCelebs.map((buddy) => (
+                <CelebrityCard key={buddy.id} buddy={buddy} />
+              ))}
+            </div>
+          )}
+
+          {/* Empty state */}
+          {filteredArchetypes.length === 0 && filteredCelebs.length === 0 && filteredCommunity.length === 0 && (
+            <div
+              className="text-center py-12 mb-8 rounded-[16px] border"
+              style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+            >
+              <div className="text-[32px] mb-3">🔍</div>
+              <div className="text-[14px]">No Buddies match this filter yet.</div>
+            </div>
+          )}
         </>
       )}
     </div>

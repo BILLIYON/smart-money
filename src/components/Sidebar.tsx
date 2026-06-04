@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
@@ -13,11 +14,13 @@ import {
   Zap,
   Sun,
   Moon,
+  LogOut,
 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 const NAV_MAIN = [
-  { href: "/marketplace", icon: Home,         label: "Marketplace" },
+  { href: "/",            icon: Home,         label: "Marketplace" },
   { href: "/chat",        icon: MessageSquare, label: "My Buddies" },
   { href: "/databank",    icon: Database,      label: "DataBank" },
   { href: "/goals",       icon: Target,        label: "Goal Tracker" },
@@ -65,7 +68,15 @@ function NavItem({
       />
 
       {/* Tooltip */}
-      <span className="pointer-events-none invisible group-hover:visible absolute left-14 z-[200] whitespace-nowrap rounded-md px-[10px] py-1 text-[11px] font-medium" style={{ background: "var(--text)", color: "var(--bg)" }}>
+      <span
+        className="pointer-events-none invisible opacity-0 scale-95 group-hover:visible group-hover:opacity-100 group-hover:scale-100 absolute left-14 z-[200] whitespace-nowrap rounded-md px-[10px] py-1 text-[11px] font-medium transition-all duration-150 shadow-md origin-left"
+        style={{
+          background: "var(--card)",
+          color: "var(--text)",
+          border: "1px solid var(--border)",
+          boxShadow: "0 4px 12px var(--shadow)",
+        }}
+      >
         {label}
       </span>
     </Link>
@@ -85,24 +96,41 @@ function getInitials(fullName: string | null | undefined, email: string | undefi
 export function Sidebar({ user }: { user?: { email: string; fullName: string | null } }) {
   const pathname = usePathname();
   const { resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
 
-  const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isActive = (href: string) =>
+    href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
   const isDark = resolvedTheme === "dark";
 
   return (
     <aside
-      className="hidden md:flex w-[72px] flex-col items-center py-5 gap-1.5 flex-shrink-0 z-10 overflow-y-auto transition-colors duration-[250ms]"
-      style={{ background: "var(--sidebar-bg)" }}
+      className="hidden md:flex w-[72px] flex-col items-center py-5 gap-1.5 flex-shrink-0 z-10 transition-colors duration-[250ms]"
+      style={{ background: "var(--sidebar-bg)", overflow: "visible" }}
     >
       {/* Logo mark */}
       <Link
-        href="/marketplace"
-        className="flex items-center justify-center w-10 h-10 rounded-xl mb-3 flex-shrink-0 transition-opacity hover:opacity-90"
+        href="/"
+        className="relative flex items-center justify-center w-10 h-10 rounded-xl mb-3 flex-shrink-0 transition-all duration-200 hover:opacity-90 group"
         style={{ background: "var(--green)" }}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" className="w-5 h-5">
           <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
         </svg>
+        <span
+          className="pointer-events-none invisible opacity-0 scale-95 group-hover:visible group-hover:opacity-100 group-hover:scale-100 absolute left-14 z-[200] whitespace-nowrap rounded-md px-[10px] py-1 text-[11px] font-medium transition-all duration-150 shadow-md origin-left"
+          style={{
+            background: "var(--card)",
+            color: "var(--text)",
+            border: "1px solid var(--border)",
+            boxShadow: "0 4px 12px var(--shadow)",
+          }}
+        >
+          Smart Money
+        </span>
       </Link>
 
       {/* Primary nav */}
@@ -124,35 +152,49 @@ export function Sidebar({ user }: { user?: { email: string; fullName: string | n
       {/* Bottom widget — theme toggle + avatar/settings */}
       <div className="flex flex-col items-center gap-1.5 py-2">
         {/* Theme toggle */}
-        <button
-          onClick={() => setTheme(isDark ? "light" : "dark")}
-          title="Toggle dark / light mode"
-          className="flex items-center justify-center w-9 h-9 rounded-[10px] transition-all duration-200 flex-shrink-0 group"
-          style={{
-            background: "rgba(255,255,255,.07)",
-            border: "1px solid rgba(255,255,255,.1)",
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,196,140,.15)";
-            (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(0,196,140,.3)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,.07)";
-            (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,.1)";
-          }}
-        >
-          {isDark ? (
-            <Sun size={16} strokeWidth={2} fill="none" style={{ stroke: "var(--sidebar-icon)" }} />
-          ) : (
-            <Moon size={16} strokeWidth={2} fill="none" style={{ stroke: "var(--sidebar-icon)" }} />
-          )}
-        </button>
+        <div className="relative group flex items-center justify-center">
+          <button
+            onClick={() => setTheme(isDark ? "light" : "dark")}
+            className="flex items-center justify-center w-9 h-9 rounded-[10px] transition-all duration-200 flex-shrink-0"
+            style={{
+              background: "rgba(255,255,255,.07)",
+              border: "1px solid rgba(255,255,255,.1)",
+              cursor: "pointer",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,196,140,.15)";
+              (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(0,196,140,.3)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,.07)";
+              (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,.1)";
+            }}
+          >
+            {!mounted ? (
+              <Sun size={16} strokeWidth={2} fill="none" style={{ stroke: "var(--sidebar-icon)" }} />
+            ) : isDark ? (
+              <Sun size={16} strokeWidth={2} fill="none" style={{ stroke: "var(--sidebar-icon)" }} />
+            ) : (
+              <Moon size={16} strokeWidth={2} fill="none" style={{ stroke: "var(--sidebar-icon)" }} />
+            )}
+          </button>
+          <span
+            className="pointer-events-none invisible opacity-0 scale-95 group-hover:visible group-hover:opacity-100 group-hover:scale-100 absolute left-14 z-[200] whitespace-nowrap rounded-md px-[10px] py-1 text-[11px] font-medium transition-all duration-150 shadow-md origin-left"
+            style={{
+              background: "var(--card)",
+              color: "var(--text)",
+              border: "1px solid var(--border)",
+              boxShadow: "0 4px 12px var(--shadow)",
+            }}
+          >
+            {!mounted ? "Theme Mode" : isDark ? "Light Mode" : "Dark Mode"}
+          </span>
+        </div>
 
         {/* Avatar / Settings */}
         <Link
           href="/settings"
           className="relative flex items-center justify-center w-11 h-11 rounded-xl transition-all duration-200 group hover:bg-green/15"
-          title="Profile & Settings"
         >
           {/* Avatar circle */}
           <div
@@ -168,10 +210,58 @@ export function Sidebar({ user }: { user?: { email: string; fullName: string | n
           />
 
           {/* Tooltip */}
-          <span className="pointer-events-none invisible group-hover:visible absolute left-14 z-[200] whitespace-nowrap rounded-md px-[10px] py-1 text-[11px] font-medium" style={{ background: "var(--text)", color: "var(--bg)" }}>
+          <span
+            className="pointer-events-none invisible opacity-0 scale-95 group-hover:visible group-hover:opacity-100 group-hover:scale-100 absolute left-14 z-[200] whitespace-nowrap rounded-md px-[10px] py-1 text-[11px] font-medium transition-all duration-150 shadow-md origin-left"
+            style={{
+              background: "var(--card)",
+              color: "var(--text)",
+              border: "1px solid var(--border)",
+              boxShadow: "0 4px 12px var(--shadow)",
+            }}
+          >
             Profile &amp; Settings
           </span>
         </Link>
+
+        {/* Log Out */}
+        {user && (
+          <div className="relative group flex items-center justify-center">
+            <button
+              onClick={async () => {
+                const supabase = createClient();
+                await supabase.auth.signOut();
+                window.location.href = "/";
+              }}
+              className="flex items-center justify-center w-9 h-9 rounded-[10px] transition-all duration-200 flex-shrink-0"
+              style={{
+                background: "rgba(255,255,255,.07)",
+                border: "1px solid rgba(255,255,255,.1)",
+                cursor: "pointer",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = "rgba(226,75,74,.15)";
+                (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(226,75,74,.3)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,.07)";
+                (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,.1)";
+              }}
+            >
+              <LogOut size={16} strokeWidth={2} fill="none" style={{ stroke: "#E24B4A" }} />
+            </button>
+            <span
+              className="pointer-events-none invisible opacity-0 scale-95 group-hover:visible group-hover:opacity-100 group-hover:scale-100 absolute left-14 z-[200] whitespace-nowrap rounded-md px-[10px] py-1 text-[11px] font-medium transition-all duration-150 shadow-md origin-left"
+              style={{
+                background: "var(--card)",
+                color: "#E24B4A",
+                border: "1px solid rgba(226,75,74,.3)",
+                boxShadow: "0 4px 12px var(--shadow)",
+              }}
+            >
+              Log Out
+            </span>
+          </div>
+        )}
       </div>
     </aside>
   );

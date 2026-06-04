@@ -74,6 +74,7 @@ export type DatabankContext = {
   lastSyncAt?: { gmail?: string; openbanking?: string };
   activeSignals?: string[];    // names of active signal sources
   currency?: string;           // ISO 4217 code from user profile, defaults to NGN
+  primaryGoal?: string;        // User's primary financial goal (e.g. from onboarding)
 
   // Legacy flat fields — kept for backwards compat with older callers
   monthlyIncome?: number;
@@ -116,6 +117,10 @@ function formatDatabankContext(ctx: DatabankContext): string {
   const currency = ctx.currency ?? "NGN";
   const f = (n: number) => fmt(n, currency);
   const lines: string[] = [];
+
+  if (ctx.primaryGoal) {
+    lines.push(`User's primary financial goal: "${ctx.primaryGoal}"`);
+  }
 
   // ── New structured context ──────────────────────────────
   if (ctx.monthlySummary) {

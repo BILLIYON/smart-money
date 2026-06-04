@@ -286,6 +286,29 @@ export function Topbar() {
         )}
       </div>
 
+      {/* Tour Button */}
+      <button
+        onClick={() => {
+          window.dispatchEvent(new CustomEvent("trigger-onboarding-tour"));
+        }}
+        className="hidden md:flex items-center gap-1.5 px-[15px] py-2 rounded-[10px] text-[13px] font-medium transition-all duration-200 cursor-pointer flex-shrink-0"
+        style={{
+          background: "rgba(0,196,140,.07)",
+          border: "1px solid rgba(0,196,140,.15)",
+          color: "var(--green)",
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,196,140,.15)";
+          (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(0,196,140,.3)";
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,196,140,.07)";
+          (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(0,196,140,.15)";
+        }}
+      >
+        ✨ Take Tour
+      </button>
+
       {/* Chat Now CTA */}
       <Link
         href="/chat"

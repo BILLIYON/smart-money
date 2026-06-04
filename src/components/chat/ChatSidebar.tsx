@@ -206,7 +206,7 @@ export function ChatSidebar() {
 
             {/* Add buddy */}
             <Link
-              href="/marketplace"
+              href="/"
               aria-label="Browse finance buddies"
               className="block mx-[2px] p-[10px] rounded-[10px] text-center text-[12px] border border-dashed transition-all duration-150"
               style={{ color: "var(--muted)", borderColor: "var(--border)" }}

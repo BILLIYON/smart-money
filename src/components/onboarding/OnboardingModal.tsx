@@ -51,6 +51,7 @@ const GOALS: Goal[] = [
   { id: "invest",     icon: "📈", iconBg: "#E3F2FD", label: "Invest and grow my wealth",        sub: "Put money into assets that work" },
   { id: "property",   icon: "🏠", iconBg: "#FFF3E0", label: "Buy property or land",             sub: "Plan and save for real estate" },
   { id: "debt",       icon: "✂️", iconBg: "#FCE4EC", label: "Cut spending and pay off debt",    sub: "Free up money and reduce obligations" },
+  { id: "custom",     icon: "✨", iconBg: "#F3E5F5", label: "Other / Custom Goal",              sub: "Define your own unique financial target" },
 ];
 
 const CELEB_BUDDIES: Buddy[] = [
@@ -178,6 +179,7 @@ export function OnboardingModal({
 }) {
   const [step, setStep] = useState<1 | 2 | 3>(restored?.initialStep ?? 1);
   const [selectedGoal, setSelectedGoal] = useState<string | null>(restored?.initialGoal ?? null);
+  const [customGoalText, setCustomGoalText] = useState("");
   const [selectedBuddy, setSelectedBuddy] = useState<string>(restored?.initialBuddy ?? "buffett");
   const [connected, setConnected] = useState<Set<string>>(new Set(restored?.initialConnected ?? []));
   const [connecting, setConnecting] = useState<string | null>(null);
@@ -235,8 +237,9 @@ export function OnboardingModal({
   }
 
   async function handleFinish() {
+    const finalGoal = selectedGoal === "custom" ? customGoalText.trim() : (selectedGoal ?? "");
     const result: OnboardingResult = {
-      goal: selectedGoal ?? "",
+      goal: finalGoal,
       buddyId: selectedBuddy,
       connectedSources: Array.from(connected),
     };
@@ -291,12 +294,30 @@ export function OnboardingModal({
               </span>
             </button>
           ))}
+          {selectedGoal === "custom" && (
+            <div className="mt-1">
+              <input
+                type="text"
+                value={customGoalText}
+                onChange={(e) => setCustomGoalText(e.target.value)}
+                placeholder="e.g. Save ₦2.5M for a Master's degree, start a bakery..."
+                className="w-full px-[15px] py-3 rounded-xl border outline-none text-[13px] transition-colors"
+                style={{
+                  borderColor: "var(--green)",
+                  background: "var(--bg)",
+                  color: "var(--text)"
+                }}
+                maxLength={120}
+              />
+            </div>
+          )}
         </div>
         <Actions
           leftLabel="Skip for now"
           leftAction={() => setStep(2)}
           rightLabel="Next →"
           rightAction={() => setStep(2)}
+          rightDisabled={selectedGoal === "custom" && !customGoalText.trim()}
         />
       </div>
     </>
