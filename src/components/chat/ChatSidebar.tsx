@@ -4,8 +4,6 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useChatStore, GROUPS } from "@/store/chatStore";
 import { ALL_BUDDIES, getBuddy } from "@/lib/buddies";
-import { FinancialSnapshot } from "./FinancialSnapshot";
-
 const BUDDY_LIST = ALL_BUDDIES;
 
 function GroupAvatarStack({ avatars }: { avatars: typeof GROUPS[0]["avatars"] }) {
@@ -227,8 +225,6 @@ export function ChatSidebar() {
             </Link>
           </div>
 
-          {/* Snapshot + Context */}
-          <FinancialSnapshot />
         </div>
       )}
 

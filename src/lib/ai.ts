@@ -287,11 +287,12 @@ async function streamClaude(
   system: string,
   messages: Message[]
 ): Promise<ReadableStream<Uint8Array>> {
-  const stream = await anthropic().messages.stream({
-    model: "claude-sonnet-4-6",
+  const stream = await anthropic().messages.create({
+    model: "claude-3-5-sonnet-latest",
     max_tokens: 1024,
     system,
     messages,
+    stream: true,
   });
 
   return new ReadableStream<Uint8Array>({
@@ -418,7 +419,7 @@ If not relevant, return { "relevant": false, "message": "" }.
 If relevant, write the message as ${activeBuddy.name} in your distinct voice — 2–3 sentences maximum.`;
 
   const response = await anthropic().messages.create({
-    model: "claude-haiku-4-5-20251001",  // haiku for speed/cost on signal processing
+    model: "claude-3-5-haiku-latest",  // haiku for speed/cost on signal processing
     max_tokens: 256,
     messages: [{ role: "user", content: prompt }],
   });
@@ -470,7 +471,7 @@ Respond with valid JSON only — no markdown, no explanation outside the JSON:
 }`;
 
   const response = await anthropic().messages.create({
-    model: "claude-sonnet-4-6",
+    model: "claude-3-5-sonnet-latest",
     max_tokens: 256,
     messages: [{ role: "user", content: prompt }],
   });

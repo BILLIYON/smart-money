@@ -105,16 +105,31 @@ function SpendChartBlock({ title, bars }: { title: string; bars: { label: string
 // ── Message Actions ────────────────────────────────────────
 function MessageActions({ msg, threadKey, isGroup }: { msg: ChatMessage; threadKey: string; isGroup: boolean }) {
   const { updateMessage, updateGroupMessage } = useChatStore();
+  const [savedFeedback, setSavedFeedback] = useState(false);
 
   function patch(p: Partial<ChatMessage>) {
     if (isGroup) updateGroupMessage(threadKey, msg.id, p);
     else updateMessage(threadKey, msg.id, p);
   }
 
+  function handleSave() {
+    navigator.clipboard.writeText(msg.content).catch(() => {});
+    setSavedFeedback(true);
+    setTimeout(() => setSavedFeedback(false), 2000);
+  }
+
+  function handleShare() {
+    if (navigator.share) {
+      navigator.share({ text: msg.content }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(msg.content).catch(() => {});
+    }
+  }
+
   return (
     <div className="flex gap-[6px] mt-[7px] flex-wrap">
       {[
-        { label: "💾 Save", onClick: () => {} },
+        { label: savedFeedback ? "✓ Saved!" : "💾 Save", onClick: handleSave },
         {
           label: "🎯 Set as Goal",
           onClick: () => { if (msg.goalCardData) patch({ goalCardOpen: !msg.goalCardOpen }); },
@@ -125,14 +140,14 @@ function MessageActions({ msg, threadKey, isGroup }: { msg: ChatMessage; threadK
           onClick: () => { if (msg.agentCardData) patch({ agentCardOpen: !msg.agentCardOpen }); },
           active: !!msg.agentCardData,
         },
-        { label: "📤 Share", onClick: () => {} },
+        { label: "📤 Share", onClick: handleShare },
       ].map((a) => (
         <button
           key={a.label}
           onClick={a.onClick}
           className="px-[10px] py-1 rounded-full text-[10px] border cursor-pointer transition-all duration-150"
           style={{
-            color: a.active ? "var(--muted)" : "var(--muted)",
+            color: "var(--muted)",
             borderColor: "var(--border)",
             background: "transparent",
           }}

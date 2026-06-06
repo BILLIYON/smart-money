@@ -56,11 +56,12 @@ export async function POST(req: Request) {
 
   let stream: AsyncIterable<Anthropic.MessageStreamEvent>;
   try {
-    stream = await anthropic.messages.stream({
-      model: "claude-sonnet-4-6",
+    stream = await anthropic.messages.create({
+      model: "claude-3-5-sonnet-latest",
       max_tokens: 256,
       system,
       messages,
+      stream: true,
     });
   } catch (e) {
     console.error("[/api/chat/preview]", e);

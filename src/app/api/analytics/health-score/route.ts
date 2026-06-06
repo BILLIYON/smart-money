@@ -122,7 +122,7 @@ export async function GET() {
   let buddyTake = "";
   try {
     const resp = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-3-5-haiku-latest",
       max_tokens: 120,
       messages: [
         {

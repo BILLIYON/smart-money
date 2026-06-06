@@ -6,6 +6,7 @@ import { Search, Bell, Swords } from "lucide-react";
 import { useNotificationStore, type Notification, type NotificationType } from "@/store/notificationStore";
 import { useCompareStore } from "@/store/compareStore";
 import { getBuddy } from "@/lib/buddies";
+import { createClient } from "@/lib/supabase/client";
 
 // ── Helpers ────────────────────────────────────────────────
 function timeAgo(iso: string): string {
@@ -45,7 +46,17 @@ function toBuddyLabel(n: Notification): string {
 export function Topbar() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
   const notifRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => setIsLoggedIn(!!data.user));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+      setIsLoggedIn(!!session?.user);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   const notifications  = useNotificationStore((s) => s.notifications);
   const unreadCount    = useNotificationStore((s) => s.unreadCount);
@@ -309,16 +320,43 @@ export function Topbar() {
         ✨ Take Tour
       </button>
 
-      {/* Chat Now CTA */}
-      <Link
-        href="/chat"
-        className="hidden md:flex items-center px-[18px] py-2 rounded-[10px] text-[13px] font-medium text-white flex-shrink-0 transition-colors duration-200"
-        style={{ background: "var(--green)" }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "var(--green2)"; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "var(--green)"; }}
-      >
-        Chat Now
-      </Link>
+      {/* Login button — only when unauthenticated */}
+      {isLoggedIn === false && (
+        <Link
+          href="/login"
+          className="hidden md:flex items-center gap-2 px-[18px] py-2 rounded-[10px] text-[13px] font-semibold flex-shrink-0 transition-all duration-200"
+          style={{
+            background: "transparent",
+            color: "var(--green)",
+            border: "1.5px solid var(--green)",
+          }}
+          onMouseEnter={(e) => {
+            const el = e.currentTarget as HTMLAnchorElement;
+            el.style.background = "var(--green)";
+            el.style.color = "#fff";
+          }}
+          onMouseLeave={(e) => {
+            const el = e.currentTarget as HTMLAnchorElement;
+            el.style.background = "transparent";
+            el.style.color = "var(--green)";
+          }}
+        >
+          Log In
+        </Link>
+      )}
+
+      {/* Chat Now CTA — only when authenticated */}
+      {isLoggedIn === true && (
+        <Link
+          href="/chat"
+          className="hidden md:flex items-center px-[18px] py-2 rounded-[10px] text-[13px] font-medium text-white flex-shrink-0 transition-colors duration-200"
+          style={{ background: "var(--green)" }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "var(--green2)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "var(--green)"; }}
+        >
+          Chat Now
+        </Link>
+      )}
     </header>
   );
 }
