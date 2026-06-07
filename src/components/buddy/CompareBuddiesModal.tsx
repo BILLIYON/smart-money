@@ -62,7 +62,7 @@ function BuddySelect({
     <div className="flex-1 min-w-0">
       <div
         className="text-[10px] font-semibold uppercase tracking-[.6px] mb-2"
-        style={{ color: "rgba(255,255,255,.35)" }}
+        style={{ color: "var(--muted)" }}
       >
         {label}
       </div>
@@ -74,16 +74,23 @@ function BuddySelect({
           <select
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            className="w-full appearance-none rounded-[10px] px-3 py-[10px] pr-8 text-[13px] font-medium outline-none cursor-pointer"
+            className="w-full appearance-none rounded-[10px] px-3 py-[10px] pr-8 text-[13px] font-medium outline-none cursor-pointer transition-colors duration-200"
             style={{
-              background: "rgba(255,255,255,.06)",
-              border: "1px solid rgba(255,255,255,.12)",
-              color: "#fff",
+              background: "var(--input-bg)",
+              border: "1px solid var(--border)",
+              color: "var(--text)",
               fontFamily: "var(--font-sora)",
             }}
           >
             {ALL_BUDDIES.filter((b) => b.id !== exclude).map((b) => (
-              <option key={b.id} value={b.id} style={{ background: "#132952", color: "#fff" }}>
+              <option
+                key={b.id}
+                value={b.id}
+                style={{
+                  background: "var(--card)",
+                  color: "var(--text)",
+                }}
+              >
                 {b.name}
               </option>
             ))}
@@ -91,7 +98,7 @@ function BuddySelect({
           {/* Chevron */}
           <span
             className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px]"
-            style={{ color: "rgba(255,255,255,.4)" }}
+            style={{ color: "var(--muted)" }}
           >
             ▾
           </span>
@@ -99,7 +106,7 @@ function BuddySelect({
       </div>
 
       {buddy && (
-        <div className="mt-2 text-[11px]" style={{ color: "rgba(255,255,255,.35)" }}>
+        <div className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>
           {buddy.tag}
         </div>
       )}

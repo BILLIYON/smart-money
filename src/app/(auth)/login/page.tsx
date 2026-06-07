@@ -63,21 +63,11 @@ function LoginForm() {
     router.refresh();
   }
 
-  async function handleGoogle() {
+  function handleGoogle() {
     setError(null);
     setOauthLoading(true);
     const next = searchParams.get("next") ?? "/";
-    const { error: authError } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
-      },
-    });
-    if (authError) {
-      setError(authError.message);
-      setOauthLoading(false);
-    }
-    // On success, browser redirects — no need to setOauthLoading(false)
+    window.location.href = `/api/auth/google?next=${encodeURIComponent(next)}`;
   }
 
   return (

@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AnalyticsDashboard } from "@/components/analytics/AnalyticsDashboard";
+import { createClient } from "@/lib/supabase/client";
+import { useDatabankStore } from "@/store/databankStore";
 
 // ── Gmail helpers ─────────────────────────────────────────────
 function timeAgo(iso: string | null): string {
@@ -325,6 +327,7 @@ function SourceItem({
 }) {
   return (
     <div
+      onClick={isDashed ? onToggle : undefined}
       className="flex items-center gap-[10px] p-[10px] rounded-[10px]"
       style={{
         background: isDashed ? "transparent" : "var(--bg)",
@@ -357,41 +360,66 @@ function SourceItem({
         </div>
         <div className="text-[11px]" style={{ color: "var(--muted)" }}>{sub}</div>
       </div>
-      {on !== undefined && onToggle && <Toggle on={on} onToggle={onToggle} aria-label={`Toggle ${name}`} />}
+      {on !== undefined && onToggle && !isDashed && <Toggle on={on} onToggle={onToggle} aria-label={`Toggle ${name}`} />}
     </div>
   );
 }
 
 // ── Signals data ──────────────────────────────────────────
-type SignalItem = {
-  icon: React.ReactNode; iconBg: string; iconIsCircle?: boolean; name: string; sub: string; on: boolean; iconFontSize?: number; premium?: boolean;
+const NEWS_SOURCES = [
+  { id: "nairametrics", icon: "📊", iconBg: "#E3F2FD", name: "Nairametrics", sub: "Nigeria's leading financial news" },
+  { id: "businessday", icon: "📈", iconBg: "#E8F5E9", name: "BusinessDay NG", sub: "Business and economy coverage" },
+  { id: "reuters", icon: "🌐", iconBg: "#FFF9C4", name: "Reuters Finance", sub: "Global financial news" },
+  { id: "coindesk", icon: "₿", iconBg: "#FCE4EC", name: "CoinDesk", sub: "Crypto and Web3 markets" },
+  { id: "bloomberg", icon: "🏦", iconBg: "#EDE7F6", name: "Bloomberg", sub: "Premium financial data", premium: true },
+];
+
+const PODCAST_SOURCES = [
+  { id: "stears-podcast", icon: "🎙️", iconBg: "#9B59B6", name: "The Stears Podcast", sub: "Nigerian Economy", iconFontSize: 14 },
+  { id: "wedontdostocks", icon: "🎙️", iconBg: "#E74C3C", name: "We Don't Do Stocks", sub: "African Investing", iconFontSize: 14 },
+  { id: "planet-money", icon: "🎙️", iconBg: "#1ABC9C", name: "Planet Money (NPR)", sub: "Global Economics", iconFontSize: 14 },
+  { id: "invest-like-the-best", icon: "🎙️", iconBg: "#3498DB", name: "Invest Like the Best", sub: "Global Investors", iconFontSize: 14 },
+];
+
+const NEWSLETTER_SOURCES = [
+  { id: "stears-weekly", icon: "📬", iconBg: "#F39C12", name: "Stears Weekly", sub: "Nigeria Economics", iconFontSize: 14 },
+  { id: "techcabal", icon: "📬", iconBg: "#2ECC71", name: "TechCabal Daily", sub: "African Tech & VC", iconFontSize: 14 },
+  { id: "hustle", icon: "📬", iconBg: "#8E44AD", name: "The Hustle", sub: "Business & Finance", iconFontSize: 14 },
+];
+
+type BankItem = {
+  id: string;
+  emoji: string;
+  name: string;
 };
-const NEWS_SOURCES: SignalItem[] = [
-  { icon: "📊", iconBg: "#E3F2FD", name: "Nairametrics", sub: "Nigeria's leading financial news", on: true },
-  { icon: "📈", iconBg: "#E8F5E9", name: "BusinessDay NG", sub: "Business and economy coverage", on: true },
-  { icon: "🌐", iconBg: "#FFF9C4", name: "Reuters Finance", sub: "Global financial news", on: true },
-  { icon: "₿", iconBg: "#FCE4EC", name: "CoinDesk", sub: "Crypto and Web3 markets", on: true },
-  { icon: "🏦", iconBg: "#EDE7F6", name: "Bloomberg", sub: "Premium financial data", on: false, premium: true },
+
+const BANKS: BankItem[] = [
+  { id: "gtbank", emoji: "🏦", name: "GTBank" },
+  { id: "access", emoji: "🏛️", name: "Access Bank" },
+  { id: "zenith", emoji: "🔷", name: "Zenith Bank" },
+  { id: "uba", emoji: "🦁", name: "UBA" },
+  { id: "stanbic", emoji: "📊", name: "Stanbic IBTC" },
+  { id: "firstbank", emoji: "🏅", name: "First Bank" },
 ];
-const PODCAST_SOURCES: SignalItem[] = [
-  { icon: "🎙️", iconBg: "#9B59B6", name: "The Stears Podcast", sub: "Nigerian Economy", on: true, iconFontSize: 14 },
-  { icon: "🎙️", iconBg: "#E74C3C", name: "We Don't Do Stocks", sub: "African Investing", on: true, iconFontSize: 14 },
-  { icon: "🎙️", iconBg: "#1ABC9C", name: "Planet Money (NPR)", sub: "Global Economics", on: false, iconFontSize: 14 },
-  { icon: "🎙️", iconBg: "#3498DB", name: "Invest Like the Best", sub: "Global Investors", on: false, iconFontSize: 14 },
-];
-const NEWSLETTER_SOURCES: SignalItem[] = [
-  { icon: "📬", iconBg: "#F39C12", name: "Stears Weekly", sub: "Nigeria Economics", on: true, iconFontSize: 14 },
-  { icon: "📬", iconBg: "#2ECC71", name: "TechCabal Daily", sub: "African Tech & VC", on: true, iconFontSize: 14 },
-  { icon: "📬", iconBg: "#8E44AD", name: "The Hustle", sub: "Business & Finance", on: false, iconFontSize: 14 },
-];
+
+type UploadedFile = {
+  label: string;
+  meta: string;
+};
 
 // ── DataBank page ─────────────────────────────────────────
 export default function DataBankPage() {
   const [tab, setTab] = useState<"sources" | "analytics">("sources");
   const [signalTab, setSignalTab] = useState<"news" | "social" | "podcasts" | "newsletters" | "api">("news");
-  const [newsSources, setNewsSources] = useState(NEWS_SOURCES.map((s) => ({ ...s })));
-  const [podcastSources, setPodcastSources] = useState(PODCAST_SOURCES.map((s) => ({ ...s })));
-  const [newsletterSources, setNewsletterSources] = useState(NEWSLETTER_SOURCES.map((s) => ({ ...s })));
+  
+  // Dynamic statement files
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [loadingFiles, setLoadingFiles] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Dynamic user enabled signal sources (includes bank connection IDs)
+  const [enabledSources, setEnabledSources] = useState<Set<string>>(new Set());
   const [socialChips, setSocialChips] = useState(["@nairametrics · Twitter/X", "Stears · YouTube"]);
   const [socialInput, setSocialInput] = useState("");
   const [newsletterInput, setNewsletterInput] = useState("");
@@ -400,6 +428,238 @@ export default function DataBankPage() {
   const [apiActive2, setApiActive2] = useState(true);
   const [apiEnable1, setApiEnable1] = useState(false);
   const [apiEnable2, setApiEnable2] = useState(false);
+
+  // Open banking modal simulation state
+  const [connectingBank, setConnectingBank] = useState<BankItem | null>(null);
+  const [connectStep, setConnectStep] = useState<1 | 2 | 3>(1);
+  const [obUsername, setObUsername] = useState("");
+  const [obPassword, setObPassword] = useState("");
+  const [obOtp, setObOtp] = useState("");
+  const [modalLoading, setModalLoading] = useState(false);
+
+  // Manual entry states
+  const [manualType, setManualType] = useState<"Income" | "Expense" | "Goal" | "Asset" | "Debt">("Income");
+  const [manualAmount, setManualAmount] = useState("");
+  const [manualDescription, setManualDescription] = useState("");
+  const [manualDate, setManualDate] = useState(new Date().toISOString().split("T")[0]);
+  const [manualCategory, setManualCategory] = useState("Salary");
+  const [savingManual, setSavingManual] = useState(false);
+
+  // Databank Store
+  const { uploadStatement, addManualEntry } = useDatabankStore();
+
+  const fetchEnabledSources = useCallback(async () => {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("user_signal_sources")
+      .select("source_id")
+      .eq("enabled", true);
+    if (data && !error) {
+      setEnabledSources(new Set(data.map((s) => s.source_id)));
+    }
+  }, []);
+
+  const fetchUploadedFiles = useCallback(async () => {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("databank_entries")
+      .select("metadata, created_at")
+      .eq("source", "upload");
+
+    if (error || !data) {
+      setUploadedFiles([]);
+      setLoadingFiles(false);
+      return;
+    }
+
+    // Group by file name stored in metadata
+    const groups: Record<string, { count: number; date: string }> = {};
+    data.forEach((row) => {
+      const meta = row.metadata as { fileName?: string };
+      const fileName = meta?.fileName || "Unknown statement";
+      if (!groups[fileName]) {
+        groups[fileName] = {
+          count: 0,
+          date: new Date(row.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        };
+      }
+      groups[fileName].count += 1;
+    });
+
+    const list = Object.entries(groups).map(([name, detail]) => ({
+      label: name,
+      meta: `Uploaded ${detail.date} · ${detail.count} transactions parsed`,
+    }));
+
+    setUploadedFiles(list);
+    setLoadingFiles(false);
+  }, []);
+
+  useEffect(() => {
+    // Initialise context, active signals and uploaded files
+    useDatabankStore.getState().loadContext();
+    fetchEnabledSources();
+    fetchUploadedFiles();
+  }, [fetchEnabledSources, fetchUploadedFiles]);
+
+  const handleToggleSource = async (sourceId: string) => {
+    const isEnabled = enabledSources.has(sourceId);
+    const supabase = createClient();
+    if (isEnabled) {
+      const { error } = await supabase
+        .from("user_signal_sources")
+        .delete()
+        .eq("source_id", sourceId);
+      if (!error) {
+        setEnabledSources((prev) => {
+          const next = new Set(prev);
+          next.delete(sourceId);
+          return next;
+        });
+      }
+    } else {
+      const res = await fetch("/api/signals/enable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceId }),
+      });
+      if (res.ok) {
+        setEnabledSources((prev) => new Set([...prev, sourceId]));
+      }
+    }
+  };
+
+  const handleDeleteFile = async (fileName: string) => {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("databank_entries")
+      .delete()
+      .eq("source", "upload")
+      .filter("metadata->>fileName", "eq", fileName);
+
+    if (error) {
+      alert("Failed to delete statement");
+      return;
+    }
+
+    await fetchUploadedFiles();
+    await useDatabankStore.getState().loadContext();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      await uploadStatement(file);
+      await fetchUploadedFiles();
+      alert(`Successfully uploaded & parsed ${file.name}`);
+    } catch (err: any) {
+      alert(err.message ?? "Failed to upload file");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleManualSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualAmount || !manualDescription) {
+      alert("Please enter both an amount and description");
+      return;
+    }
+
+    const amt = parseFloat(manualAmount);
+    if (isNaN(amt) || amt <= 0) {
+      alert("Please enter a valid positive number for amount");
+      return;
+    }
+
+    const entryType = manualType.toLowerCase() as "income" | "expense" | "subscription" | "asset" | "debt";
+    const amountKobo = Math.round(amt * 100);
+    const signedAmount = (entryType === "expense" || entryType === "subscription" || entryType === "debt")
+      ? -amountKobo
+      : amountKobo;
+
+    setSavingManual(true);
+    try {
+      await addManualEntry({
+        entry_type: entryType,
+        amount: signedAmount,
+        description: manualDescription,
+        date: new Date(manualDate).toISOString(),
+        category: manualCategory,
+      });
+
+      // Reset
+      setManualAmount("");
+      setManualDescription("");
+      alert("Manual entry added successfully!");
+    } catch (err: any) {
+      alert(err.message ?? "Failed to add manual entry");
+    } finally {
+      setSavingManual(false);
+    }
+  };
+
+  const handleOpenBankingClick = (bank: BankItem) => {
+    if (enabledSources.has(bank.id)) {
+      // Prompt to disconnect
+      if (confirm(`Do you want to disconnect ${bank.name} from your DataBank?`)) {
+        handleToggleSource(bank.id);
+      }
+    } else {
+      setConnectingBank(bank);
+      setConnectStep(1);
+      setObUsername("");
+      setObPassword("");
+      setObOtp("");
+    }
+  };
+
+  const handleObConnectNext = () => {
+    if (!obUsername || !obPassword) {
+      alert("Please enter login credentials");
+      return;
+    }
+    setModalLoading(true);
+    setTimeout(() => {
+      setModalLoading(false);
+      setConnectStep(2);
+    }, 1500);
+  };
+
+  const handleObVerifyOtp = async () => {
+    if (!obOtp) {
+      alert("Please enter OTP code");
+      return;
+    }
+    if (!connectingBank) return;
+
+    setModalLoading(true);
+    try {
+      const res = await fetch("/api/signals/enable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceId: connectingBank.id }),
+      });
+      if (res.ok) {
+        setEnabledSources((prev) => new Set([...prev, connectingBank.id]));
+        setConnectStep(3);
+      } else {
+        alert("Failed to authenticate with bank");
+      }
+    } catch {
+      alert("Connection failed");
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const handleExportData = () => {
+    window.location.href = "/api/settings/export";
+  };
 
   const signalTabs = [
     { id: "news", label: "📰 News Media" },
@@ -417,20 +677,11 @@ export default function DataBankPage() {
     { icon: "⚡", label: "Execute transfers (Agentic Actions only)" },
   ];
 
-  const banks = [
-    { id: "gtbank", emoji: "🏦", name: "GTBank", connected: true, status: "● Connected · Read + Execute", statusColor: "var(--green2)" },
-    { id: "access", emoji: "🏛️", name: "Access Bank", connected: false, status: "Tap to connect", statusColor: "var(--muted)" },
-    { id: "zenith", emoji: "🔷", name: "Zenith Bank", connected: false, status: "Tap to connect", statusColor: "var(--muted)" },
-    { id: "uba", emoji: "🦁", name: "UBA", connected: false, status: "Tap to connect", statusColor: "var(--muted)" },
-    { id: "stanbic", emoji: "📊", name: "Stanbic IBTC", connected: false, status: "Tap to connect", statusColor: "var(--muted)" },
-    { id: "firstbank", emoji: "🏅", name: "First Bank", connected: false, status: "Tap to connect", statusColor: "var(--muted)" },
-  ];
-
   return (
     <div className="flex-1 overflow-y-auto" style={{ background: "var(--bg)" }}>
       <div className="px-4 py-6 sm:px-6 lg:px-8 w-full">
 
-        {/* Privacy reassurance bar — always visible */}
+        {/* Privacy reassurance bar */}
         <div
           className="flex items-center gap-3 px-4 py-[10px] rounded-[10px] mb-5 text-[12px]"
           style={{
@@ -456,7 +707,8 @@ export default function DataBankPage() {
             Your <em style={{ fontFamily: "var(--font-dm-serif)", fontStyle: "italic", color: "var(--green)" }}>DataBank</em>
           </div>
           <button
-            className="px-4 py-[9px] rounded-[10px] text-[12px] font-medium border transition-all duration-150"
+            onClick={handleExportData}
+            className="px-4 py-[9px] rounded-[10px] text-[12px] font-medium border transition-all duration-150 cursor-pointer"
             style={{ color: "var(--muted)", borderColor: "var(--border)", background: "var(--card)" }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--green)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--green)"; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--muted)"; }}
@@ -474,7 +726,6 @@ export default function DataBankPage() {
               className="py-[10px] px-5 text-[13px] font-semibold transition-all duration-150"
               style={{
                 color: tab === t.id ? "var(--green)" : "var(--muted)",
-                borderBottom: tab === t.id ? "2px solid var(--green)" : "2px solid transparent",
                 background: "transparent",
                 border: "none",
                 borderBottomStyle: "solid",
@@ -511,35 +762,71 @@ export default function DataBankPage() {
                     </svg>
                     Bank Statements
                   </div>
-                  <span className="text-[11px] font-semibold px-2 py-[3px] rounded-full" style={{ background: "rgba(0,196,140,.1)", color: "var(--green2)" }}>2 connected</span>
+                  <span className="text-[11px] font-semibold px-2 py-[3px] rounded-full" style={{ background: "rgba(0,196,140,.1)", color: "var(--green2)" }}>
+                    {loadingFiles ? "Loading..." : `${uploadedFiles.length} connected`}
+                  </span>
                 </div>
                 <div className="flex flex-col gap-[6px] mb-4">
-                  {[
-                    { label: "GTBank_March_2026.pdf", meta: "Uploaded Mar 2 · 89 transactions parsed" },
-                    { label: "GTBank_February_2026.pdf", meta: "Uploaded Feb 28 · 74 transactions parsed" },
-                  ].map((item) => (
-                    <div key={item.label} className="flex items-center gap-[10px] px-3 py-[10px] rounded-[10px]" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
-                      <div className="flex items-center justify-center rounded-[8px] text-[14px]" style={{ width: 32, height: 32, background: "#E8F5E9", flexShrink: 0 }}>📄</div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[12px] font-medium truncate" style={{ color: "var(--text)" }}>{item.label}</div>
-                        <div className="text-[11px]" style={{ color: "var(--muted)" }}>{item.meta}</div>
+                  {loadingFiles ? (
+                    <div className="text-[12px] text-center py-2" style={{ color: "var(--muted)" }}>Loading statements...</div>
+                  ) : uploadedFiles.length === 0 ? (
+                    <div className="text-[12px] text-center py-4" style={{ color: "var(--muted)" }}>No statements uploaded yet</div>
+                  ) : (
+                    uploadedFiles.map((item) => (
+                      <div key={item.label} className="flex items-center gap-[10px] px-3 py-[10px] rounded-[10px]" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
+                        <div className="flex items-center justify-center rounded-[8px] text-[14px]" style={{ width: 32, height: 32, background: "#E8F5E9", flexShrink: 0 }}>📄</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[12px] font-medium truncate" style={{ color: "var(--text)" }}>{item.label}</div>
+                          <div className="text-[11px]" style={{ color: "var(--muted)" }}>{item.meta}</div>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteFile(item.label)}
+                          className="text-[16px] w-6 h-6 flex items-center justify-center rounded cursor-pointer"
+                          style={{ color: "var(--muted)", background: "transparent", border: "none" }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#E24B4A"; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--muted)"; }}
+                        >
+                          ×
+                        </button>
                       </div>
-                      <button className="text-[16px] w-6 h-6 flex items-center justify-center rounded" style={{ color: "var(--muted)", background: "transparent" }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#E24B4A"; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--muted)"; }}>
-                        ×
-                      </button>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  accept=".csv,.pdf"
+                  style={{ display: "none" }}
+                />
                 <div
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(e) => { e.preventDefault(); }}
+                  onDrop={async (e) => {
+                    e.preventDefault();
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) {
+                      setUploading(true);
+                      try {
+                        await uploadStatement(file);
+                        await fetchUploadedFiles();
+                        alert(`Successfully uploaded & parsed ${file.name}`);
+                      } catch (err: any) {
+                        alert(err.message ?? "Failed to upload file");
+                      } finally {
+                        setUploading(false);
+                      }
+                    }
+                  }}
                   className="flex flex-col items-center justify-center gap-1 py-5 rounded-[12px] border-2 border-dashed cursor-pointer transition-all duration-150"
-                  style={{ borderColor: "var(--border)" }}
+                  style={{ borderColor: "var(--border)", opacity: uploading ? 0.6 : 1 }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "var(--green)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border)"; }}
                 >
                   <div className="text-[20px]">📂</div>
-                  <div className="text-[12px] font-medium" style={{ color: "var(--muted)" }}>Drop statement here</div>
+                  <div className="text-[12px] font-medium" style={{ color: "var(--muted)" }}>
+                    {uploading ? "Ingesting file..." : "Drop statement here / Click to upload"}
+                  </div>
                   <div className="text-[11px]" style={{ color: "var(--border)" }}>PDF or CSV · Any bank</div>
                 </div>
               </div>
@@ -549,7 +836,7 @@ export default function DataBankPage() {
                 <GmailCard />
               </Suspense>
 
-              {/* Manual Entry */}
+              {/* Manual Entry Form */}
               <div className="rounded-[16px] p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2 text-[14px] font-semibold" style={{ color: "var(--text)" }}>
@@ -561,44 +848,86 @@ export default function DataBankPage() {
                   </div>
                   <span className="text-[11px] font-semibold px-2 py-[3px] rounded-full" style={{ background: "rgba(74,144,217,.1)", color: "#4A90D9" }}>Add Manually</span>
                 </div>
-                <div className="flex flex-col gap-3">
+                <form onSubmit={handleManualSubmit} className="flex flex-col gap-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <div className="text-[10px] font-semibold uppercase tracking-[.5px] mb-1" style={{ color: "var(--muted)" }}>Type</div>
-                      <select className="w-full px-3 py-[9px] rounded-[10px] text-[12px] outline-none" style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "var(--font-sora)" }}>
-                        <option>Income</option><option>Expense</option><option>Goal</option><option>Asset</option><option>Debt</option>
+                      <select
+                        value={manualType}
+                        onChange={(e) => setManualType(e.target.value as any)}
+                        className="w-full px-3 py-[9px] rounded-[10px] text-[12px] outline-none"
+                        style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "var(--font-sora)" }}
+                      >
+                        <option>Income</option>
+                        <option>Expense</option>
+                        <option>Goal</option>
+                        <option>Asset</option>
+                        <option>Debt</option>
                       </select>
                     </div>
                     <div>
                       <div className="text-[10px] font-semibold uppercase tracking-[.5px] mb-1" style={{ color: "var(--muted)" }}>Amount (₦)</div>
-                      <input type="number" placeholder="0.00" className="w-full px-3 py-[9px] rounded-[10px] text-[12px] outline-none" style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "var(--font-sora)" }} />
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={manualAmount}
+                        onChange={(e) => setManualAmount(e.target.value)}
+                        className="w-full px-3 py-[9px] rounded-[10px] text-[12px] outline-none"
+                        style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "var(--font-sora)" }}
+                      />
                     </div>
                   </div>
                   <div>
                     <div className="text-[10px] font-semibold uppercase tracking-[.5px] mb-1" style={{ color: "var(--muted)" }}>Description</div>
-                    <input type="text" placeholder="e.g. Freelance payment from client" className="w-full px-3 py-[9px] rounded-[10px] text-[12px] outline-none" style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "var(--font-sora)" }} />
+                    <input
+                      type="text"
+                      placeholder="e.g. Freelance payment from client"
+                      value={manualDescription}
+                      onChange={(e) => setManualDescription(e.target.value)}
+                      className="w-full px-3 py-[9px] rounded-[10px] text-[12px] outline-none"
+                      style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "var(--font-sora)" }}
+                    />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <div className="text-[10px] font-semibold uppercase tracking-[.5px] mb-1" style={{ color: "var(--muted)" }}>Date</div>
-                      <input type="date" className="w-full px-3 py-[9px] rounded-[10px] text-[12px] outline-none" style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "var(--font-sora)" }} />
+                      <input
+                        type="date"
+                        value={manualDate}
+                        onChange={(e) => setManualDate(e.target.value)}
+                        className="w-full px-3 py-[9px] rounded-[10px] text-[12px] outline-none"
+                        style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "var(--font-sora)" }}
+                      />
                     </div>
                     <div>
                       <div className="text-[10px] font-semibold uppercase tracking-[.5px] mb-1" style={{ color: "var(--muted)" }}>Category</div>
-                      <select className="w-full px-3 py-[9px] rounded-[10px] text-[12px] outline-none" style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "var(--font-sora)" }}>
-                        <option>Salary</option><option>Business</option><option>Food</option><option>Transport</option><option>Investment</option><option>Other</option>
+                      <select
+                        value={manualCategory}
+                        onChange={(e) => setManualCategory(e.target.value)}
+                        className="w-full px-3 py-[9px] rounded-[10px] text-[12px] outline-none"
+                        style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "var(--font-sora)" }}
+                      >
+                        <option>Salary</option>
+                        <option>Business</option>
+                        <option>Food</option>
+                        <option>Transport</option>
+                        <option>Investment</option>
+                        <option>Other</option>
                       </select>
                     </div>
                   </div>
                   <button
-                    className="w-full py-[10px] rounded-[10px] text-[12px] font-semibold transition-all duration-150"
-                    style={{ background: "var(--green)", color: "#fff", border: "none" }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green2)"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green)"; }}
+                    type="submit"
+                    disabled={savingManual}
+                    className="w-full py-[10px] rounded-[10px] text-[12px] font-semibold transition-all duration-150 cursor-pointer"
+                    style={{ background: "var(--green)", color: "#fff", border: "none", opacity: savingManual ? 0.7 : 1 }}
+                    onMouseEnter={(e) => { if (!savingManual) (e.currentTarget as HTMLButtonElement).style.background = "var(--green2)"; }}
+                    onMouseLeave={(e) => { if (!savingManual) (e.currentTarget as HTMLButtonElement).style.background = "var(--green)"; }}
                   >
-                    Add to DataBank
+                    {savingManual ? "Saving..." : "Add to DataBank"}
                   </button>
-                </div>
+                </form>
               </div>
 
               {/* Open Banking API */}
@@ -611,7 +940,9 @@ export default function DataBankPage() {
                     </svg>
                     Open Banking API
                   </div>
-                  <span className="text-[11px] font-semibold px-2 py-[3px] rounded-full" style={{ background: "rgba(0,196,140,.1)", color: "var(--green2)" }}>1 connected</span>
+                  <span className="text-[11px] font-semibold px-2 py-[3px] rounded-full" style={{ background: "rgba(0,196,140,.1)", color: "var(--green2)" }}>
+                    {BANKS.filter((b) => enabledSources.has(b.id)).length} connected
+                  </span>
                 </div>
 
                 {/* How it works */}
@@ -635,21 +966,27 @@ export default function DataBankPage() {
                 {/* Bank grid */}
                 <div className="text-[10px] font-semibold uppercase tracking-[.5px] mb-3" style={{ color: "var(--muted)" }}>Select a Bank to Connect</div>
                 <div className="grid grid-cols-3 gap-2 mb-4">
-                  {banks.map((bank) => (
-                    <div
-                      key={bank.id}
-                      className="flex flex-col items-center gap-1 p-3 rounded-[10px] cursor-pointer transition-all duration-150"
-                      style={{
-                        background: bank.connected ? "rgba(0,196,140,.06)" : "var(--bg)",
-                        border: bank.connected ? "2px solid var(--green)" : "1px solid var(--border)",
-                        textAlign: "center",
-                      }}
-                    >
-                      <div className="text-[20px]">{bank.emoji}</div>
-                      <div className="text-[11px] font-semibold" style={{ color: "var(--text)" }}>{bank.name}</div>
-                      <div className="text-[10px]" style={{ color: bank.statusColor }}>{bank.status}</div>
-                    </div>
-                  ))}
+                  {BANKS.map((bank) => {
+                    const isConnected = enabledSources.has(bank.id);
+                    return (
+                      <div
+                        key={bank.id}
+                        onClick={() => handleOpenBankingClick(bank)}
+                        className="flex flex-col items-center gap-1 p-3 rounded-[10px] cursor-pointer transition-all duration-150"
+                        style={{
+                          background: isConnected ? "rgba(0,196,140,.06)" : "var(--bg)",
+                          border: isConnected ? "2px solid var(--green)" : "1px solid var(--border)",
+                          textAlign: "center",
+                        }}
+                      >
+                        <div className="text-[20px]">{bank.emoji}</div>
+                        <div className="text-[11px] font-semibold" style={{ color: "var(--text)" }}>{bank.name}</div>
+                        <div className="text-[10px]" style={{ color: isConnected ? "var(--green2)" : "var(--muted)" }}>
+                          {isConnected ? "Connected" : "Tap to connect"}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {/* Permission controls */}
@@ -665,8 +1002,14 @@ export default function DataBankPage() {
                     ))}
                   </div>
                   <div className="flex gap-2 mt-3">
-                    <button className="px-3 py-[7px] text-[11px] font-medium rounded-[8px] border transition-all duration-150" style={{ color: "var(--muted)", borderColor: "var(--border)", background: "transparent" }}>Refresh Token</button>
-                    <button className="px-3 py-[7px] text-[11px] font-medium rounded-[8px] border transition-all duration-150" style={{ color: "#E24B4A", borderColor: "#E24B4A", background: "transparent" }}>Revoke Access</button>
+                    <button className="px-3 py-[7px] text-[11px] font-medium rounded-[8px] border transition-all duration-150 cursor-pointer" style={{ color: "var(--muted)", borderColor: "var(--border)", background: "transparent" }}>Refresh Token</button>
+                    <button
+                      onClick={() => handleToggleSource("gtbank")}
+                      className="px-3 py-[7px] text-[11px] font-medium rounded-[8px] border transition-all duration-150 cursor-pointer"
+                      style={{ color: "#E24B4A", borderColor: "#E24B4A", background: "transparent" }}
+                    >
+                      Revoke Access
+                    </button>
                   </div>
                 </div>
 
@@ -687,7 +1030,9 @@ export default function DataBankPage() {
                   Live Signal Sources
                   <span className="text-[11px] font-normal" style={{ color: "var(--muted)" }}>— Your buddies listen to these</span>
                 </div>
-                <span className="text-[11px] font-semibold px-2 py-[3px] rounded-full" style={{ background: "rgba(0,196,140,.1)", color: "var(--green2)" }}>9 sources active</span>
+                <span className="text-[11px] font-semibold px-2 py-[3px] rounded-full" style={{ background: "rgba(0,196,140,.1)", color: "var(--green2)" }}>
+                  {enabledSources.size} sources active
+                </span>
               </div>
 
               {/* Signal sub-tabs */}
@@ -699,7 +1044,6 @@ export default function DataBankPage() {
                     className="px-4 py-2 text-[12px] font-semibold whitespace-nowrap flex-shrink-0"
                     style={{
                       color: signalTab === t.id ? "var(--green)" : "var(--muted)",
-                      borderBottom: signalTab === t.id ? "2px solid var(--green)" : "2px solid transparent",
                       background: "transparent",
                       border: "none",
                       borderBottomStyle: "solid",
@@ -716,14 +1060,24 @@ export default function DataBankPage() {
               {/* News Media */}
               {signalTab === "news" && (
                 <div className="grid gap-[10px]" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
-                  {newsSources.map((src, i) => (
-                    <SourceItem
-                      key={src.name} icon={src.icon} iconBg={src.iconBg} name={src.name} sub={src.sub}
-                      on={src.on} premium={src.premium}
-                      onToggle={() => setNewsSources((s) => s.map((x, j) => j === i ? { ...x, on: !x.on } : x))}
-                    />
-                  ))}
-                  <SourceItem icon={<span style={{ fontSize: 18, color: "var(--muted)" }}>+</span>} iconBg="var(--bg)" name="Add News Source" sub="RSS or URL" isDashed />
+                  {NEWS_SOURCES.map((src) => {
+                    const isEnabled = enabledSources.has(src.id);
+                    return (
+                      <SourceItem
+                        key={src.name} icon={src.icon} iconBg={src.iconBg} name={src.name} sub={src.sub}
+                        on={isEnabled} premium={src.premium}
+                        onToggle={() => handleToggleSource(src.id)}
+                      />
+                    );
+                  })}
+                  <SourceItem
+                    icon={<span style={{ fontSize: 18, color: "var(--muted)" }}>+</span>}
+                    iconBg="var(--bg)"
+                    name="Add News Source"
+                    sub="RSS or URL"
+                    isDashed
+                    onToggle={() => alert("Custom RSS parser config in Phase 3")}
+                  />
                 </div>
               )}
 
@@ -752,8 +1106,8 @@ export default function DataBankPage() {
                     />
                     <button
                       onClick={() => { if (!socialInput.trim()) return; setSocialChips((c) => [...c, socialInput.trim()]); setSocialInput(""); }}
-                      className="px-4 py-[9px] rounded-[10px] text-[12px] font-semibold transition-all duration-150"
-                      style={{ background: "var(--green)", color: "#fff", border: "none", cursor: "pointer" }}
+                      className="px-4 py-[9px] rounded-[10px] text-[12px] font-semibold transition-all duration-150 cursor-pointer"
+                      style={{ background: "var(--green)", color: "#fff", border: "none" }}
                       onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green2)"; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green)"; }}
                     >
@@ -770,8 +1124,8 @@ export default function DataBankPage() {
                         <span>{chip}</span>
                         <button
                           onClick={() => setSocialChips((c) => c.filter((x) => x !== chip))}
-                          className="flex items-center justify-center w-4 h-4 text-[14px] leading-none transition-colors duration-150"
-                          style={{ color: "var(--muted)", background: "transparent", border: "none", cursor: "pointer" }}
+                          className="flex items-center justify-center w-4 h-4 text-[14px] leading-none transition-colors duration-150 cursor-pointer"
+                          style={{ color: "var(--muted)", background: "transparent", border: "none" }}
                           onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#E24B4A"; }}
                           onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--muted)"; }}
                         >
@@ -786,14 +1140,24 @@ export default function DataBankPage() {
               {/* Podcasts */}
               {signalTab === "podcasts" && (
                 <div className="grid gap-[10px]" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
-                  {podcastSources.map((src, i) => (
-                    <SourceItem
-                      key={src.name} icon={src.icon} iconBg={src.iconBg} name={src.name} sub={src.sub}
-                      on={src.on} iconFontSize={src.iconFontSize}
-                      onToggle={() => setPodcastSources((s) => s.map((x, j) => j === i ? { ...x, on: !x.on } : x))}
-                    />
-                  ))}
-                  <SourceItem icon={<span style={{ fontSize: 18, color: "var(--muted)" }}>+</span>} iconBg="var(--bg)" name="Add Podcast" sub="RSS or Spotify / Apple link" isDashed />
+                  {PODCAST_SOURCES.map((src) => {
+                    const isEnabled = enabledSources.has(src.id);
+                    return (
+                      <SourceItem
+                        key={src.name} icon={src.icon} iconBg={src.iconBg} name={src.name} sub={src.sub}
+                        on={isEnabled} iconFontSize={src.iconFontSize}
+                        onToggle={() => handleToggleSource(src.id)}
+                      />
+                    );
+                  })}
+                  <SourceItem
+                    icon={<span style={{ fontSize: 18, color: "var(--muted)" }}>+</span>}
+                    iconBg="var(--bg)"
+                    name="Add Podcast Feed"
+                    sub="Apple or Spotify RSS URL"
+                    isDashed
+                    onToggle={() => alert("Custom transcription engine setup in Phase 3")}
+                  />
                 </div>
               )}
 
@@ -801,13 +1165,16 @@ export default function DataBankPage() {
               {signalTab === "newsletters" && (
                 <div>
                   <div className="grid gap-[10px] mb-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
-                    {newsletterSources.map((src, i) => (
-                      <SourceItem
-                        key={src.name} icon={src.icon} iconBg={src.iconBg} name={src.name} sub={src.sub}
-                        on={src.on} iconFontSize={src.iconFontSize}
-                        onToggle={() => setNewsletterSources((s) => s.map((x, j) => j === i ? { ...x, on: !x.on } : x))}
-                      />
-                    ))}
+                    {NEWSLETTER_SOURCES.map((src) => {
+                      const isEnabled = enabledSources.has(src.id);
+                      return (
+                        <SourceItem
+                          key={src.name} icon={src.icon} iconBg={src.iconBg} name={src.name} sub={src.sub}
+                          on={isEnabled} iconFontSize={src.iconFontSize}
+                          onToggle={() => handleToggleSource(src.id)}
+                        />
+                      );
+                    })}
                   </div>
                   <div className="text-[11px] font-semibold uppercase tracking-[.5px] mb-2" style={{ color: "var(--muted)" }}>Add Custom Substack / Newsletter</div>
                   <div className="flex gap-2">
@@ -823,8 +1190,8 @@ export default function DataBankPage() {
                     />
                     <button
                       onClick={() => setNewsletterInput("")}
-                      className="px-4 py-[9px] rounded-[10px] text-[12px] font-semibold transition-all duration-150"
-                      style={{ background: "var(--green)", color: "#fff", border: "none", cursor: "pointer" }}
+                      className="px-4 py-[9px] rounded-[10px] text-[12px] font-semibold transition-all duration-150 cursor-pointer"
+                      style={{ background: "var(--green)", color: "#fff", border: "none" }}
                       onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green2)"; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green)"; }}
                     >
@@ -875,7 +1242,7 @@ export default function DataBankPage() {
                       </div>
                       <div className="flex items-center justify-between">
                         <div className="text-[11px]" style={{ color: "var(--muted)" }}>Signals this month: <strong>4</strong> · Acted on: <strong>1</strong></div>
-                        <button className="text-[11px] font-medium px-3 py-[6px] rounded-[8px] border transition-all duration-150" style={{ color: "var(--muted)", borderColor: "var(--border)", background: "transparent" }}>Open in Chat →</button>
+                        <button className="text-[11px] font-medium px-3 py-[6px] rounded-[8px] border transition-all duration-150 cursor-pointer" style={{ color: "var(--muted)", borderColor: "var(--border)", background: "transparent" }}>Open in Chat →</button>
                       </div>
                     </div>
 
@@ -899,7 +1266,7 @@ export default function DataBankPage() {
                       </div>
                       <div className="flex items-center justify-between">
                         <div className="text-[11px]" style={{ color: "var(--muted)" }}>Signals this month: <strong>7</strong> · Acted on: <strong>2</strong></div>
-                        <button className="text-[11px] font-medium px-3 py-[6px] rounded-[8px] border transition-all duration-150" style={{ color: "var(--muted)", borderColor: "var(--border)", background: "transparent" }}>Open in Chat →</button>
+                        <button className="text-[11px] font-medium px-3 py-[6px] rounded-[8px] border transition-all duration-150 cursor-pointer" style={{ color: "var(--muted)", borderColor: "var(--border)", background: "transparent" }}>Open in Chat →</button>
                       </div>
                     </div>
                   </div>
@@ -923,7 +1290,7 @@ export default function DataBankPage() {
                         <div className="text-[11px] mb-3" style={{ color: "var(--muted)", lineHeight: 1.5 }}>{item.desc}</div>
                         <button
                           onClick={() => item.idx === 1 ? setApiEnable1((v) => !v) : setApiEnable2((v) => !v)}
-                          className="w-full py-[8px] rounded-[8px] text-[11px] font-semibold transition-all duration-150"
+                          className="w-full py-[8px] rounded-[8px] text-[11px] font-semibold transition-all duration-150 cursor-pointer"
                           style={{
                             background: (item.idx === 1 ? apiEnable1 : apiEnable2) ? "var(--green)" : "transparent",
                             color: (item.idx === 1 ? apiEnable1 : apiEnable2) ? "#fff" : "var(--green)",
@@ -954,8 +1321,8 @@ export default function DataBankPage() {
                         Have a data feed — property listings, stock screener, deal alerts? Publish it as a Signal Source. Set a subscription price. Users enable it in their DataBank. Your API fires signals; Smart Money routes them to the right buddy conversations. You earn per subscriber per month.
                       </div>
                       <div className="flex gap-2 flex-wrap">
-                        <button className="px-4 py-[8px] rounded-[8px] text-[11px] font-semibold" style={{ background: "var(--green)", color: "#fff", border: "none" }}>Start in AI Studio →</button>
-                        <button className="px-4 py-[8px] rounded-[8px] text-[11px] font-medium border" style={{ color: "var(--muted)", borderColor: "var(--border)", background: "transparent" }}>Read API Docs</button>
+                        <button className="px-4 py-[8px] rounded-[8px] text-[11px] font-semibold cursor-pointer" style={{ background: "var(--green)", color: "#fff", border: "none" }}>Start in AI Studio →</button>
+                        <button className="px-4 py-[8px] rounded-[8px] text-[11px] font-medium border cursor-pointer" style={{ color: "var(--muted)", borderColor: "var(--border)", background: "transparent" }}>Read API Docs</button>
                       </div>
                     </div>
                   </div>
@@ -968,6 +1335,153 @@ export default function DataBankPage() {
         {/* ── ANALYTICS PANEL ── */}
         {tab === "analytics" && <AnalyticsDashboard />}
       </div>
+
+      {/* ── OPEN BANKING CONNECTION OVERLAY MODAL ── */}
+      {connectingBank && (
+        <div
+          className="fixed inset-0 z-[500] flex items-center justify-center p-4"
+          style={{ background: "rgba(11,30,61,.85)", backdropFilter: "blur(5px)" }}
+        >
+          <div
+            className="w-full max-w-[420px] rounded-[20px] overflow-hidden p-6 flex flex-col gap-4 text-left"
+            style={{
+              background: "var(--card)",
+              border: "1px solid var(--border)",
+              boxShadow: "0 32px 80px rgba(0,0,0,.55)",
+            }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3" style={{ borderBottom: "1px solid var(--border)" }}>
+              <div className="flex items-center gap-2">
+                <span className="text-[24px]">{connectingBank.emoji}</span>
+                <span className="text-[16px] font-bold" style={{ color: "var(--text)" }}>
+                  Connect to {connectingBank.name}
+                </span>
+              </div>
+              <button
+                disabled={modalLoading}
+                onClick={() => setConnectingBank(null)}
+                className="w-6 h-6 flex items-center justify-center rounded-[4px] cursor-pointer"
+                style={{ background: "transparent", border: "none", color: "var(--muted)" }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* STEP 1: Credentials Entry */}
+            {connectStep === 1 && (
+              <div className="flex flex-col gap-3">
+                <div className="text-[12px]" style={{ color: "var(--muted)", lineHeight: 1.6 }}>
+                  Smart Money uses CBN-approved Open Banking protocols. Login to your bank securely.
+                </div>
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[.5px] mb-1" style={{ color: "var(--muted)" }}>
+                    Internet Banking User ID / Account Number
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Enter ID"
+                    value={obUsername}
+                    onChange={(e) => setObUsername(e.target.value)}
+                    className="w-full px-3 py-[10px] rounded-[10px] text-[13px] outline-none"
+                    style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "var(--font-sora)" }}
+                  />
+                </div>
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[.5px] mb-1" style={{ color: "var(--muted)" }}>
+                    Password / Internet Banking PIN
+                  </div>
+                  <input
+                    type="password"
+                    placeholder="••••••••"
+                    value={obPassword}
+                    onChange={(e) => setObPassword(e.target.value)}
+                    className="w-full px-3 py-[10px] rounded-[10px] text-[13px] outline-none"
+                    style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "var(--font-sora)" }}
+                  />
+                </div>
+                <button
+                  onClick={handleObConnectNext}
+                  disabled={modalLoading}
+                  className="w-full py-[11px] mt-2 rounded-[10px] text-[13px] font-semibold text-white cursor-pointer transition-all"
+                  style={{ background: "var(--green)", border: "none", opacity: modalLoading ? 0.7 : 1 }}
+                >
+                  {modalLoading ? "Authenticating securely..." : "Connect Securely →"}
+                </button>
+              </div>
+            )}
+
+            {/* STEP 2: OTP Verification */}
+            {connectStep === 2 && (
+              <div className="flex flex-col gap-3">
+                <div className="text-[12px]" style={{ color: "var(--muted)", lineHeight: 1.6 }}>
+                  We sent a 6-digit verification code to the phone number ending in <strong>*4950</strong> linked with your {connectingBank.name} account.
+                </div>
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[.5px] mb-1" style={{ color: "var(--muted)" }}>
+                    Verification Code (OTP)
+                  </div>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    placeholder="123456"
+                    value={obOtp}
+                    onChange={(e) => setObOtp(e.target.value)}
+                    className="w-full text-center tracking-[4px] px-3 py-[10px] rounded-[10px] text-[16px] font-bold outline-none"
+                    style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "var(--font-sora)" }}
+                  />
+                </div>
+                <button
+                  onClick={handleObVerifyOtp}
+                  disabled={modalLoading}
+                  className="w-full py-[11px] mt-2 rounded-[10px] text-[13px] font-semibold text-white cursor-pointer transition-all"
+                  style={{ background: "var(--green)", border: "none", opacity: modalLoading ? 0.7 : 1 }}
+                >
+                  {modalLoading ? "Verifying..." : "Verify & Authorise Connection"}
+                </button>
+                <button
+                  onClick={() => setConnectStep(1)}
+                  disabled={modalLoading}
+                  className="w-full py-[9px] rounded-[10px] text-[12px] font-medium border cursor-pointer"
+                  style={{ color: "var(--muted)", borderColor: "var(--border)", background: "transparent" }}
+                >
+                  Back
+                </button>
+              </div>
+            )}
+
+            {/* STEP 3: Success Confirmation */}
+            {connectStep === 3 && (
+              <div className="flex flex-col items-center gap-4 text-center py-4">
+                <div
+                  className="w-14 h-14 rounded-full flex items-center justify-center text-[28px] text-white"
+                  style={{ background: "var(--green)" }}
+                >
+                  ✓
+                </div>
+                <div>
+                  <div className="text-[16px] font-bold" style={{ color: "var(--text)" }}>
+                    {connectingBank.name} Connected!
+                  </div>
+                  <div className="text-[12px] mt-1 px-2" style={{ color: "var(--muted)", lineHeight: 1.6 }}>
+                    Smart Money has successfully connected to {connectingBank.name} under CBN Open Banking guidelines.
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setConnectingBank(null);
+                    fetchEnabledSources();
+                  }}
+                  className="w-full py-[11px] mt-2 rounded-[10px] text-[13px] font-semibold text-white cursor-pointer"
+                  style={{ background: "var(--green)", border: "none" }}
+                >
+                  Done
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

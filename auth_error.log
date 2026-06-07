@@ -1,0 +1,2 @@
+[2026-06-07T00:20:25.225Z] Gmail Sync: Sync failed: Database upsert failed: Could not find the 'currency' column of 'databank_entries' in the schema cache
+[2026-06-07T19:39:39.459Z] Gmail Callback: Missing code

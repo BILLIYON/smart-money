@@ -87,10 +87,11 @@ export function ChatSidebar() {
             className="flex-1 py-[10px] px-3 text-[11px] font-semibold uppercase tracking-[.5px] text-center cursor-pointer border-b-[2px] transition-all duration-200"
             style={{
               color: chatMode === mode ? "var(--green)" : "var(--muted)",
-              borderBottomColor: chatMode === mode ? "var(--green)" : "transparent",
               background: "transparent",
               border: "none",
-              borderBottom: chatMode === mode ? "2px solid var(--green)" : "2px solid transparent",
+              borderBottomStyle: "solid",
+              borderBottomWidth: 2,
+              borderBottomColor: chatMode === mode ? "var(--green)" : "transparent",
             }}
           >
             {mode === "1to1" ? "1:1 Chats" : "Group Chats"}

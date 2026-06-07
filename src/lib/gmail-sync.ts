@@ -86,8 +86,16 @@ export async function syncGmailForUser(userId: string): Promise<void> {
     const from    = headers.find((h) => h.name === "From")?.value ?? "";
     const date    = headers.find((h) => h.name === "Date")?.value ?? "";
 
+    let entryDate = new Date().toISOString().split("T")[0];
+    if (date) {
+      const parsed = new Date(date);
+      if (!isNaN(parsed.getTime())) {
+        entryDate = parsed.toISOString().split("T")[0];
+      }
+    }
+
     // Store as a databank entry with source=gmail (upsert by gmail_message_id)
-    await supabase.from("databank_entries").upsert(
+    const { error: upsertError } = await supabase.from("databank_entries").upsert(
       {
         user_id:          userId,
         source:           "gmail",
@@ -97,9 +105,15 @@ export async function syncGmailForUser(userId: string): Promise<void> {
         amount:           0, // amount parsed by a later enrichment step
         currency:         currency,
         gmail_message_id: msg.id,
+        entry_date:       entryDate,
       },
       { onConflict: "gmail_message_id" }
     );
+
+    if (upsertError) {
+      console.error("[gmail-sync] Database upsert failed:", upsertError.message);
+      throw new Error(`Database upsert failed: ${upsertError.message}`);
+    }
   }
 
   // Update last_synced_at

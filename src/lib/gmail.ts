@@ -11,6 +11,7 @@ type DataBankEntry = {
   category: string;
   entry_date: string;
   metadata: Record<string, unknown>;
+  gmail_message_id?: string;
 };
 
 // ── 1. Get an authenticated Gmail client for a user ──────────
@@ -98,6 +99,20 @@ export async function getEmailBody(
   return { messageId, subject, from, date, body };
 }
 
+function stripHtml(html: string): string {
+  if (!html) return "";
+  return html
+    .replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, " ")
+    .replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 // ── 4. Parse a financial email into a DataBank entry ─────────
 // Uses regex patterns tuned for US bank alert formats
 export function parseFinancialEmail(email: {
@@ -106,25 +121,54 @@ export function parseFinancialEmail(email: {
   date: string;
   body: string;
 }): DataBankEntry | null {
-  const text = (email.subject + " " + email.body).toLowerCase();
-  const raw  =  email.subject + " " + email.body;
+  const cleanBody = stripHtml(email.body);
+  const text = (email.subject + " " + cleanBody).toLowerCase();
+  const raw  =  email.subject + " " + cleanBody;
 
   // ── Amount extraction ──
-  // Matches: $450,000.00 | USD 450,000 | 450,000.00 USD
+  // Matches: $450,000.00 | USD 450,000 | 450,000.00 USD | ₦1,000.00 | 1,000.00 Naira
   const amountPattern =
-    /(?:\$|USD)[\s]*([\d,]+(?:\.\d{2})?)|([\d,]+(?:\.\d{2})?)[\s]*(?:USD|dollars?)/gi;
-  const amounts = [...raw.matchAll(amountPattern)]
-    .map((m) => parseFloat((m[1] || m[2]).replace(/,/g, "")))
-    .filter((n) => !isNaN(n) && n > 0);
-  const amount = amounts.length > 0 ? Math.max(...amounts) : 0;
+    /(?:\$|USD|₦|NGN)[\s]*([\d,]+(?:\.\d{2})?)|([\d,]+(?:\.\d{2})?)[\s]*(?:USD|dollars?|naira|ngn)/gi;
+  const matches = [...raw.matchAll(amountPattern)];
+  let amount = 0;
+  for (const match of matches) {
+    const val = parseFloat((match[1] || match[2]).replace(/,/g, ""));
+    if (isNaN(val) || val <= 0) continue;
+    
+    // Check if it is likely a balance amount (preceded by 'balance' or 'avail')
+    const matchIndex = match.index || 0;
+    const context = raw.substring(Math.max(0, matchIndex - 25), matchIndex).toLowerCase();
+    if (/balance|avail|bal/i.test(context)) {
+      if (amount === 0) amount = val; // fallback if no other amount is found
+      continue;
+    }
+    amount = val;
+    break;
+  }
 
   // ── Entry type detection ──
-  const isCredit = /credit|received|deposit|direct deposit|salary|payment received/i.test(text);
-  const isDebit  = /debit|withdrawal|transfer|purchase|payment made|charged/i.test(text);
-  const isSubs   = /subscription|renewal|recurring|monthly plan/i.test(text);
+  const isCredit = /\b(?:credit|received|deposit|direct deposit|salary|payment received|payout)\b/i.test(text);
+  const isDebit  = /\b(?:debit|withdrawal|transfer|purchase|payment made|charged|payment completed)\b/i.test(text);
+  const isSubs   = /\b(?:subscription|renewal|recurring|monthly plan)\b/i.test(text);
 
   if (!isCredit && !isDebit && !isSubs) return null; // not financial
   if (amount === 0) return null;                      // could not parse amount
+
+  let entry_type: "income" | "expense" = "expense";
+  if (isCredit && !isDebit) {
+    entry_type = "income";
+  } else if (isDebit && !isCredit) {
+    entry_type = "expense";
+  } else if (isCredit && isDebit) {
+    // Conflict resolution (e.g. "deposit" matched in footer of transfer email)
+    if (/transfer|debit|payment|charge/i.test(email.subject)) {
+      entry_type = "expense";
+    } else if (/received|deposit|credit/i.test(email.subject)) {
+      entry_type = "income";
+    } else {
+      entry_type = "expense";
+    }
+  }
 
   // ── Merchant / description extraction ──
   let description = email.subject;
@@ -141,29 +185,29 @@ export function parseFinancialEmail(email: {
     ? "Salary"
     : /electric|gas|water|utility|con ?ed|pg&?e|utility/i.test(text)
     ? "Utilities"
-    : /phone|wireless|at&?t|verizon|t-mobile|sprint/i.test(text)
+    : /\b(?:phone bill|wireless bill|at&?t|verizon|t-mobile|sprint|recharge|airtime|data bundle|internet bill)\b/i.test(text)
     ? "Phone & Data"
     : /restaurant|food|grubhub|doordash|uber eat|starbucks|mcdonald/i.test(text)
     ? "Food & Dining"
     : /uber|lyft|transit|parking|transport/i.test(text)
     ? "Transport"
-    : /amazon|walmart|target|shopping|order/i.test(text)
+    : /amazon|walmart|target|shopping|order|jumia|aliexpress/i.test(text)
     ? "Shopping"
-    : isCredit
+    : entry_type === "income"
     ? "Income"
     : "General Expense";
 
   return {
     source:     "gmail",
-    entry_type: isCredit ? "income" : "expense",
-    amount:     Math.round(amount * 100), // store in cents
+    entry_type,
+    amount:     Math.round(amount * 100), // store in cents / kobo
     description,
     category,
     entry_date: new Date(email.date).toISOString().split("T")[0],
     metadata: {
       email_from:          email.from,
       email_subject:       email.subject,
-      raw_amount_string:   amounts[0]?.toString(),
+      raw_amount_string:   amount.toString(),
     },
   };
 }
@@ -181,11 +225,18 @@ export async function syncGmailForUser(userId: string) {
     .eq("provider", "gmail")
     .single();
 
-  // Build time filter — only emails since last sync
+  // Query if the user has any entries stored from gmail
+  const { count } = await supabase
+    .from("databank_entries")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("source", "gmail");
+
+  // Build time filter — only emails since last sync, unless they have 0 entries (then backfill last 90 days)
   // Gmail uses Unix timestamp in query: after:1704067200
-  const lastSync = integration?.last_synced_at
+  const lastSync = (integration?.last_synced_at && count && count > 0)
     ? Math.floor(new Date(integration.last_synced_at).getTime() / 1000)
-    : Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 90; // last 90 days on first run
+    : Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 90; // last 90 days
 
   const afterFilter = `after:${lastSync}`;
 
@@ -198,6 +249,8 @@ export async function syncGmailForUser(userId: string) {
     `subject:(salary OR payroll OR "monthly pay" OR "direct deposit") ${afterFilter}`,
     `subject:("subscription renewed" OR renewal OR "recurring payment") ${afterFilter}`,
     `subject:(electricity OR "internet bill" OR "phone bill" OR "water bill") ${afterFilter}`,
+    `from:(opay-nigeria.com OR opayweb.com OR paystack.com OR flutterwave.com OR flutterwavego.com OR fcmb.com OR gtbank.com OR accessbankplc.com OR zenithbank.com OR ubagroup.com OR stanbicibtc.com OR firstbanknigeria.com) ${afterFilter}`,
+    `subject:("transfer successful" OR "payment completed" OR payout OR "credit alert" OR "debit alert") ${afterFilter}`,
   ];
 
   // Search all queries in parallel
@@ -219,7 +272,7 @@ export async function syncGmailForUser(userId: string) {
 
     for (const email of emails) {
       const entry = parseFinancialEmail(email);
-      if (entry) entries.push({ ...entry, user_id: userId });
+      if (entry) entries.push({ ...entry, user_id: userId, gmail_message_id: email.messageId });
     }
 
     // Small delay between batches to respect rate limits
@@ -228,12 +281,16 @@ export async function syncGmailForUser(userId: string) {
     }
   }
 
-  // Upsert entries (skip duplicates by user_id + source + entry_date + description)
+  // Upsert entries utilizing gmail_message_id unique index
   if (entries.length > 0) {
-    await supabase.from("databank_entries").upsert(entries, {
-      onConflict:       "user_id,source,entry_date,description",
+    const { error: upsertError } = await supabase.from("databank_entries").upsert(entries, {
+      onConflict:       "gmail_message_id",
       ignoreDuplicates: true,
     });
+    if (upsertError) {
+      console.error("[gmail] Database upsert failed:", upsertError.message);
+      throw new Error(`Database upsert failed: ${upsertError.message}`);
+    }
   }
 
   // Update last sync time

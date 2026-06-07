@@ -17,7 +17,8 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/chat/") ||
     pathname === "/api/studio" ||
     pathname === "/api/hidden-buddies" ||
-    pathname === "/api/databank/sources-summary";
+    pathname === "/api/databank/sources-summary" ||
+    pathname.startsWith("/api/auth/google");
 
   const isAuthPath = AUTH_PATHS.has(pathname);
 
