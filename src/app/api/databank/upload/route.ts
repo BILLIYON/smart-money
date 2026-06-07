@@ -4,7 +4,7 @@ import Papa from "papaparse";
 
 // pdf-parse has no named export — use require to avoid ESM issues
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse");
+const { PDFParse } = require("pdf-parse");
 
 type RawRow = Record<string, string>;
 
@@ -111,8 +111,9 @@ export async function POST(req: Request) {
 
   try {
     if (fileName.endsWith(".pdf")) {
-      const parsed = await pdfParse(buffer);
-      transactions = parsePdfText(parsed.text as string);
+      const parser = new PDFParse({ data: buffer });
+      const parsed = await parser.getText();
+      transactions = parsePdfText(parsed.text);
     } else if (fileName.endsWith(".csv")) {
       const text = buffer.toString("utf-8");
       transactions = parseCsv(text);
@@ -122,8 +123,16 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-  } catch (e) {
+  } catch (e: any) {
     console.error("[/api/databank/upload] parse error:", e);
+    try {
+      const fs = require("fs");
+      const path = require("path");
+      fs.writeFileSync(
+        path.join(process.cwd(), "upload_error.log"),
+        `Error: ${e.message}\nStack: ${e.stack}\nTime: ${new Date().toISOString()}\n`
+      );
+    } catch (logErr) {}
     return NextResponse.json({ error: "Failed to parse file" }, { status: 422 });
   }
 
