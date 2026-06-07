@@ -63,4 +63,4 @@ src/lib/ai.ts exports:
   getAgentSuggestion(action, databankContext) → suggestion
 
 ## Current Working Screen
-1. Marketplace screen
+1. Marketplace screen .
