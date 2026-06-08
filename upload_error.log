@@ -1,0 +1,5 @@
+Error: Setting up fake worker failed: "Cannot find module as expression is too dynamic".
+Stack: Error: Setting up fake worker failed: "Cannot find module as expression is too dynamic".
+    at C:\Users\USER\smart-money\.next\dev\server\chunks\0hx~_pdf-parse_dist_pdf-parse_cjs_index_cjs_13e51q7._.js:12222:28
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+Time: 2026-06-07T22:20:12.724Z
