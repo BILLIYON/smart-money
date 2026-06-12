@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -105,7 +106,7 @@ function SpendChartBlock({ title, bars }: { title: string; bars: { label: string
 // ── Message Actions ────────────────────────────────────────
 function MessageActions({ msg, threadKey, isGroup }: { msg: ChatMessage; threadKey: string; isGroup: boolean }) {
   const { updateMessage, updateGroupMessage } = useChatStore();
-  const [savedFeedback, setSavedFeedback] = useState(false);
+  const [savedFeedback, setSavedFeedback] = React.useState(false);
 
   function patch(p: Partial<ChatMessage>) {
     if (isGroup) updateGroupMessage(threadKey, msg.id, p);
