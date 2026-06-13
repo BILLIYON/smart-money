@@ -131,14 +131,7 @@ export async function POST(req: Request) {
     }
   } catch (e: any) {
     console.error("[/api/databank/upload] parse error:", e);
-    try {
-      const fs = require("fs");
-      const path = require("path");
-      fs.writeFileSync(
-        path.join(process.cwd(), "upload_error.log"),
-        `Error: ${e.message}\nStack: ${e.stack}\nTime: ${new Date().toISOString()}\n`
-      );
-    } catch (logErr) {}
+    console.error(`Error details: ${e.message}\nStack: ${e.stack}`);
     return NextResponse.json({ error: "Failed to parse file" }, { status: 422 });
   }
 
