@@ -4,7 +4,6 @@ import { encrypt } from "@/lib/crypto";
 import { syncGmailForUser } from "@/lib/gmail";
 
 export async function GET(req: Request) {
-  const fs = require("fs");
   const urlObj = new URL(req.url);
   const baseUrl = urlObj.origin;
   const redirectUri = `${baseUrl}/api/auth/gmail/callback`;
@@ -20,7 +19,7 @@ export async function GET(req: Request) {
     const code = searchParams.get("code");
 
     if (!code) {
-      fs.appendFileSync("auth_error.log", `[${new Date().toISOString()}] Gmail Callback: Missing code\n`);
+      console.error("[gmail/callback] Missing authorization code");
       return Response.redirect(`${baseUrl}/databank?gmail=error`);
     }
 
@@ -34,14 +33,12 @@ export async function GET(req: Request) {
       const result = await oauth2Client.getToken(code);
       tokens = result.tokens;
     } catch (err: any) {
-      fs.appendFileSync("auth_error.log", `[${new Date().toISOString()}] Gmail Callback: Token exchange failed: ${err?.message || err}\n`);
-      console.error("[gmail/callback] Token exchange failed:", err);
+      console.error("[gmail/callback] Token exchange failed:", err?.message || err);
       return Response.redirect(`${baseUrl}/databank?gmail=error`);
     }
 
     if (!tokens.access_token || !tokens.refresh_token) {
-      fs.appendFileSync("auth_error.log", `[${new Date().toISOString()}] Gmail Callback: Missing tokens in response: ${JSON.stringify(tokens)}\n`);
-      console.error("[gmail/callback] Missing tokens in response", tokens);
+      console.error("[gmail/callback] Missing tokens in Google response:", tokens);
       return Response.redirect(`${baseUrl}/databank?gmail=error`);
     }
 
@@ -50,7 +47,7 @@ export async function GET(req: Request) {
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session) {
-      fs.appendFileSync("auth_error.log", `[${new Date().toISOString()}] Gmail Callback: No session found\n`);
+      console.error("[gmail/callback] No authenticated user session found");
       return Response.redirect(`${baseUrl}/login`);
     }
 
@@ -71,21 +68,20 @@ export async function GET(req: Request) {
     );
 
     if (error) {
-      fs.appendFileSync("auth_error.log", `[${new Date().toISOString()}] Gmail Callback: Database insert failed: ${error.message}\n`);
-      console.error("[gmail/callback] Failed to store tokens:", error.message);
+      console.error("[gmail/callback] Failed to store tokens in DB:", error.message);
       return Response.redirect(`${baseUrl}/databank?gmail=error`);
     }
 
     // Kick off first sync in the background — do not await
     syncGmailForUser(session.user.id).catch((err) => {
-      fs.appendFileSync("auth_error.log", `[${new Date().toISOString()}] Gmail Sync: Sync failed: ${err?.message || err}\n`);
+      console.error("[gmail/callback] Initial Gmail sync failed:", err?.message || err);
     });
 
     const state = searchParams.get("state");
     const returnPath = state?.startsWith("/") ? state : "/databank";
     return Response.redirect(`${baseUrl}${returnPath}?gmail=connected`);
   } catch (err: any) {
-    fs.appendFileSync("auth_error.log", `[${new Date().toISOString()}] Gmail Callback: Unexpected error: ${err?.message || err}\n`);
+    console.error("[gmail/callback] Unexpected callback error:", err?.message || err);
     return Response.redirect(`${baseUrl}/databank?gmail=error`);
   }
 }

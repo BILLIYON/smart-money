@@ -26,11 +26,8 @@ export async function GET(req: Request) {
       }),
     });
 
-    const fs = require("fs");
-
     if (!tokenRes.ok) {
       const errText = await tokenRes.text();
-      fs.appendFileSync("auth_error.log", `[${new Date().toISOString()}] Token exchange failed: ${errText}\n`);
       console.error("[/api/auth/google/callback] Token exchange failed:", errText);
       return NextResponse.redirect(`${origin}/login?error=google_auth_failed`);
     }
@@ -39,7 +36,6 @@ export async function GET(req: Request) {
     const idToken = tokens.id_token;
 
     if (!idToken) {
-      fs.appendFileSync("auth_error.log", `[${new Date().toISOString()}] No id_token returned\n`);
       console.error("[/api/auth/google/callback] No id_token returned by Google");
       return NextResponse.redirect(`${origin}/login?error=google_auth_failed`);
     }
@@ -52,7 +48,6 @@ export async function GET(req: Request) {
     });
 
     if (error) {
-      fs.appendFileSync("auth_error.log", `[${new Date().toISOString()}] signInWithIdToken failed: ${error.message}\n`);
       console.error("[/api/auth/google/callback] signInWithIdToken failed:", error.message);
       return NextResponse.redirect(`${origin}/login?error=google_auth_failed`);
     }
@@ -80,9 +75,7 @@ export async function GET(req: Request) {
     // Success redirect
     return NextResponse.redirect(`${origin}${next}`);
   } catch (err: any) {
-    const fs = require("fs");
-    fs.appendFileSync("auth_error.log", `[${new Date().toISOString()}] Unexpected error: ${err?.message || err}\n`);
-    console.error("[/api/auth/google/callback] Unexpected error:", err);
+    console.error("[/api/auth/google/callback] Unexpected error:", err?.message || err);
     return NextResponse.redirect(`${origin}/login?error=google_auth_failed`);
   }
 }
