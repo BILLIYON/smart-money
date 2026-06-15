@@ -222,46 +222,6 @@ export function Sidebar({ user }: { user?: { email: string; fullName: string | n
             Profile &amp; Settings
           </span>
         </Link>
-
-        {/* Log Out */}
-        {user && (
-          <div className="relative group flex items-center justify-center">
-            <button
-              onClick={async () => {
-                const supabase = createClient();
-                await supabase.auth.signOut();
-                window.location.href = "/";
-              }}
-              className="flex items-center justify-center w-9 h-9 rounded-[10px] transition-all duration-200 flex-shrink-0"
-              style={{
-                background: "rgba(255,255,255,.07)",
-                border: "1px solid rgba(255,255,255,.1)",
-                cursor: "pointer",
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = "rgba(226,75,74,.15)";
-                (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(226,75,74,.3)";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,.07)";
-                (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,.1)";
-              }}
-            >
-              <LogOut size={16} strokeWidth={2} fill="none" style={{ stroke: "#E24B4A" }} />
-            </button>
-            <span
-              className="pointer-events-none invisible opacity-0 scale-95 group-hover:visible group-hover:opacity-100 group-hover:scale-100 absolute left-14 z-[200] whitespace-nowrap rounded-md px-[10px] py-1 text-[11px] font-medium transition-all duration-150 shadow-md origin-left"
-              style={{
-                background: "var(--card)",
-                color: "#E24B4A",
-                border: "1px solid rgba(226,75,74,.3)",
-                boxShadow: "0 4px 12px var(--shadow)",
-              }}
-            >
-              Log Out
-            </span>
-          </div>
-        )}
       </div>
     </aside>
   );

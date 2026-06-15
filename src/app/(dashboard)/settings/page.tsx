@@ -323,20 +323,49 @@ function ProfileTab() {
         <div style={{ fontSize: 12, color: "rgba(255,255,255,.5)", marginBottom: 12 }}>
           {profile?.email || ""}
         </div>
-        <span
-          style={{
-            display: "inline-flex",
-            padding: "3px 10px",
-            background: "rgba(0,196,140,.2)",
-            border: "1px solid rgba(0,196,140,.3)",
-            borderRadius: 20,
-            fontSize: 11,
-            color: "var(--green)",
-            fontWeight: 500,
-          }}
-        >
-          {profile?.plan === "pro" ? "Pro Plan · ₦3,500/mo" : "Free Plan"}
-        </span>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span
+            style={{
+              display: "inline-flex",
+              padding: "3px 10px",
+              background: "rgba(0,196,140,.2)",
+              border: "1px solid rgba(0,196,140,.3)",
+              borderRadius: 20,
+              fontSize: 11,
+              color: "var(--green)",
+              fontWeight: 500,
+            }}
+          >
+            {profile?.plan === "pro" ? "Pro Plan · ₦3,500/mo" : "Free Plan"}
+          </span>
+          <button
+            onClick={async () => {
+              const { createClient } = await import("@/lib/supabase/client");
+              const supabase = createClient();
+              await supabase.auth.signOut();
+              window.location.href = "/";
+            }}
+            style={{
+              padding: "5px 12px",
+              borderRadius: 8,
+              fontSize: 11,
+              fontWeight: 600,
+              background: "rgba(226,75,74,.2)",
+              color: "#FF6B6B",
+              border: "1px solid rgba(226,75,74,.3)",
+              cursor: "pointer",
+              transition: "all .15s",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = "rgba(226,75,74,.3)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = "rgba(226,75,74,.2)";
+            }}
+          >
+            🚪 Log Out
+          </button>
+        </div>
       </div>
 
       {/* Personal Info */}
