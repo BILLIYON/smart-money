@@ -4,6 +4,10 @@ type UserProfile = {
   currency: string;
   full_name: string | null;
   email: string | null;
+  primary_goal: string | null;
+  risk_tolerance: string | null;
+  income_range: string | null;
+  plan: string;
 };
 
 type UserStore = {
@@ -11,6 +15,7 @@ type UserStore = {
   profile: UserProfile | null;
   loadProfile: () => Promise<void>;
   setUserCurrency: (code: string) => Promise<void>;
+  updateProfile: (updates: Partial<UserProfile>) => Promise<boolean>;
 };
 
 export const useUserStore = create<UserStore>((set) => ({
@@ -38,6 +43,27 @@ export const useUserStore = create<UserStore>((set) => ({
       });
     } catch (e) {
       console.error("[userStore] setUserCurrency:", e);
+    }
+  },
+
+  updateProfile: async (updates: Partial<UserProfile>) => {
+    try {
+      const res = await fetch("/api/user/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      if (res.ok) {
+        set((state) => ({
+          profile: state.profile ? { ...state.profile, ...updates } : null,
+          ...(updates.currency && { userCurrency: updates.currency }),
+        }));
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error("[userStore] updateProfile:", e);
+      return false;
     }
   },
 }));

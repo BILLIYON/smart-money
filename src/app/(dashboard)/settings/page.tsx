@@ -180,25 +180,50 @@ function GhostBtn({ label, onClick, danger }: { label: string; onClick?: () => v
 
 // ── Profile Tab ────────────────────────────────────────────
 function ProfileTab() {
+  const { profile, loadProfile, updateProfile } = useUserStore();
   const [saved, setSaved] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [currency, setCurrency] = useState("NGN");
   const [incomeRange, setIncomeRange] = useState("₦300k–₦500k");
   const [primaryGoal, setPrimaryGoal] = useState("Build emergency fund");
   const [riskTolerance, setRiskTolerance] = useState("Moderate (balanced growth)");
 
   useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 600);
-    return () => clearTimeout(t);
-  }, []);
+    loadProfile().then(() => setLoading(false));
+  }, [loadProfile]);
 
-  function handleSave() {
+  useEffect(() => {
+    if (profile) {
+      setFullName(profile.full_name ?? "");
+      setEmail(profile.email ?? "");
+      setCurrency(profile.currency ?? "NGN");
+      setIncomeRange(profile.income_range ?? "₦300k–₦500k");
+      setPrimaryGoal(profile.primary_goal ?? "Build emergency fund");
+      setRiskTolerance(profile.risk_tolerance ?? "Moderate (balanced growth)");
+    }
+  }, [profile]);
+
+  async function handleSave() {
     setSaved(true);
+    await updateProfile({
+      full_name: fullName,
+      email: email,
+      currency: currency,
+    });
     setTimeout(() => setSaved(false), 2000);
   }
 
-  function handleProfileSave() {
+  async function handleProfileSave() {
     setProfileSaved(true);
+    await updateProfile({
+      income_range: incomeRange,
+      primary_goal: primaryGoal,
+      risk_tolerance: riskTolerance,
+    });
     setTimeout(() => setProfileSaved(false), 2000);
   }
 
@@ -288,15 +313,15 @@ function ProfileTab() {
             marginBottom: 12,
           }}
         >
-          TJ
+          {fullName ? fullName.split(" ").map(p => p[0]).join("").toUpperCase().slice(0, 2) : "U"}
         </div>
         <div
           style={{ fontFamily: "var(--font-dm-serif)", fontSize: 20, color: "#fff", marginBottom: 4 }}
         >
-          Tunde Johnson
+          {profile?.full_name || "User"}
         </div>
         <div style={{ fontSize: 12, color: "rgba(255,255,255,.5)", marginBottom: 12 }}>
-          tunde.johnson@gmail.com
+          {profile?.email || ""}
         </div>
         <span
           style={{
@@ -310,7 +335,7 @@ function ProfileTab() {
             fontWeight: 500,
           }}
         >
-          Pro Plan · ₦3,500/mo
+          {profile?.plan === "pro" ? "Pro Plan · ₦3,500/mo" : "Free Plan"}
         </span>
       </div>
 
@@ -319,41 +344,68 @@ function ProfileTab() {
         <div
           style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}
         >
-          {[
-            { label: "Full Name", type: "text", defaultValue: "Tunde Johnson" },
-            { label: "Email", type: "email", defaultValue: "tunde.johnson@gmail.com" },
-          ].map(({ label, type, defaultValue }) => (
-            <div key={label}>
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: "var(--muted)",
-                  textTransform: "uppercase",
-                  letterSpacing: ".5px",
-                  marginBottom: 6,
-                }}
-              >
-                {label}
-              </div>
-              <input
-                type={type}
-                defaultValue={defaultValue}
-                style={{
-                  width: "100%",
-                  padding: "9px 12px",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  fontFamily: "inherit",
-                  fontSize: 13,
-                  color: "var(--text)",
-                  background: "var(--card)",
-                  outline: "none",
-                  boxSizing: "border-box",
-                }}
-              />
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: "var(--muted)",
+                textTransform: "uppercase",
+                letterSpacing: ".5px",
+                marginBottom: 6,
+              }}
+            >
+              Full Name
             </div>
-          ))}
+            <input
+              type="text"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "9px 12px",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                fontFamily: "inherit",
+                fontSize: 13,
+                color: "var(--text)",
+                background: "var(--card)",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: "var(--muted)",
+                textTransform: "uppercase",
+                letterSpacing: ".5px",
+                marginBottom: 6,
+              }}
+            >
+              Email
+            </div>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "9px 12px",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                fontFamily: "inherit",
+                fontSize: 13,
+                color: "var(--text)",
+                background: "var(--card)",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
           <div>
             <div
               style={{
@@ -368,6 +420,8 @@ function ProfileTab() {
               Currency
             </div>
             <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
               style={{
                 width: "100%",
                 padding: "9px 12px",
@@ -378,11 +432,14 @@ function ProfileTab() {
                 color: "var(--text)",
                 background: "var(--card)",
                 outline: "none",
+                cursor: "pointer",
               }}
             >
-              <option>Nigerian Naira (₦)</option>
-              <option>US Dollar ($)</option>
-              <option>British Pound (£)</option>
+              <option value="NGN">Nigerian Naira (₦)</option>
+              <option value="USD">US Dollar ($)</option>
+              <option value="GHS">Ghanaian Cedi (₵)</option>
+              <option value="KES">Kenyan Shilling (KSh)</option>
+              <option value="ZAR">South African Rand (R)</option>
             </select>
           </div>
           <div>

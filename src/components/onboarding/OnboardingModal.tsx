@@ -188,14 +188,40 @@ export function OnboardingModal({
     if (connected.has(sourceId) || connecting) return;
 
     if (sourceId === "gmail") {
-      // Save current state so it can be restored after OAuth redirect
-      sessionStorage.setItem("onboarding_state", JSON.stringify({
-        initialStep: 3,
-        initialGoal: selectedGoal,
-        initialBuddy: selectedBuddy,
-        initialConnected: [...connected],
-      }));
-      window.location.href = `/api/auth/gmail?return=${encodeURIComponent(window.location.pathname)}`;
+      setConnecting("gmail");
+      const width = 600;
+      const height = 700;
+      const left = window.screenX + (window.outerWidth - width) / 2;
+      const top = window.screenY + (window.outerHeight - height) / 2;
+
+      const popup = window.open(
+        `/api/auth/gmail`,
+        "Connect Gmail",
+        `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes`
+      );
+
+      const handleOAuthMessage = (event: MessageEvent) => {
+        if (event.origin !== window.location.origin) return;
+        if (event.data?.type === "GMAIL_CONNECTED") {
+          setConnected((prev) => new Set([...prev, "gmail"]));
+          setConnecting(null);
+          window.removeEventListener("message", handleOAuthMessage);
+        } else if (event.data?.type === "GMAIL_ERROR") {
+          setConnecting(null);
+          window.removeEventListener("message", handleOAuthMessage);
+        }
+      };
+
+      window.addEventListener("message", handleOAuthMessage);
+
+      const timer = setInterval(() => {
+        if (popup?.closed) {
+          clearInterval(timer);
+          setConnecting(null);
+          window.removeEventListener("message", handleOAuthMessage);
+        }
+      }, 1000);
+
       return;
     }
 

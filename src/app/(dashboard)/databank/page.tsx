@@ -133,19 +133,50 @@ function GmailCard() {
         </div>
 
         {/* Connect button */}
-        <a
-          href="/api/auth/gmail"
-          className="flex items-center justify-center gap-2 w-full py-[10px] rounded-[10px] text-[13px] font-semibold mb-3 transition-colors duration-150"
+        <button
+          onClick={() => {
+            const width = 600;
+            const height = 700;
+            const left = window.screenX + (window.outerWidth - width) / 2;
+            const top = window.screenY + (window.outerHeight - height) / 2;
+
+            const popup = window.open(
+              `/api/auth/gmail`,
+              "Connect Gmail",
+              `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes`
+            );
+
+            const handleOAuthMessage = (event: MessageEvent) => {
+              if (event.origin !== window.location.origin) return;
+              if (event.data?.type === "GMAIL_CONNECTED") {
+                loadStatus();
+                window.removeEventListener("message", handleOAuthMessage);
+              } else if (event.data?.type === "GMAIL_ERROR") {
+                console.error("Gmail connection failed in popup");
+                window.removeEventListener("message", handleOAuthMessage);
+              }
+            };
+
+            window.addEventListener("message", handleOAuthMessage);
+
+            const timer = setInterval(() => {
+              if (popup?.closed) {
+                clearInterval(timer);
+                window.removeEventListener("message", handleOAuthMessage);
+              }
+            }, 1000);
+          }}
+          className="flex items-center justify-center gap-2 w-full py-[10px] rounded-[10px] text-[13px] font-semibold mb-3 transition-colors duration-150 border-none cursor-pointer"
           style={{ background: "var(--green)", color: "#fff", textDecoration: "none" }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "var(--green2)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "var(--green)"; }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green2)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green)"; }}
         >
           <svg viewBox="0 0 24 24" style={{ width: 15, height: 15, fill: "none", stroke: "#fff", strokeWidth: 2 }}>
             <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
             <polyline points="22,6 12,13 2,6" />
           </svg>
           Connect Gmail
-        </a>
+        </button>
 
         {/* Disclaimer */}
         <div className="text-[11px] text-center" style={{ color: "var(--muted)" }}>

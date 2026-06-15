@@ -8,11 +8,21 @@ export async function GET() {
 
   const { data, error: dbError } = await supabase
     .from("users")
-    .select("currency, full_name, email")
+    .select("currency, full_name, email, primary_goal, risk_tolerance, income_range, plan")
     .eq("id", userId)
     .single();
 
-  if (dbError || !data) return NextResponse.json({ currency: "NGN", full_name: null, email: null });
+  if (dbError || !data) {
+    return NextResponse.json({
+      currency: "NGN",
+      full_name: null,
+      email: null,
+      primary_goal: null,
+      risk_tolerance: null,
+      income_range: null,
+      plan: "free"
+    });
+  }
   return NextResponse.json(data);
 }
 
@@ -20,7 +30,14 @@ export async function PATCH(req: Request) {
   const { supabase, userId, error } = await requireAuth();
   if (error) return error;
 
-  const body = (await req.json()) as { currency?: string };
+  const body = (await req.json()) as {
+    currency?: string;
+    full_name?: string;
+    email?: string;
+    primary_goal?: string;
+    risk_tolerance?: string;
+    income_range?: string;
+  };
 
   if (body.currency && !SUPPORTED_CURRENCIES.includes(body.currency)) {
     return NextResponse.json({ error: "Unsupported currency" }, { status: 400 });
@@ -28,6 +45,11 @@ export async function PATCH(req: Request) {
 
   const updates: Record<string, unknown> = {};
   if (body.currency) updates.currency = body.currency;
+  if (body.full_name !== undefined) updates.full_name = body.full_name;
+  if (body.email !== undefined) updates.email = body.email;
+  if (body.primary_goal !== undefined) updates.primary_goal = body.primary_goal;
+  if (body.risk_tolerance !== undefined) updates.risk_tolerance = body.risk_tolerance;
+  if (body.income_range !== undefined) updates.income_range = body.income_range;
 
   const { error: dbError } = await supabase
     .from("users")

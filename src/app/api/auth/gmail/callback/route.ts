@@ -3,6 +3,25 @@ import { createClient } from "@/lib/supabase/server";
 import { encrypt } from "@/lib/crypto";
 import { syncGmailForUser } from "@/lib/gmail";
 
+function redirectOrPopup(url: string, type: "GMAIL_CONNECTED" | "GMAIL_ERROR") {
+  return new Response(
+    `<!DOCTYPE html>
+    <html>
+      <body>
+        <script>
+          if (window.opener) {
+            window.opener.postMessage({ type: "${type}" }, window.location.origin);
+            window.close();
+          } else {
+            window.location.href = "${url}";
+          }
+        </script>
+      </body>
+    </html>`,
+    { headers: { "Content-Type": "text/html" } }
+  );
+}
+
 export async function GET(req: Request) {
   const urlObj = new URL(req.url);
   const baseUrl = urlObj.origin;
@@ -20,7 +39,7 @@ export async function GET(req: Request) {
 
     if (!code) {
       console.error("[gmail/callback] Missing authorization code");
-      return Response.redirect(`${baseUrl}/databank?gmail=error`);
+      return redirectOrPopup(`${baseUrl}/databank?gmail=error`, "GMAIL_ERROR");
     }
 
     // Exchange code for tokens
@@ -34,12 +53,12 @@ export async function GET(req: Request) {
       tokens = result.tokens;
     } catch (err: any) {
       console.error("[gmail/callback] Token exchange failed:", err?.message || err);
-      return Response.redirect(`${baseUrl}/databank?gmail=error`);
+      return redirectOrPopup(`${baseUrl}/databank?gmail=error`, "GMAIL_ERROR");
     }
 
     if (!tokens.access_token || !tokens.refresh_token) {
       console.error("[gmail/callback] Missing tokens in Google response:", tokens);
-      return Response.redirect(`${baseUrl}/databank?gmail=error`);
+      return redirectOrPopup(`${baseUrl}/databank?gmail=error`, "GMAIL_ERROR");
     }
 
     // Get authenticated user
@@ -48,7 +67,7 @@ export async function GET(req: Request) {
 
     if (!session) {
       console.error("[gmail/callback] No authenticated user session found");
-      return Response.redirect(`${baseUrl}/login`);
+      return redirectOrPopup(`${baseUrl}/login`, "GMAIL_ERROR");
     }
 
     // Persist tokens encrypted at rest
@@ -69,7 +88,7 @@ export async function GET(req: Request) {
 
     if (error) {
       console.error("[gmail/callback] Failed to store tokens in DB:", error.message);
-      return Response.redirect(`${baseUrl}/databank?gmail=error`);
+      return redirectOrPopup(`${baseUrl}/databank?gmail=error`, "GMAIL_ERROR");
     }
 
     // Kick off first sync in the background — do not await
@@ -79,10 +98,11 @@ export async function GET(req: Request) {
 
     const state = searchParams.get("state");
     const returnPath = state?.startsWith("/") ? state : "/databank";
-    return Response.redirect(`${baseUrl}${returnPath}?gmail=connected`);
+    return redirectOrPopup(`${baseUrl}${returnPath}?gmail=connected`, "GMAIL_CONNECTED");
   } catch (err: any) {
     console.error("[gmail/callback] Unexpected callback error:", err?.message || err);
-    return Response.redirect(`${baseUrl}/databank?gmail=error`);
+    return redirectOrPopup(`${baseUrl}/databank?gmail=error`, "GMAIL_ERROR");
   }
 }
+
 
