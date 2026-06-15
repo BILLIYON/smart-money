@@ -1,13 +1,5 @@
 import Link from "next/link";
 
-const SNAPSHOT_ROWS = [
-  { label: "Monthly Income", value: "₦450,000", valueColor: "var(--green2)", source: "GTBank · Gmail" },
-  { label: "Month Spend",    value: "₦67,400",  valueColor: "#E24B4A",       source: "48hrs · debits" },
-  { label: "Top Category",   value: "Food Delivery", valueColor: "var(--text)", source: "₦22,400 this month" },
-  { label: "Subscriptions",  value: "₦34,200/mo",  valueColor: "#E24B4A",     source: "8 active · Gmail" },
-  { label: "Active Goals",   value: "2 in progress", valueColor: "var(--text)", source: "Emergency · Portfolio" },
-];
-
 const DATA_SOURCES = [
   { label: "GTBank alerts", sub: "Gmail",        active: true },
   { label: "Mar statement", sub: "Uploaded",     active: true },
@@ -17,102 +9,54 @@ const DATA_SOURCES = [
 
 export function FinancialSnapshot() {
   return (
-    <>
-      {/* Snapshot panel */}
+    /* Context mini */
+    <div
+      className="mx-[10px] mb-[6px] rounded-[10px] border px-[14px] py-[10px] flex-shrink-0"
+      style={{ background: "var(--bg)", borderColor: "var(--border)" }}
+    >
       <div
-        className="mx-[10px] mb-[10px] rounded-[12px] border p-[14px] flex-shrink-0"
-        style={{ background: "var(--bg)", borderColor: "var(--border)" }}
+        className="text-[10px] font-semibold uppercase tracking-[.5px] mb-[6px]"
+        style={{ color: "var(--muted)" }}
       >
-        <div
-          className="text-[11px] font-semibold uppercase tracking-[.5px] mb-[10px]"
-          style={{ color: "var(--muted)" }}
-        >
-          Financial Snapshot
-        </div>
+        Active Context
+      </div>
 
-        {SNAPSHOT_ROWS.map((row, i) => (
-          <div
-            key={row.label}
-            className="flex justify-between items-center py-[5px]"
-            style={{ borderBottom: i < SNAPSHOT_ROWS.length - 1 ? "1px solid var(--border)" : "none" }}
+      {DATA_SOURCES.map((src) => (
+        <div key={src.label} className="flex items-center gap-[7px] py-[3px]">
+          <span
+            className="w-[6px] h-[6px] rounded-full flex-shrink-0"
+            style={{ background: src.active ? "var(--green)" : "var(--border)" }}
+          />
+          <span
+            className="text-[11px]"
+            style={{ color: "var(--muted)", opacity: src.active ? 1 : 0.5 }}
           >
-            <span className="text-[11px]" style={{ color: "var(--muted)" }}>{row.label}</span>
-            <div className="text-right">
-              <span className="text-[12px] font-semibold block" style={{ color: row.valueColor }}>
-                {row.value}
-              </span>
-              <span className="text-[10px] block" style={{ color: "var(--muted)" }}>{row.source}</span>
-            </div>
-          </div>
-        ))}
-
-        <Link
-          href="/goals"
-          className="block w-full mt-[10px] py-[7px] rounded-[8px] text-center text-[11px] border transition-colors duration-200"
-          style={{ color: "var(--muted)", borderColor: "var(--border)", background: "transparent" }}
-          onMouseEnter={(e) => {
-            const el = e.currentTarget as HTMLAnchorElement;
-            el.style.borderColor = "var(--green)";
-            el.style.color = "var(--green)";
-          }}
-          onMouseLeave={(e) => {
-            const el = e.currentTarget as HTMLAnchorElement;
-            el.style.borderColor = "var(--border)";
-            el.style.color = "var(--muted)";
-          }}
-        >
-          View Goals →
-        </Link>
-      </div>
-
-      {/* Context mini */}
-      <div
-        className="mx-[10px] mb-[6px] rounded-[10px] border px-[14px] py-[10px] flex-shrink-0"
-        style={{ background: "var(--bg)", borderColor: "var(--border)" }}
-      >
-        <div
-          className="text-[10px] font-semibold uppercase tracking-[.5px] mb-[6px]"
-          style={{ color: "var(--muted)" }}
-        >
-          Active Context
+            <strong style={{ color: src.active ? "var(--text)" : "var(--muted)", fontWeight: 500 }}>
+              {src.label}
+            </strong>
+            {" · "}{src.sub}
+          </span>
         </div>
+      ))}
 
-        {DATA_SOURCES.map((src) => (
-          <div key={src.label} className="flex items-center gap-[7px] py-[3px]">
-            <span
-              className="w-[6px] h-[6px] rounded-full flex-shrink-0"
-              style={{ background: src.active ? "var(--green)" : "var(--border)" }}
-            />
-            <span
-              className="text-[11px]"
-              style={{ color: "var(--muted)", opacity: src.active ? 1 : 0.5 }}
-            >
-              <strong style={{ color: src.active ? "var(--text)" : "var(--muted)", fontWeight: 500 }}>
-                {src.label}
-              </strong>
-              {" · "}{src.sub}
-            </span>
-          </div>
-        ))}
-
-        <Link
-          href="/databank"
-          className="block w-full mt-[8px] py-[7px] rounded-[8px] text-center text-[11px] border transition-colors duration-200"
-          style={{ color: "var(--muted)", borderColor: "var(--border)", background: "transparent" }}
-          onMouseEnter={(e) => {
-            const el = e.currentTarget as HTMLAnchorElement;
-            el.style.borderColor = "var(--green)";
-            el.style.color = "var(--green)";
-          }}
-          onMouseLeave={(e) => {
-            const el = e.currentTarget as HTMLAnchorElement;
-            el.style.borderColor = "var(--border)";
-            el.style.color = "var(--muted)";
-          }}
-        >
-          Manage DataBank →
-        </Link>
-      </div>
-    </>
+      <Link
+        href="/databank"
+        className="block w-full mt-[8px] py-[7px] rounded-[8px] text-center text-[11px] border transition-colors duration-200"
+        style={{ color: "var(--muted)", borderColor: "var(--border)", background: "transparent" }}
+        onMouseEnter={(e) => {
+          const el = e.currentTarget as HTMLAnchorElement;
+          el.style.borderColor = "var(--green)";
+          el.style.color = "var(--green)";
+        }}
+        onMouseLeave={(e) => {
+          const el = e.currentTarget as HTMLAnchorElement;
+          el.style.borderColor = "var(--border)";
+          el.style.color = "var(--muted)";
+        }}
+      >
+        Manage DataBank →
+      </Link>
+    </div>
   );
 }
+
