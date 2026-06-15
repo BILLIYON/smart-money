@@ -52,7 +52,7 @@ export function BuddyCard({ buddy }: { buddy: Buddy }) {
     >
       {/* Banner */}
       <div
-        className="h-20 relative overflow-hidden flex items-center justify-center"
+        className="h-24 relative overflow-hidden flex items-center justify-center"
         style={{ background: bannerColor }}
       >
         {/* Badge */}
@@ -69,7 +69,7 @@ export function BuddyCard({ buddy }: { buddy: Buddy }) {
 
         {/* Avatar */}
         <div
-          className="absolute bottom-[-20px] left-5 w-[60px] h-[60px] rounded-full border-[3px] flex items-center justify-center text-[22px]"
+          className="absolute bottom-[-24px] left-5 w-[68px] h-[68px] rounded-full border-[3px] flex items-center justify-center text-[22px]"
           style={{
             background: avatarBg,
             borderColor: "var(--card)",
@@ -83,7 +83,7 @@ export function BuddyCard({ buddy }: { buddy: Buddy }) {
       </div>
 
       {/* Body */}
-      <div className="px-4 pt-7 pb-4">
+      <div className="px-4 pt-8 pb-4">
         <div className="text-[15px] font-semibold mb-[2px]" style={{ color: "var(--text)" }}>
           {name}
         </div>
@@ -161,7 +161,7 @@ export function CelebrityCard({ buddy }: { buddy: Buddy }) {
     >
       {/* Taller banner for celebrity presence */}
       <div
-        className="h-[96px] relative overflow-hidden"
+        className="h-24 relative overflow-hidden"
         style={{ background: bannerColor }}
       >
         {/* Gold "Fan Sim" pill top-left */}
@@ -186,12 +186,12 @@ export function CelebrityCard({ buddy }: { buddy: Buddy }) {
 
         {/* Larger serif avatar — overlaps banner bottom */}
         <div
-          className="absolute bottom-[-26px] left-5 w-[70px] h-[70px] rounded-[16px] border-[3px] flex items-center justify-center"
+          className="absolute bottom-[-24px] left-5 w-[68px] h-[68px] rounded-full border-[3px] flex items-center justify-center"
           style={{
             background: avatarBg,
             borderColor: "var(--card)",
             fontFamily: "var(--font-dm-serif)",
-            fontSize: "24px",
+            fontSize: "22px",
             color: "rgba(255,255,255,.92)",
             letterSpacing: "-0.5px",
           }}
@@ -201,7 +201,7 @@ export function CelebrityCard({ buddy }: { buddy: Buddy }) {
       </div>
 
       {/* Body */}
-      <div className="px-4 pt-9 pb-4">
+      <div className="px-4 pt-8 pb-4">
         <div
           className="text-[15px] font-semibold mb-[2px]"
           style={{ color: "var(--text)", fontFamily: "var(--font-dm-serif)" }}
@@ -240,7 +240,7 @@ export function CelebrityCard({ buddy }: { buddy: Buddy }) {
           }}
           tabIndex={-1}
         >
-          Chat with {name.split(" ")[0]}
+          View Profile
         </button>
       </div>
     </Link>
@@ -281,14 +281,14 @@ export function CreateYourOwnCard() {
     >
       {/* Banner */}
       <div
-        className="h-20 flex items-center justify-center border-b-2 border-dashed"
+        className="h-24 flex items-center justify-center border-b-2 border-dashed"
         style={{ background: "var(--bg)", borderColor: "var(--border)" }}
       >
         <span className="text-[32px]" style={{ color: "var(--muted)" }}>✦</span>
       </div>
 
       {/* Body */}
-      <div className="px-4 pt-7 pb-4">
+      <div className="px-4 pt-8 pb-4">
         <div className="text-[15px] font-semibold mb-[2px]" style={{ color: "var(--muted)" }}>
           Create Your Own
         </div>
