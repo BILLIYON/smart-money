@@ -41,27 +41,110 @@ function parseAmount(raw: string): number {
   return Math.round(num * 100);
 }
 
+function safeParseDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return new Date().toISOString().split("T")[0];
+  const cleaned = dateStr.trim();
+  if (!cleaned) return new Date().toISOString().split("T")[0];
+
+  // Try standard Date parsing
+  let d = new Date(cleaned);
+  if (!isNaN(d.getTime())) {
+    try {
+      return d.toISOString().split("T")[0];
+    } catch {
+      // ignore and try other methods
+    }
+  }
+
+  // Try parsing DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+  const parts = cleaned.split(/[/\-.]/);
+  if (parts.length === 3) {
+    let day = 0, month = 0, year = 0;
+    
+    // Check if it's YYYY-MM-DD
+    if (parts[0].length === 4) {
+      year = parseInt(parts[0], 10);
+      month = parseInt(parts[1], 10) - 1;
+      day = parseInt(parts[2], 10);
+    } else {
+      // DD/MM/YYYY or MM/DD/YYYY
+      // In Nigerian bank statements, it is almost always DD/MM/YYYY or DD/MM/YY
+      day = parseInt(parts[0], 10);
+      month = parseInt(parts[1], 10) - 1;
+      year = parseInt(parts[2], 10);
+      if (year < 100) {
+        year += 2000;
+      }
+    }
+    
+    d = new Date(year, month, day);
+    if (!isNaN(d.getTime())) {
+      try {
+        const yy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const dd = String(d.getDate()).padStart(2, "0");
+        return `${yy}-${mm}-${dd}`;
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  // Fallback to today
+  return new Date().toISOString().split("T")[0];
+}
+
 /** Attempt to parse a CSV file into transactions */
 function parseCsv(text: string): ParsedTransaction[] {
   const { data } = Papa.parse<RawRow>(text, { header: true, skipEmptyLines: true });
   return data
     .map((row) => {
-      // Normalise common CSV column naming conventions from Nigerian banks
-      const description =
-        row["Narration"] ?? row["Description"] ?? row["Details"] ?? row["Remark"] ?? "";
-      const amountStr =
-        row["Amount"] ?? row["Debit"] ?? row["Credit"] ?? row["Transaction Amount"] ?? "0";
-      const dateStr =
-        row["Date"] ?? row["Transaction Date"] ?? row["Value Date"] ?? "";
-      const isDebit = !!row["Debit"] && !row["Credit"];
-      let amount = parseAmount(amountStr);
-      if (isDebit) amount = -Math.abs(amount);
+      // Normalize row keys to lowercase and trim
+      const normalizedRow: Record<string, string> = {};
+      for (const key of Object.keys(row)) {
+        normalizedRow[key.toLowerCase().trim()] = row[key] ?? "";
+      }
+
+      const getNonEmpty = (...vals: (string | undefined)[]) => {
+        for (const v of vals) {
+          if (v !== undefined && v !== null && v.trim() !== "") {
+            return v.trim();
+          }
+        }
+        return undefined;
+      };
+
+      const description = getNonEmpty(
+        normalizedRow["narration"],
+        normalizedRow["description"],
+        normalizedRow["details"],
+        normalizedRow["remark"],
+        normalizedRow["memo"]
+      ) ?? "";
+
+      const debitStr = getNonEmpty(normalizedRow["debit"]);
+      const creditStr = getNonEmpty(normalizedRow["credit"]);
+      const amountStr = getNonEmpty(normalizedRow["amount"], normalizedRow["transaction amount"]);
+      const dateStr = getNonEmpty(
+        normalizedRow["date"],
+        normalizedRow["transaction date"],
+        normalizedRow["value date"]
+      );
+
+      let amount = 0;
+      if (debitStr) {
+        amount = -Math.abs(parseAmount(debitStr));
+      } else if (creditStr) {
+        amount = Math.abs(parseAmount(creditStr));
+      } else if (amountStr) {
+        amount = parseAmount(amountStr);
+      }
 
       return {
-        description: String(description).trim(),
+        description: description.trim(),
         amount,
-        date: dateStr ? new Date(dateStr).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
-        category: guessCategory(String(description)),
+        date: safeParseDate(dateStr),
+        category: guessCategory(description),
       } satisfies ParsedTransaction;
     })
     .filter((t) => t.description && t.amount !== 0);
@@ -82,8 +165,7 @@ function parsePdfText(text: string): ParsedTransaction[] {
     if (!dateMatch || !amounts.length) continue;
 
     const rawDate = dateMatch[1];
-    const parsedDate = new Date(rawDate.replace(/[/-]/g, "-"));
-    if (isNaN(parsedDate.getTime())) continue;
+    const parsedDate = safeParseDate(rawDate);
 
     const description = line.replace(datePattern, "").replace(amountPattern, "").trim().slice(0, 100);
     const amountKobo = parseAmount(amounts[amounts.length - 1][1]);
@@ -92,7 +174,7 @@ function parsePdfText(text: string): ParsedTransaction[] {
     transactions.push({
       description: description || "PDF transaction",
       amount: isDebit ? -Math.abs(amountKobo) : amountKobo,
-      date: parsedDate.toISOString().split("T")[0],
+      date: parsedDate,
       category: guessCategory(description),
     });
   }

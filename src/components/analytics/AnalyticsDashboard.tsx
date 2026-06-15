@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
@@ -8,6 +8,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { useChatStore } from "@/store/chatStore";
+import { useDatabankStore } from "@/store/databankStore";
 
 // ── 12-month time-series data (Apr 2025 – Mar 2026) ─────
 const ALL_INCOME_SPEND = [
@@ -55,6 +56,8 @@ const ALL_NETWORTH = [
   { month: "Mar", nw: 1070 },
 ];
 
+const TIMEFRAMES = ["1M", "3M", "6M", "12M"] as const;
+
 // ── Category trend data (6 months available) ────────────
 const TREND_MONTHS_6M = ["Oct", "Nov", "Dec", "Jan", "Feb", "Mar"] as const;
 
@@ -64,46 +67,6 @@ const CAT_TREND_ROWS = [
   { cat: "🚗 Transport",     vals: [33, 32, 30, 31, 30, 28], trend: "↓ -8%", trendDir: "down"  as const },
   { cat: "🛍️ Shopping",      vals: [8,  9,  12, 11, 15, 19], trend: "↑ +22%", trendDir: "up"   as const },
   { cat: "⚡ Utilities",     vals: [14, 13, 14, 13, 13, 12], trend: "↓ -3%", trendDir: "down"  as const },
-];
-
-// ── Static data (not time-filtered) ─────────────────────
-const categoryData = [
-  { name: "Food & Dining", value: 82, pct: 47, color: "var(--green)", change: "+12%", changeDir: "up" },
-  { name: "Subscriptions", value: 34, pct: 19, color: "var(--gold)", change: "—", changeDir: "neutral" },
-  { name: "Transport", value: 28, pct: 16, color: "#4A90D9", change: "-8%", changeDir: "down" },
-  { name: "Shopping", value: 19, pct: 11, color: "#9B59B6", change: "+22%", changeDir: "up" },
-  { name: "Other", value: 12, pct: 7, color: "var(--muted)", change: "-3%", changeDir: "down" },
-];
-
-const portfolioData = [
-  { name: "MMF (ARM)", value: 188, color: "#4A90D9", pct: 31 },
-  { name: "Treasury Bills", value: 152, color: "#00C48C", pct: 25 },
-  { name: "Emergency Fund", value: 180, color: "#F5A623", pct: 30 },
-  { name: "NGX Equities", value: 85, color: "#9B59B6", pct: 14 },
-];
-
-const portfolioGrowth = [
-  { month: "Jan", value: 400 },
-  { month: "Feb", value: 480 },
-  { month: "Mar", value: 560 },
-  { month: "Now", value: 605 },
-];
-
-const holdingsData = [
-  { name: "ARM Money Market Fund", type: "Money Market · Liquid 48hrs", invested: "₦160,000", value: "₦188,000", returnN: "+₦28,000", returnPct: "+17.5%", yieldPa: "16.4%", trend: "up" },
-  { name: "GTBank T-Bills", type: "Treasury Bills · 91-day", invested: "₦140,000", value: "₦152,000", returnN: "+₦12,000", returnPct: "+8.6%", yieldPa: "18.2%", trend: "up" },
-  { name: "Emergency Fund (MMF)", type: "ARM MMF · Emergency Reserve", invested: "₦180,000", value: "₦180,000", returnN: "+₦0", returnPct: "0%", yieldPa: "16.4%", trend: "flat" },
-  { name: "NGX Equities — GTCO", type: "Nigerian Stock Exchange", invested: "₦50,000", value: "₦85,000", returnN: "+₦35,000", returnPct: "+70%", yieldPa: "—", trend: "up" },
-];
-
-const transactions = [
-  { icon: "🍔", bg: "#FEF9E7", name: "Chicken Republic", cat: "Food & Dining", date: "Mar 20", amt: "-₦4,800", type: "debit" },
-  { icon: "💰", bg: "#E8F5E9", name: "March Salary", cat: "Income · GTBank", date: "Mar 19", amt: "+₦450,000", type: "credit" },
-  { icon: "🚗", bg: "#E3F2FD", name: "Bolt Nigeria", cat: "Transport", date: "Mar 18", amt: "-₦2,200", type: "debit" },
-  { icon: "🎬", bg: "#FCE4EC", name: "Netflix", cat: "Subscriptions", date: "Mar 15", amt: "-₦4,400", type: "debit" },
-  { icon: "🍔", bg: "#FEF9E7", name: "Domino's Pizza", cat: "Food & Dining", date: "Mar 14", amt: "-₦8,600", type: "debit" },
-  { icon: "🎵", bg: "#F3E5F5", name: "Spotify Premium", cat: "Subscriptions", date: "Mar 10", amt: "-₦2,700", type: "debit" },
-  { icon: "🏦", bg: "#E8F5E9", name: "ARM MMF Transfer", cat: "Investment · Agent Action", date: "Mar 9", amt: "₦80,000", type: "invest" },
 ];
 
 // ── Small helpers ────────────────────────────────────────
@@ -189,6 +152,16 @@ function SmallRing({ pct, color }: { pct: number; color: string }) {
 export function AnalyticsDashboard() {
   const router = useRouter();
   const { preFillInput } = useChatStore();
+  const { context, loadContext } = useDatabankStore();
+
+  useEffect(() => {
+    loadContext();
+  }, [loadContext]);
+
+  const goToChat = useCallback((question: string) => {
+    preFillInput(question);
+    router.push("/chat");
+  }, [preFillInput, router]);
 
   const [timeframe, setTimeframe] = useState("3M");
   const [ivsView, setIvsView] = useState<"stacked" | "line" | "area">("stacked");
@@ -200,31 +173,343 @@ export function AnalyticsDashboard() {
   const [expandTxns, setExpandTxns] = useState(false);
   const [expandHoldings, setExpandHoldings] = useState(false);
 
-  // ── Timeframe → slice count ──────────────────────────
+  // Helper function to clamp values
+  const clamp = (n: number, min = 0, max = 100) => Math.min(max, Math.max(min, n));
+
+  const hasRealData = !!(context && (
+    (context.chartData && context.chartData.some(d => d.income > 0 || d.spent > 0 || d.networth !== 0)) ||
+    context.savingsBalance !== 0 ||
+    context.netWorth !== 0 ||
+    context.recentTransactions.length > 0
+  ));
+
   const visibleCount = timeframe === "1M" ? 1 : timeframe === "3M" ? 3 : timeframe === "6M" ? 6 : 12;
 
-  // ── Sliced chart data ────────────────────────────────
-  const incomeVsSpendData = ALL_INCOME_SPEND.slice(-visibleCount);
-  const cashflowData      = ALL_CASHFLOW.slice(-visibleCount);
-  const networthData      = ALL_NETWORTH.slice(-visibleCount);
+  // Resolved arrays
+  let incomeVsSpendData = ALL_INCOME_SPEND.slice(-visibleCount);
+  let cashflowData      = ALL_CASHFLOW.slice(-visibleCount);
+  let networthData      = ALL_NETWORTH.slice(-visibleCount);
+  let trendMonthsList: string[] = [...TREND_MONTHS_6M];
+  let catTrendRows = CAT_TREND_ROWS;
+  
+  let categoryData = [
+    { name: "Food & Dining", value: 82, pct: 47, color: "var(--green)", change: "+12%", changeDir: "up" as const },
+    { name: "Subscriptions", value: 34, pct: 19, color: "var(--gold)", change: "—", changeDir: "neutral" as const },
+    { name: "Transport", value: 28, pct: 16, color: "#4A90D9", change: "-8%", changeDir: "down" as const },
+    { name: "Shopping", value: 19, pct: 11, color: "#9B59B6", change: "+22%", changeDir: "up" as const },
+    { name: "Other", value: 12, pct: 7, color: "var(--muted)", change: "-3%", changeDir: "down" as const },
+  ];
+  
+  let portfolioData = [
+    { name: "MMF (ARM)", value: 188, color: "#4A90D9", pct: 31 },
+    { name: "Treasury Bills", value: 152, color: "#00C48C", pct: 25 },
+    { name: "Emergency Fund", value: 180, color: "#F5A623", pct: 30 },
+    { name: "NGX Equities", value: 85, color: "#9B59B6", pct: 14 },
+  ];
+  
+  let portfolioGrowth = [
+    { month: "Jan", value: 400 },
+    { month: "Feb", value: 480 },
+    { month: "Mar", value: 560 },
+    { month: "Now", value: 605 },
+  ];
+  
+  let holdingsData: {
+    name: string;
+    type: string;
+    invested: string;
+    value: string;
+    returnN: string;
+    returnPct: string;
+    yieldPa: string;
+    trend: "up" | "down" | "flat";
+  }[] = [
+    { name: "ARM Money Market Fund", type: "Money Market · Liquid 48hrs", invested: "₦160,000", value: "₦188,000", returnN: "+₦28,000", returnPct: "+17.5%", yieldPa: "16.4%", trend: "up" as const },
+    { name: "GTBank T-Bills", type: "Treasury Bills · 91-day", invested: "₦140,000", value: "₦152,000", returnN: "+₦12,000", returnPct: "+8.6%", yieldPa: "18.2%", trend: "up" as const },
+    { name: "Emergency Fund (MMF)", type: "ARM MMF · Emergency Reserve", invested: "₦180,000", value: "₦180,000", returnN: "+₦0", returnPct: "0%", yieldPa: "16.4%", trend: "flat" as const },
+    { name: "NGX Equities — GTCO", type: "Nigerian Stock Exchange", invested: "₦50,000", value: "₦85,000", returnN: "+₦35,000", returnPct: "+70%", yieldPa: "—", trend: "up" as const },
+  ];
+  
+  let transactions = [
+    { icon: "🍔", bg: "#FEF9E7", name: "Chicken Republic", cat: "Food & Dining", date: "Mar 20", amt: "-₦4,800", type: "debit" as const },
+    { icon: "💰", bg: "#E8F5E9", name: "March Salary", cat: "Income · GTBank", date: "Mar 19", amt: "+₦450,000", type: "credit" as const },
+    { icon: "🚗", bg: "#E3F2FD", name: "Bolt Nigeria", cat: "Transport", date: "Mar 18", amt: "-₦2,200", type: "debit" as const },
+    { icon: "🎬", bg: "#FCE4EC", name: "Netflix", cat: "Subscriptions", date: "Mar 15", amt: "-₦4,400", type: "debit" as const },
+    { icon: "🍔", bg: "#FEF9E7", name: "Domino's Pizza", cat: "Food & Dining", date: "Mar 14", amt: "-₦8,600", type: "debit" as const },
+    { icon: "🎵", bg: "#F3E5F5", name: "Spotify Premium", cat: "Subscriptions", date: "Mar 10", amt: "-₦2,700", type: "debit" as const },
+    { icon: "🏦", bg: "#E8F5E9", name: "ARM MMF Transfer", cat: "Investment · Agent Action", date: "Mar 9", amt: "₦80,000", type: "invest" as const },
+  ];
+
+  let healthScore = 78;
+  let healthScoreHeadline = "You're in strong shape, Tunde.\nYour savings rate is 3× the national average.";
+  let healthScoreBuddyTake = `You’re doing the fundamentals right — savings rate climbing, investments growing. Two moves will take your score from 78 to 90: eliminate the credit card this month, and put a hard cap on food delivery. Those two changes are worth ₦60,000 a year back in your pocket.`;
+  let insights = [
+    { icon: "💰", label: "Savings Rate", value: "61%", delta: "↑ +9pts vs last month", type: "positive" as const, question: "My savings rate is 61% this month. How do I keep this up and what should I do with the extra savings?" },
+    { icon: "📈", label: "Net Worth Growth", value: "+₦285k", delta: "↑ +36% in 3 months", type: "positive" as const, question: "My net worth grew ₦285k in 3 months. How do I accelerate this?" },
+    { icon: "🍔", label: "Food Spending", value: "₦82k", delta: "↑ +12% vs Feb · Watch this", type: "warning" as const, question: "My food spending rose 12% last month. Help me bring it down without misery." },
+    { icon: "💳", label: "Credit Card Debt", value: "₦95k", delta: "24% APR · Costs ₦22.8k/yr", type: "alert" as const, question: "I have ₦95k in credit card debt at 24% APR. What's the fastest way to clear this?" }
+  ];
+
+  let totalIncomeKpi = "₦450k";
+  let totalIncomeKpiDelta = "↑ Stable · 3 months";
+  let totalIncomeKpiDeltaDir: "up" | "down" | "neutral" = "up";
+  
+  let totalExpensesKpi = "₦166k";
+  let totalExpensesKpiDelta = "↑ +₦8k vs prev period";
+  let totalExpensesKpiDeltaDir: "up" | "down" | "neutral" = "up";
+
+  let savingsRateKpi = "61%";
+  let savingsRateKpiDelta = "↑ +9pts vs prev period";
+  let savingsRateKpiDeltaDir: "up" | "down" | "neutral" = "up";
+
+  let netWorthKpi = "₦1.07M";
+  let netWorthKpiDelta = "↑ +₦285k this period";
+  let netWorthKpiDeltaDir: "up" | "down" | "neutral" = "up";
+
+  let totalAssetKpiValue = "₦1,165,000";
+  let totalDebtKpiValue = "₦95,000";
+
+  let assetsList = [
+    { name: "ARM MMF", value: "₦188,000", pct: 16 },
+    { name: "Treasury Bills", value: "₦152,000", pct: 13 },
+    { name: "Emergency Fund", value: "₦180,000", pct: 15 },
+    { name: "NGX Equities", value: "₦85,000", pct: 7 },
+    { name: "GTBank Savings", value: "₦560,000", pct: 48 },
+  ];
+
+  let liabilitiesList = [
+    { name: "GTBank Credit Card", value: "₦95,000", pct: 100 }
+  ];
+
+  let portfolioKpiValue = "₦605k";
+  let portfolioKpiDelta = "↑ +₦38k this month";
+  let portfolioKpiDeltaDir: "up" | "down" | "neutral" = "up";
+
+  let totalInvestedKpiValue = "₦530k";
+  let totalInvestedKpiDelta = "Across 4 instruments";
+
+  let totalReturnKpiValue = "+₦75k";
+  let totalReturnKpiDelta = "↑ +14.2% overall";
+  let totalReturnKpiDeltaDir: "up" | "down" | "neutral" = "up";
+
+  let avgYieldKpiValue = "15.8%";
+  let avgYieldKpiDelta = "↑ vs 5.5% savings rate";
+  let avgYieldKpiDeltaDir: "up" | "down" | "neutral" = "up";
+
+  if (hasRealData && context) {
+    const rawChartData = context.chartData;
+    incomeVsSpendData = rawChartData.slice(-visibleCount);
+    cashflowData = rawChartData.slice(-visibleCount).map(d => ({ month: d.month, in: d.income, out: d.spent }));
+    networthData = rawChartData.slice(-visibleCount).map(d => ({ month: d.month, nw: d.networth }));
+    
+    trendMonthsList = rawChartData.slice(-Math.min(visibleCount, 6)).map(d => d.month);
+    catTrendRows = context.catTrendRows ?? [];
+    
+    categoryData = context.topCategories.map(c => {
+      let color = "#E24B4A";
+      const catLower = c.category.toLowerCase();
+      if (catLower.includes("food") || catLower.includes("dining")) color = "var(--green)";
+      else if (catLower.includes("sub")) color = "var(--gold)";
+      else if (catLower.includes("transport") || catLower.includes("ride")) color = "#4A90D9";
+      else if (catLower.includes("shop")) color = "#9B59B6";
+      else color = "var(--muted)";
+
+      return {
+        name: c.category,
+        value: Math.round(c.total / 100000),
+        pct: c.percentage,
+        color,
+        change: c.trend === "up" ? "+10%" : c.trend === "down" ? "-10%" : "—",
+        changeDir: c.trend === "stable" ? "neutral" as const : c.trend as "up" | "down"
+      };
+    });
+
+    const savedKobo = context.savingsBalance;
+    const debtKobo = context.netWorth < 0 ? Math.abs(context.netWorth) : 0;
+    
+    portfolioData = [{
+      name: "Cash Savings",
+      value: Math.round(savedKobo / 100000),
+      pct: 100,
+      color: "var(--green)"
+    }];
+    
+    portfolioGrowth = rawChartData.map(d => ({ month: d.month, value: d.networth }));
+    
+    holdingsData = [
+      {
+        name: "Cash Savings (DataBank)",
+        type: "Cash & Liquid MMF",
+        invested: `₦${Math.round(savedKobo / 100).toLocaleString()}`,
+        value: `₦${Math.round(savedKobo / 100).toLocaleString()}`,
+        returnN: "+₦0",
+        returnPct: "—",
+        yieldPa: "—",
+        trend: "flat" as const
+      }
+    ];
+    if (debtKobo > 0) {
+      holdingsData.push({
+        name: "Outstanding Liabilities",
+        type: "Debt / Credit",
+        invested: `₦${Math.round(debtKobo / 100).toLocaleString()}`,
+        value: `₦${Math.round(debtKobo / 100).toLocaleString()}`,
+        returnN: "—",
+        returnPct: "—",
+        yieldPa: "—",
+        trend: "down" as const
+      });
+    }
+
+    transactions = context.recentTransactions.map(t => {
+      let icon = "⚡";
+      let bg = "#ECEFF1";
+      const catLower = t.category.toLowerCase();
+      if (catLower.includes("food") || catLower.includes("dining")) {
+        icon = "🍔"; bg = "#FEF9E7";
+      } else if (catLower.includes("income") || catLower.includes("salary")) {
+        icon = "💰"; bg = "#E8F5E9";
+      } else if (catLower.includes("transport") || catLower.includes("ride")) {
+        icon = "🚗"; bg = "#E3F2FD";
+      } else if (catLower.includes("sub")) {
+        icon = "🎬"; bg = "#FCE4EC";
+      } else if (catLower.includes("shop")) {
+        icon = "🛍️"; bg = "#F3E5F5";
+      }
+
+      const dateObj = new Date(t.date);
+      const dateStr = dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const amtStr = `${t.type === "income" ? "+" : "-"}₦${Math.round(Math.abs(t.amount) / 100).toLocaleString()}`;
+
+      return {
+        icon,
+        bg,
+        name: t.description,
+        cat: t.category,
+        date: dateStr,
+        amt: amtStr,
+        type: t.type === "income" ? "credit" as const : "debit" as const
+      };
+    });
+
+    const srScore = clamp(Math.round(context.monthlySummary.savingsRate * 280), 0, 100);
+    const goalProgress = context.activeGoals.length > 0
+      ? Math.round(context.activeGoals.reduce((s, g) => s + g.progressPercent, 0) / context.activeGoals.length)
+      : 50;
+    
+    healthScore = Math.round(srScore * 0.45 + goalProgress * 0.35 + 20);
+    healthScoreHeadline = healthScore >= 80 ? "Excellent — you're building real wealth"
+      : healthScore >= 65 ? "Strong — keep the momentum going"
+      : healthScore >= 50 ? "Good foundation — a few key moves will accelerate this"
+      : "Work in progress — focus on the fundamentals";
+      
+    healthScoreBuddyTake = `You’re doing the fundamentals right — savings rate is at ${Math.round(context.monthlySummary.savingsRate * 100)}%. Discussions with your buddy will help you fine-tune allocations.`;
+
+    insights = [
+      {
+        icon: "💰",
+        label: "Savings Rate",
+        value: `${Math.round(context.monthlySummary.savingsRate * 100)}%`,
+        delta: context.monthlySummary.savingsRate >= 0.25 ? "↑ Exceeding target" : "Watch your expenses",
+        type: context.monthlySummary.savingsRate >= 0.2 ? "positive" as const : "warning" as const,
+        question: `My savings rate is ${Math.round(context.monthlySummary.savingsRate * 100)}%. How can I optimize it further?`
+      }
+    ];
+
+    if (context.monthlySummary.largestDebit) {
+      const ld = context.monthlySummary.largestDebit;
+      insights.push({
+        icon: "🍔",
+        label: "Largest Spend",
+        value: `₦${Math.round(ld.amount / 100).toLocaleString()}`,
+        delta: `${ld.description}`,
+        type: "warning" as const,
+        question: `My largest single expense was ₦${Math.round(ld.amount / 100).toLocaleString()} for ${ld.description}. How can I plan better for this?`
+      });
+    }
+
+    if (context.activeGoals.length > 0) {
+      const g = context.activeGoals[0];
+      insights.push({
+        icon: "🎯",
+        label: "Primary Goal",
+        value: `${g.progressPercent}%`,
+        delta: `${g.title}`,
+        type: "positive" as const,
+        question: `I've made ${g.progressPercent}% progress on my goal: ${g.title}. What should be my next milestone?`
+      });
+    } else {
+      insights.push({
+        icon: "✨",
+        label: "Goals",
+        value: "0 active",
+        delta: "Set a goal to target savings",
+        type: "warning" as const,
+        question: "I want to set a new financial goal to track. What goal would you suggest for my income?"
+      });
+    }
+
+    totalIncomeKpi = `₦${Math.round(context.monthlySummary.totalIncome / 100000)}k`;
+    totalIncomeKpiDelta = "This month's income";
+    totalIncomeKpiDeltaDir = "neutral" as const;
+
+    totalExpensesKpi = `₦${Math.round(context.monthlySummary.totalExpenses / 100000)}k`;
+    totalExpensesKpiDelta = "This month's expenses";
+    totalExpensesKpiDeltaDir = "neutral" as const;
+
+    savingsRateKpi = `${Math.round(context.monthlySummary.savingsRate * 100)}%`;
+    savingsRateKpiDelta = context.monthlySummary.savingsRate >= 0.2 ? "↑ Healthy rate" : "Focus on saving";
+    savingsRateKpiDeltaDir = context.monthlySummary.savingsRate >= 0.2 ? "up" as const : "down" as const;
+
+    const nwVal = Math.round(context.netWorth / 100000);
+    netWorthKpi = context.netWorth >= 100000000
+      ? `₦${(context.netWorth / 100000000).toFixed(2)}M`
+      : nwVal < 0
+        ? `-₦${Math.abs(nwVal).toLocaleString()}k`
+        : `₦${nwVal.toLocaleString()}k`;
+    netWorthKpiDelta = "Current cash net worth";
+    netWorthKpiDeltaDir = context.netWorth >= 0 ? "up" as const : "down" as const;
+
+    totalAssetKpiValue = `₦${Math.round(context.savingsBalance / 100).toLocaleString()}`;
+    totalDebtKpiValue = `₦${Math.round(debtKobo / 100).toLocaleString()}`;
+
+    assetsList = context.assetsList.map(a => ({
+      name: a.name,
+      value: `₦${a.value.toLocaleString()}`,
+      pct: a.pct
+    }));
+
+    liabilitiesList = context.liabilitiesList.map(l => ({
+      name: l.name,
+      value: `₦${l.value.toLocaleString()}`,
+      pct: l.pct
+    }));
+
+    portfolioKpiValue = `₦${Math.round(savedKobo / 100000)}k`;
+    portfolioKpiDelta = "Total cash savings";
+    portfolioKpiDeltaDir = "neutral" as const;
+
+    totalInvestedKpiValue = `₦${Math.round(savedKobo / 100000)}k`;
+    totalInvestedKpiDelta = "In DataBank";
+
+    totalReturnKpiValue = "—";
+    totalReturnKpiDelta = "";
+    totalReturnKpiDeltaDir = "neutral" as const;
+
+    avgYieldKpiValue = "—";
+    avgYieldKpiDelta = "";
+    avgYieldKpiDeltaDir = "neutral" as const;
+  }
 
   // Category trend table: cap at 6 available months
   const catVisibleCount  = Math.min(visibleCount, 6);
-  const catVisibleMonths = TREND_MONTHS_6M.slice(-catVisibleCount);
-
-  // ── Chat navigation helper ───────────────────────────
-  const goToChat = useCallback((question: string) => {
-    preFillInput(question);
-    router.push("/chat");
-  }, [preFillInput, router]);
-
-  const TIMEFRAMES = ["1M", "3M", "6M", "1Y", "All"];
+  const catVisibleMonths = trendMonthsList.slice(-catVisibleCount);
 
   const filteredTxns = txnFilter === "All Categories"
     ? transactions
     : transactions.filter((t) => t.cat.startsWith(txnFilter));
 
-  const visibleTrendRows = expandTrends ? CAT_TREND_ROWS : CAT_TREND_ROWS.slice(0, 3);
+  const visibleTrendRows = expandTrends ? catTrendRows : catTrendRows.slice(0, 3);
   const visibleTxns = expandTxns ? filteredTxns : filteredTxns.slice(0, 3);
   const visibleHoldings = expandHoldings ? holdingsData : holdingsData.slice(0, 3);
 
@@ -259,10 +544,10 @@ export function AnalyticsDashboard() {
 
       {/* KPI row */}
       <div className="grid gap-4 mb-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
-        <Kpi label="Avg Monthly Income" value="₦450k" delta="↑ Stable · 3 months" deltaDir="up" />
-        <Kpi label="Avg Monthly Spend" value="₦166k" delta="↑ +₦8k vs prev period" deltaDir="up" />
-        <Kpi label="Savings Rate" value="61%" delta="↑ +9pts vs prev period" deltaDir="up" />
-        <Kpi label="Net Worth" value="₦1.07M" delta="↑ +₦285k this period" deltaDir="up" />
+        <Kpi label="Avg Monthly Income" value={totalIncomeKpi} delta={totalIncomeKpiDelta} deltaDir={totalIncomeKpiDeltaDir} />
+        <Kpi label="Avg Monthly Spend" value={totalExpensesKpi} delta={totalExpensesKpiDelta} deltaDir={totalExpensesKpiDeltaDir} />
+        <Kpi label="Savings Rate" value={savingsRateKpi} delta={savingsRateKpiDelta} deltaDir={savingsRateKpiDeltaDir} />
+        <Kpi label="Net Worth" value={netWorthKpi} delta={netWorthKpiDelta} deltaDir={netWorthKpiDeltaDir} />
       </div>
 
       {/* ── CARD 1: FINANCIAL HEALTH SCORE OVERVIEW ── */}
@@ -276,18 +561,21 @@ export function AnalyticsDashboard() {
           <div className="flex items-start justify-between flex-wrap gap-4 mb-5">
             <div className="flex-1 min-w-[240px]">
               <div className="text-[11px] font-semibold uppercase tracking-[.5px] mb-2" style={{ color: "rgba(255,255,255,.5)" }}>Financial Health · March 2026</div>
-              <div className="text-[20px] font-semibold mb-2" style={{ fontFamily: "var(--font-dm-serif)", lineHeight: 1.3 }}>
-                You're in strong shape, Tunde.<br />Your savings rate is 3× the national average.
+              <div className="text-[20px] font-semibold mb-2" style={{ fontFamily: "var(--font-dm-serif)", lineHeight: 1.3, whiteSpace: "pre-line" }}>
+                {healthScoreHeadline}
               </div>
               <div className="text-[12px] leading-relaxed" style={{ color: "rgba(255,255,255,.7)" }}>
-                You saved ₦275,000 this month — more than most Nigerians earn. But your food spending rose 12% and you're paying ₦22,800/year in unnecessary credit card interest. Two things to fix.
+                {hasRealData 
+                  ? "Your financial indicators are parsed from your DataBank. Start a chat below with your buddy to get personalized recommendations."
+                  : "You saved ₦275,000 this month — more than most Nigerians earn. But your food spending rose 12% and you're paying ₦22,800/year in unnecessary credit card interest. Two things to fix."
+                }
               </div>
             </div>
             <div className="flex flex-col items-center gap-1 flex-shrink-0">
               <div className="relative">
-                <HealthRing score={78} />
+                <HealthRing score={healthScore} />
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <div className="text-[22px] font-bold" style={{ fontFamily: "var(--font-dm-serif)" }}>78</div>
+                  <div className="text-[22px] font-bold" style={{ fontFamily: "var(--font-dm-serif)" }}>{healthScore}</div>
                   <div className="text-[10px]" style={{ color: "rgba(255,255,255,.55)" }}>/100</div>
                 </div>
               </div>
@@ -297,24 +585,7 @@ export function AnalyticsDashboard() {
 
           {/* Insight tiles */}
           <div className="grid gap-3 mb-5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
-            {([
-              {
-                icon: "💰", label: "Savings Rate", value: "61%", delta: "↑ +9pts vs last month", type: "positive",
-                question: "My savings rate is 61% this month. How do I keep this up and what should I do with the extra savings?",
-              },
-              {
-                icon: "📈", label: "Net Worth Growth", value: "+₦285k", delta: "↑ +36% in 3 months", type: "positive",
-                question: "My net worth grew ₦285k in 3 months. How do I accelerate this?",
-              },
-              {
-                icon: "🍔", label: "Food Spending", value: "₦82k", delta: "↑ +12% vs Feb · Watch this", type: "warning",
-                question: "My food spending rose 12% last month. Help me bring it down without misery.",
-              },
-              {
-                icon: "💳", label: "Credit Card Debt", value: "₦95k", delta: "24% APR · Costs ₦22.8k/yr", type: "alert",
-                question: "I have ₦95k in credit card debt at 24% APR. What's the fastest way to clear this?",
-              },
-            ] as const).map((item) => (
+            {insights.map((item) => (
               <div
                 key={item.label}
                 onClick={() => goToChat(item.question)}
@@ -343,27 +614,27 @@ export function AnalyticsDashboard() {
             <div className="flex items-center justify-center rounded-[10px] text-[16px] flex-shrink-0" style={{ width: 36, height: 36, background: "rgba(255,255,255,.12)" }}>🎯</div>
             <div>
               <div className="text-[12px] italic mb-1" style={{ color: "rgba(255,255,255,.8)", lineHeight: 1.6 }}>
-                &ldquo;You&rsquo;re doing the fundamentals right — savings rate climbing, investments growing. Two moves will take your score from 78 to 90: eliminate the credit card this month, and put a hard cap on food delivery. Those two changes are worth ₦60,000 a year back in your pocket.&rdquo;
+                &ldquo;{healthScoreBuddyTake}&rdquo;
               </div>
-              <div className="text-[10px] font-semibold" style={{ color: "rgba(255,255,255,.45)" }}>The Contrarian Investor · Based on your DataBank</div>
+              <div className="text-[10px] font-semibold" style={{ color: "rgba(255,255,255,.45)" }}>Based on your DataBank</div>
             </div>
           </div>
 
           {/* CTAs */}
           <div className="flex gap-2 flex-wrap">
             <button
-              onClick={() => goToChat("I just reviewed my financial health score. Let's talk about how to improve it from 78 to 90.")}
+              onClick={() => goToChat(`I just reviewed my financial health score of ${healthScore}. Let's talk about how to improve it.`)}
               className="px-4 py-[9px] rounded-[10px] text-[12px] font-semibold transition-all duration-150 cursor-pointer"
               style={{ background: "var(--green)", color: "#fff", border: "none" }}
             >
               Discuss With My Buddy →
             </button>
             <button
-              onClick={() => goToChat("I want to discuss how to pay off my ₦95k credit card debt and save ₦22.8k/yr.")}
+              onClick={() => goToChat("How can I optimize my budget to build wealth faster?")}
               className="px-4 py-[9px] rounded-[10px] text-[12px] font-medium border cursor-pointer"
               style={{ color: "rgba(255,255,255,.75)", borderColor: "rgba(255,255,255,.2)", background: "transparent" }}
             >
-              ⚡ Pay Off Credit Card Now
+              ⚡ Optimize Budget Now
             </button>
           </div>
         </div>
@@ -410,8 +681,9 @@ export function AnalyticsDashboard() {
             <div>
               <div className="flex flex-col gap-[10px]">
                 {incomeVsSpendData.map((d) => {
-                  const isCurrent = d.month === "Mar";
-                  const spentPct = Math.round((d.spent / d.income) * 100);
+                  const isCurrent = d.month === "Mar" || d.month === "Jun" || d.month === "Now";
+                  const total = Math.max(0.1, d.income);
+                  const spentPct = Math.round((d.spent / total) * 100);
                   const savedPct = 100 - spentPct;
                   return (
                     <div key={d.month} className="flex items-center gap-3">
@@ -492,7 +764,7 @@ export function AnalyticsDashboard() {
           {/* Spending by Category */}
           <ChartCard
             title="Spending by Category"
-            sub="Mar 2026 · ₦175,200"
+            sub="Allocation Snapshot"
             action="Ask buddy →"
             onAction={() => goToChat("Break down my spending categories and tell me which one I should cut first.")}
           >
@@ -527,7 +799,7 @@ export function AnalyticsDashboard() {
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="flex flex-col gap-2 flex-1">
+                <div className="flex flex-col gap-2 flex-1 animate-fadeIn">
                   {categoryData.map((cat) => (
                     <div key={cat.name} className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: cat.color.startsWith("var(") ? (cat.color === "var(--green)" ? "#00C48C" : cat.color === "var(--gold)" ? "#F5A623" : "#6B7A99") : cat.color }} />
@@ -574,10 +846,10 @@ export function AnalyticsDashboard() {
               <div className="flex items-center justify-between rounded-[10px] p-3" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
                 <div>
                   <div className="text-[10px] font-semibold uppercase tracking-[.5px] mb-1" style={{ color: "var(--muted)" }}>Savings Rate</div>
-                  <div className="text-[26px] font-semibold" style={{ color: "var(--green2)", fontFamily: "var(--font-dm-serif)" }}>61%</div>
-                  <div className="text-[11px]" style={{ color: "var(--muted)" }}>Target: 50% · ✓ Exceeding</div>
+                  <div className="text-[26px] font-semibold" style={{ color: "var(--green2)", fontFamily: "var(--font-dm-serif)" }}>{savingsRateKpi}</div>
+                  <div className="text-[11px]" style={{ color: "var(--muted)" }}>Target: 50% · {parseFloat(savingsRateKpi) >= 50 ? "✓ Exceeding" : "Focus on saving"}</div>
                 </div>
-                <SmallRing pct={61} color="var(--green)" />
+                <SmallRing pct={parseFloat(savingsRateKpi) || 0} color="var(--green)" />
               </div>
 
               {/* Budget bars */}
@@ -631,19 +903,23 @@ export function AnalyticsDashboard() {
               <tbody>
                 {visibleTrendRows.map((row) => {
                   const trendColor = row.trendDir === "up" ? "#E24B4A" : row.trendDir === "down" ? "var(--green2)" : "var(--muted)";
-                  const visibleIdxs = catVisibleMonths.map((m) => TREND_MONTHS_6M.indexOf(m));
-                  const total = visibleIdxs.reduce((s, i) => s + row.vals[i], 0);
+                  const total = catVisibleMonths.reduce((s, m) => {
+                    const idx = trendMonthsList.indexOf(m);
+                    return s + (idx !== -1 ? (row.vals[idx] ?? 0) : 0);
+                  }, 0);
                   return (
                     <tr key={row.cat} style={{ borderBottom: "1px solid var(--border)", borderBottomStyle: "solid", borderBottomWidth: 1, borderBottomColor: "var(--border)" }}>
                       <td style={{ padding: "11px 12px", fontSize: 13, color: "var(--text)" }}>{row.cat}</td>
-                      {visibleIdxs.map((idx) => (
-                        <td key={idx} style={{ padding: "11px 8px", textAlign: "right", fontSize: 13 }}>₦{row.vals[idx]}k</td>
-                      ))}
+                      {catVisibleMonths.map((m) => {
+                        const idx = trendMonthsList.indexOf(m);
+                        const val = idx !== -1 ? (row.vals[idx] ?? 0) : 0;
+                        return <td key={m} style={{ padding: "11px 8px", textAlign: "right", fontSize: 13 }}>₦{val}k</td>;
+                      })}
                       <td style={{ padding: "11px 8px", textAlign: "right", fontSize: 13, fontWeight: 600, color: trendColor }}>{row.trend}</td>
                       <td style={{ padding: "11px 8px", textAlign: "right", fontSize: 13, fontWeight: 600, color: "var(--text)" }}>₦{total}k</td>
                       <td style={{ padding: "11px 8px" }}>
                         <button
-                          onClick={() => goToChat(`${row.cat.replace(/^\S+\s/, "")} spending is {row.trend}. What should I do?`)}
+                          onClick={() => goToChat(`${row.cat.replace(/^\S+\s/, "")} spending is ${row.trend}. What should I do?`)}
                           className="cursor-pointer text-[13px] transition-opacity duration-150 hover:opacity-60"
                           style={{ background: "none", border: "none", padding: 0 }}
                         >
@@ -656,14 +932,14 @@ export function AnalyticsDashboard() {
               </tbody>
             </table>
           </div>
-          {CAT_TREND_ROWS.length > 3 && (
+          {catTrendRows.length > 3 && (
             <div className="flex justify-center mt-3">
               <button
                 onClick={() => setExpandTrends(!expandTrends)}
                 className="px-4 py-2 rounded-[8px] text-[11px] font-semibold border transition-all duration-150 hover:opacity-80"
                 style={{ borderColor: "var(--border)", background: "var(--bg)", color: "var(--text)", cursor: "pointer" }}
               >
-                {expandTrends ? "View Less" : `View More (${CAT_TREND_ROWS.length - 3} more)`}
+                {expandTrends ? "View Less" : `View More (${catTrendRows.length - 3} more)`}
               </button>
             </div>
           )}
@@ -722,10 +998,10 @@ export function AnalyticsDashboard() {
 
         {/* Portfolio KPIs */}
         <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
-          <Kpi label="Portfolio Value" value="₦605k" delta="↑ +₦38k this month" deltaDir="up" />
-          <Kpi label="Total Invested" value="₦530k" delta="Across 4 instruments" deltaDir="neutral" />
-          <Kpi label="Total Return" value="+₦75k" delta="↑ +14.2% overall" deltaDir="up" />
-          <Kpi label="Avg Yield p.a." value="15.8%" delta="↑ vs 5.5% savings rate" deltaDir="up" />
+          <Kpi label="Portfolio Value" value={portfolioKpiValue} delta={portfolioKpiDelta} deltaDir={portfolioKpiDeltaDir} />
+          <Kpi label="Total Invested" value={totalInvestedKpiValue} delta={totalInvestedKpiDelta} deltaDir="neutral" />
+          <Kpi label="Total Return" value={totalReturnKpiValue} delta={totalReturnKpiDelta} deltaDir={totalReturnKpiDeltaDir} />
+          <Kpi label="Avg Yield p.a." value={avgYieldKpiValue} delta={avgYieldKpiDelta} deltaDir={avgYieldKpiDeltaDir} />
         </div>
 
         {/* Portfolio Allocation & Growth */}
@@ -733,9 +1009,9 @@ export function AnalyticsDashboard() {
           {/* Portfolio Allocation Donut */}
           <ChartCard
             title="Portfolio Allocation"
-            sub="₦605,000 total"
+            sub="Asset allocation details"
             action="Ask buddy →"
-            onAction={() => goToChat("My portfolio grew to ₦605k. Am I invested in the right mix?")}
+            onAction={() => goToChat("Am I invested in the right mix of assets?")}
           >
             <div className="flex items-center gap-4 flex-wrap">
               <div style={{ width: 130, height: 130, flexShrink: 0 }}>
@@ -749,7 +1025,7 @@ export function AnalyticsDashboard() {
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              <div className="flex flex-col gap-2 flex-1">
+              <div className="flex flex-col gap-2 flex-1 animate-fadeIn">
                 {portfolioData.map((item) => {
                   const c = item.color.startsWith("#") ? item.color : item.color === "var(--green)" ? "#00C48C" : item.color === "var(--gold)" ? "#F5A623" : "#6B7A99";
                   return (
@@ -765,37 +1041,22 @@ export function AnalyticsDashboard() {
             </div>
           </ChartCard>
 
-          {/* Portfolio Growth */}
-          <ChartCard
-            title="Portfolio Growth"
-            sub="Jan – Mar 2026"
-            action="Ask buddy →"
-            onAction={() => goToChat("My portfolio grew to ₦605k. Am I invested in the right mix?")}
-          >
+          {/* Portfolio Growth Chart */}
+          <ChartCard title="Portfolio Growth" sub="Cumulative net worth projection">
             <ResponsiveContainer width="100%" height={160}>
-              <AreaChart data={portfolioGrowth} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
-                <defs>
-                  <linearGradient id="portGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#4A90D9" stopOpacity={0.2} />
-                    <stop offset="100%" stopColor="#4A90D9" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
+              <LineChart data={portfolioGrowth} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" />
-                <XAxis dataKey="month" tick={{ fontSize: 10, fill: "var(--muted)" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: "var(--muted)" }} axisLine={false} tickLine={false} tickFormatter={(v) => `₦${v}k`} domain={[300, 700]} />
+                <XAxis dataKey="month" tick={{ fontSize: 11, fill: "var(--muted)" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: "var(--muted)" }} axisLine={false} tickLine={false} tickFormatter={(v) => `₦${v}k`} />
                 <Tooltip formatter={(v) => `₦${v}k`} contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }} />
-                <Area type="monotone" dataKey="value" stroke="#4A90D9" strokeWidth={2.5} fill="url(#portGrad)" dot={{ r: 4, fill: "#4A90D9", stroke: "var(--card)", strokeWidth: 2 }} name="Portfolio" />
-              </AreaChart>
+                <Line type="monotone" dataKey="value" stroke="var(--green)" strokeWidth={2.5} dot={{ r: 4, fill: "var(--green)", stroke: "var(--card)", strokeWidth: 2 }} name="Value" />
+              </LineChart>
             </ResponsiveContainer>
           </ChartCard>
         </div>
 
-        {/* Holdings & Returns Table (Expandable) */}
-        <ChartCard
-          title="Holdings & Returns"
-          action="Ask buddy →"
-          onAction={() => goToChat("My portfolio grew to ₦605k. Am I invested in the right mix?")}
-        >
+        {/* Investment Holdings Table (Expandable) */}
+        <ChartCard title="Current Holdings" action="Export Holdings (CSV)">
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 600 }}>
               <thead>
@@ -838,9 +1099,9 @@ export function AnalyticsDashboard() {
         {/* Net Worth Growth Section */}
         <ChartCard
           title="Net Worth Growth"
-          sub={`${networthData[0]?.month ?? "Oct"} – Mar 2026`}
+          sub={`${networthData[0]?.month ?? "Oct"} – ${networthData[networthData.length - 1]?.month ?? "Now"}`}
           action="Ask buddy →"
-          onAction={() => goToChat("My net worth hit ₦1.07M. What's my next milestone and how do I get there?")}
+          onAction={() => goToChat(`My net worth hit ${netWorthKpi}. What's my next milestone and how do I get there?`)}
         >
           <ResponsiveContainer width="100%" height={240}>
             <AreaChart data={networthData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
@@ -860,18 +1121,12 @@ export function AnalyticsDashboard() {
         </ChartCard>
 
         {/* Assets vs. Liabilities */}
-        <ChartCard title="Assets vs. Liabilities" sub="March 2026 snapshot">
+        <ChartCard title="Assets vs. Liabilities" sub="Snapshot details">
           <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[.5px] mb-3" style={{ color: "var(--green2)" }}>Assets · ₦1,165,000</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[.5px] mb-3" style={{ color: "var(--green2)" }}>Assets · {totalAssetKpiValue}</div>
               <div className="flex flex-col gap-2">
-                {[
-                  { name: "ARM MMF", value: "₦188,000", pct: 16 },
-                  { name: "Treasury Bills", value: "₦152,000", pct: 13 },
-                  { name: "Emergency Fund", value: "₦180,000", pct: 15 },
-                  { name: "NGX Equities", value: "₦85,000", pct: 7 },
-                  { name: "GTBank Savings", value: "₦560,000", pct: 48 },
-                ].map((a, i) => (
+                {assetsList.map((a, i) => (
                   <div key={a.name} className="flex items-center gap-2">
                     <div className="text-[12px] flex-shrink-0 font-medium" style={{ color: "var(--text)", width: 130 }}>{a.name}</div>
                     <div className="flex-1 h-[6px] rounded-full overflow-hidden" style={{ background: "var(--bg)" }}>
@@ -889,9 +1144,9 @@ export function AnalyticsDashboard() {
               </div>
             </div>
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[.5px] mb-3" style={{ color: "#E24B4A" }}>Liabilities · ₦95,000</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[.5px] mb-3" style={{ color: "#E24B4A" }}>Liabilities · {totalDebtKpiValue}</div>
               <div className="flex flex-col gap-2">
-                {[{ name: "GTBank Credit Card", value: "₦95,000", pct: 100 }].map((l, i) => (
+                {liabilitiesList.map((l, i) => (
                   <div key={l.name} className="flex items-center gap-2">
                     <div className="text-[12px] flex-shrink-0 font-medium" style={{ color: "var(--text)", width: 130 }}>{l.name}</div>
                     <div className="flex-1 h-[6px] rounded-full overflow-hidden" style={{ background: "var(--bg)" }}>
@@ -906,9 +1161,15 @@ export function AnalyticsDashboard() {
                     <div className="text-[11px] font-semibold flex-shrink-0" style={{ color: "#E24B4A", width: 70, textAlign: "right" }}>{l.value}</div>
                   </div>
                 ))}
+                {liabilitiesList.length === 0 && (
+                  <div className="text-[12px]" style={{ color: "var(--muted)" }}>No active debts/liabilities listed.</div>
+                )}
               </div>
               <div className="mt-4 p-3 rounded-[10px] text-[12px]" style={{ background: "rgba(226,75,74,.06)", border: "1px solid rgba(226,75,74,.15)", color: "var(--muted)", lineHeight: 1.6 }}>
-                💡 Eliminating this ₦95k debt at 24% APR saves ₦22,800/yr — equivalent to a guaranteed 24% return.
+                💡 {hasRealData 
+                  ? "Optimize your debt payoff plan by discussing strategies directly with your buddy."
+                  : "Eliminating this ₦95k debt at 24% APR saves ₦22,800/yr — equivalent to a guaranteed 24% return."
+                }
               </div>
             </div>
           </div>

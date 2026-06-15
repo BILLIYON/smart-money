@@ -2,29 +2,68 @@ import { create } from "zustand";
 
 // ── Types ──────────────────────────────────────────────────
 export type DatabankContextResponse = {
-  monthlySummary: {
+  currency: string;
+  netWorth: number;
+  savingsBalance: number;
+  chartData: {
+    month: string;
     income: number;
-    expenses: number;
-    net: number;
+    spent: number;
+    saved: number;
+    networth: number;
+  }[];
+  monthlySummary: {
+    totalIncome: number;
+    totalExpenses: number;
     savingsRate: number;
+    largestCredit: { amount: number; description: string; date: string } | null;
+    largestDebit: { amount: number; description: string; date: string } | null;
   };
-  topCategories: { category: string; amount: number }[];
+  topCategories: {
+    category: string;
+    total: number;
+    percentage: number;
+    trend: "up" | "down" | "stable";
+  }[];
   activeGoals: {
     title: string;
     targetAmount: number;
     currentAmount: number;
-    progress: number;
-    targetDate: string | null;
+    progressPercent: number;
   }[];
   recentTransactions: {
     description: string;
     amount: number;
-    date: string;
+    type: "income" | "expense";
     category: string;
+    date: string;
+    source: string;
   }[];
-  subscriptions: { description: string; amount: number; date: string }[];
-  netWorth: number;
-  savingsBalance: number;
+  subscriptions: {
+    name: string;
+    amount: number;
+    frequency: "monthly";
+    lastCharged: string;
+    source: string;
+  }[];
+  connectedSources: string[];
+  lastSyncAt: { gmail?: string; openbanking?: string };
+  catTrendRows: {
+    cat: string;
+    vals: number[];
+    trend: string;
+    trendDir: "up" | "down" | "flat";
+  }[];
+  assetsList: {
+    name: string;
+    value: number;
+    pct: number;
+  }[];
+  liabilitiesList: {
+    name: string;
+    value: number;
+    pct: number;
+  }[];
 };
 
 export type DataSource = {
