@@ -46,17 +46,7 @@ function safeParseDate(dateStr: string | null | undefined): string {
   const cleaned = dateStr.trim();
   if (!cleaned) return new Date().toISOString().split("T")[0];
 
-  // Try standard Date parsing
-  let d = new Date(cleaned);
-  if (!isNaN(d.getTime())) {
-    try {
-      return d.toISOString().split("T")[0];
-    } catch {
-      // ignore and try other methods
-    }
-  }
-
-  // Try parsing DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+  // Try parsing DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY first
   const parts = cleaned.split(/[/\-.]/);
   if (parts.length === 3) {
     let day = 0, month = 0, year = 0;
@@ -77,7 +67,7 @@ function safeParseDate(dateStr: string | null | undefined): string {
       }
     }
     
-    d = new Date(year, month, day);
+    const d = new Date(year, month, day);
     if (!isNaN(d.getTime())) {
       try {
         const yy = d.getFullYear();
@@ -87,6 +77,16 @@ function safeParseDate(dateStr: string | null | undefined): string {
       } catch {
         // ignore
       }
+    }
+  }
+
+  // Fallback to standard Date parsing as a last resort
+  let d = new Date(cleaned);
+  if (!isNaN(d.getTime())) {
+    try {
+      return d.toISOString().split("T")[0];
+    } catch {
+      // ignore
     }
   }
 
@@ -168,7 +168,8 @@ function parsePdfText(text: string): ParsedTransaction[] {
     const parsedDate = safeParseDate(rawDate);
 
     const description = line.replace(datePattern, "").replace(amountPattern, "").trim().slice(0, 100);
-    const amountKobo = parseAmount(amounts[amounts.length - 1][1]);
+    const amountIndex = amounts.length >= 2 ? amounts.length - 2 : 0;
+    const amountKobo = parseAmount(amounts[amountIndex][1]);
     const isDebit = /DR|debit/i.test(line);
 
     transactions.push({
