@@ -4,14 +4,15 @@ import { createClient } from "@/lib/supabase/server";
 export async function GET() {
   const supabase = await createClient();
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!session) {
+  if (!user) {
     return NextResponse.json({ chips: ["⚠️ No data connected"] });
   }
 
-  const userId = session.user.id;
+  const userId = user.id;
+
 
   const [uploadRes, gmailRes, signalRes] = await Promise.all([
     supabase

@@ -6,19 +6,18 @@ const serviceKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
 const supabase = createClient(url, serviceKey);
 
 async function main() {
-  const { data, error } = await supabase.from("user_integrations").select("*").limit(1);
+  const userId = '315d21b8-dfd2-4651-a82e-41b1b41931c3'; // adeolujohn495@gmail.com
+  console.log("Fetching integrations for user:", userId);
+  const { data, error } = await supabase
+    .from("user_integrations")
+    .select("*")
+    .eq("user_id", userId);
+
   if (error) {
     console.error(error);
-  } else {
-    console.log("user_integrations columns:", Object.keys(data[0] || {}));
+    return;
   }
-
-  const { data: users, error: usersErr } = await supabase.from("users").select("*").limit(1);
-  if (usersErr) {
-    console.error(usersErr);
-  } else {
-    console.log("users columns:", Object.keys(users[0] || {}));
-  }
+  console.log("Integrations:", data);
 }
 
 main().catch(console.error);

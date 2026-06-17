@@ -1,6 +1,6 @@
 import { google } from "googleapis";
 import { createClient } from "@/lib/supabase/server";
-import { encrypt } from "@/lib/crypto";
+import { decrypt, encrypt } from "@/lib/crypto";
 import { syncGmailForUser } from "@/lib/gmail";
 
 function redirectOrPopup(url: string, type: "GMAIL_CONNECTED" | "GMAIL_ERROR") {
@@ -10,7 +10,7 @@ function redirectOrPopup(url: string, type: "GMAIL_CONNECTED" | "GMAIL_ERROR") {
       <body>
         <script>
           if (window.opener) {
-            window.opener.postMessage({ type: "${type}" }, window.location.origin);
+            window.opener.postMessage({ type: "${type}" }, "*");
             window.close();
           } else {
             window.location.href = "${url}";
@@ -61,19 +61,42 @@ export async function GET(req: Request) {
       return redirectOrPopup(`${baseUrl}/databank?gmail=error`, "GMAIL_ERROR");
     }
 
-    // Get authenticated user
-    const supabase = await createClient();
-    const { data: { session } } = await supabase.auth.getSession();
+    // Decrypt the state parameter if present to resolve the user ID and redirect path
+    const state = searchParams.get("state");
+    let stateUserId: string | null = null;
+    let returnPath = "/databank";
 
-    if (!session) {
-      console.error("[gmail/callback] No authenticated user session found");
+    if (state) {
+      try {
+        const decrypted = decrypt(state);
+        const parsed = JSON.parse(decrypted);
+        stateUserId = parsed.userId || null;
+        returnPath = parsed.returnPath || "/databank";
+      } catch (err) {
+        // Fallback if state is just a raw return path string
+        if (state.startsWith("/")) {
+          returnPath = state;
+        } else {
+          console.error("[gmail/callback] Failed to decrypt state:", err);
+        }
+      }
+    }
+
+    // Fallback/verify with session cookies
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    const targetUserId = stateUserId || user?.id;
+
+    if (!targetUserId) {
+      console.error("[gmail/callback] No authenticated user found in state or session");
       return redirectOrPopup(`${baseUrl}/login`, "GMAIL_ERROR");
     }
 
     // Persist tokens encrypted at rest
     const { error } = await supabase.from("user_integrations").upsert(
       {
-        user_id:      session.user.id,
+        user_id:      targetUserId,
         provider:     "gmail",
         access_token: encrypt(tokens.access_token),
         refresh_token: encrypt(tokens.refresh_token),
@@ -92,17 +115,16 @@ export async function GET(req: Request) {
     }
 
     // Kick off first sync in the background — do not await
-    syncGmailForUser(session.user.id).catch((err) => {
+    syncGmailForUser(targetUserId).catch((err) => {
       console.error("[gmail/callback] Initial Gmail sync failed:", err?.message || err);
     });
 
-    const state = searchParams.get("state");
-    const returnPath = state?.startsWith("/") ? state : "/databank";
     return redirectOrPopup(`${baseUrl}${returnPath}?gmail=connected`, "GMAIL_CONNECTED");
   } catch (err: any) {
     console.error("[gmail/callback] Unexpected callback error:", err?.message || err);
     return redirectOrPopup(`${baseUrl}/databank?gmail=error`, "GMAIL_ERROR");
   }
 }
+
 
 

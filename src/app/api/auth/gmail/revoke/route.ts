@@ -10,9 +10,9 @@ const oauth2Client = new google.auth.OAuth2(
 
 export async function POST() {
   const supabase = await createClient();
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: { user } } = await supabase.auth.getUser();
 
-  if (!session) {
+  if (!user) {
     return Response.json({ error: "unauth" }, { status: 401 });
   }
 
@@ -20,7 +20,7 @@ export async function POST() {
   const { data } = await supabase
     .from("user_integrations")
     .select("access_token")
-    .eq("user_id", session.user.id)
+    .eq("user_id", user.id)
     .eq("provider", "gmail")
     .single();
 
@@ -37,15 +37,16 @@ export async function POST() {
   await supabase
     .from("user_integrations")
     .delete()
-    .eq("user_id", session.user.id)
+    .eq("user_id", user.id)
     .eq("provider", "gmail");
 
   // Remove all gmail-sourced databank entries
   await supabase
     .from("databank_entries")
     .delete()
-    .eq("user_id", session.user.id)
+    .eq("user_id", user.id)
     .eq("source", "gmail");
 
   return Response.json({ success: true });
 }
+
