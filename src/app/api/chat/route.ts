@@ -27,20 +27,14 @@ export async function POST(req: Request) {
     });
   }
 
-  // Fetch primary_goal for personalization if authenticated
-  let primaryGoal: string | undefined;
+  // Load real databank context on the server side if authenticated
+  let realContext = databankContext;
   if (user) {
     try {
-      const { data: profile } = await supabase
-        .from("users")
-        .select("primary_goal")
-        .eq("id", user.id)
-        .single();
-      if (profile?.primary_goal) {
-        primaryGoal = profile.primary_goal;
-      }
+      const { getDatabankContextForUser } = await import("@/lib/databank-context");
+      realContext = await getDatabankContextForUser(supabase, user.id);
     } catch (dbErr) {
-      console.error("[/api/chat] Failed to fetch user primary goal:", dbErr);
+      console.error("[/api/chat] Failed to fetch real user databank context:", dbErr);
     }
   }
 
@@ -50,10 +44,7 @@ export async function POST(req: Request) {
     stream = await sendMessage({
       buddyId,
       messages,
-      databankContext: {
-        ...databankContext,
-        ...(primaryGoal ? { primaryGoal } : {}),
-      },
+      databankContext: realContext,
     });
   } catch (e) {
     console.error("[/api/chat] sendMessage failed:", e);

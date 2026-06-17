@@ -451,7 +451,7 @@ export default function DataBankPage() {
 
   // Dynamic user enabled signal sources (includes bank connection IDs)
   const [enabledSources, setEnabledSources] = useState<Set<string>>(new Set());
-  const [socialChips, setSocialChips] = useState(["@nairametrics · Twitter/X", "Stears · YouTube"]);
+  const [customSources, setCustomSources] = useState<any[]>([]);
   const [socialInput, setSocialInput] = useState("");
   const [newsletterInput, setNewsletterInput] = useState("");
   const [obPerms, setObPerms] = useState([true, true, true, true, true]);
@@ -526,12 +526,52 @@ export default function DataBankPage() {
     setLoadingFiles(false);
   }, []);
 
+  const fetchCustomSources = useCallback(async () => {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("signal_sources")
+      .select("*");
+    if (data && !error) {
+      setCustomSources(data.filter((s: any) => s.id.startsWith("custom-") || s.signal_schema?.custom));
+    }
+  }, []);
+
   useEffect(() => {
     // Initialise context, active signals and uploaded files
     useDatabankStore.getState().loadContext();
     fetchEnabledSources();
+    fetchCustomSources();
     fetchUploadedFiles();
-  }, [fetchEnabledSources, fetchUploadedFiles]);
+  }, [fetchEnabledSources, fetchCustomSources, fetchUploadedFiles]);
+
+  const handleAddSocial = async (val: string) => {
+    if (!val.trim()) return;
+    let type: "youtube" | "tiktok" = "youtube";
+    let url = val.trim();
+
+    if (url.includes("tiktok.com")) {
+      type = "tiktok";
+    } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
+      type = "youtube";
+    } else {
+      url = `https://youtube.com/user/${url.replace("@", "")}`;
+    }
+
+    const res = await fetch("/api/signals/custom", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, type }),
+    });
+
+    if (res.ok) {
+      alert("Successfully registered custom social source!");
+      fetchCustomSources();
+      fetchEnabledSources();
+    } else {
+      const err = await res.json();
+      alert(`Failed: ${err.error || "Unknown error"}`);
+    }
+  };
 
   const handleToggleSource = async (sourceId: string) => {
     const isEnabled = enabledSources.has(sourceId);
@@ -1101,13 +1141,39 @@ export default function DataBankPage() {
                       />
                     );
                   })}
+                  {customSources.filter(s => s.signal_schema?.type === "rss").map((src) => {
+                    const isEnabled = enabledSources.has(src.id);
+                    return (
+                      <SourceItem
+                        key={src.id} icon="📰" iconBg="rgba(0,196,140,.1)" name={src.name} sub="Custom RSS feed"
+                        on={isEnabled}
+                        onToggle={() => handleToggleSource(src.id)}
+                      />
+                    );
+                  })}
                   <SourceItem
                     icon={<span style={{ fontSize: 18, color: "var(--muted)" }}>+</span>}
                     iconBg="var(--bg)"
                     name="Add News Source"
-                    sub="RSS or URL"
+                    sub="RSS URL"
                     isDashed
-                    onToggle={() => alert("Custom RSS parser config in Phase 3")}
+                    onToggle={async () => {
+                      const url = prompt("Enter Custom News RSS Feed URL:");
+                      if (!url) return;
+                      const res = await fetch("/api/signals/custom", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ url, type: "rss" }),
+                      });
+                      if (res.ok) {
+                        alert("Successfully registered custom RSS source!");
+                        fetchCustomSources();
+                        fetchEnabledSources();
+                      } else {
+                        const err = await res.json();
+                        alert(`Failed: ${err.error || "Unknown error"}`);
+                      }
+                    }}
                   />
                 </div>
               )}
@@ -1123,10 +1189,11 @@ export default function DataBankPage() {
                       type="text"
                       value={socialInput}
                       onChange={(e) => setSocialInput(e.target.value)}
-                      onKeyDown={(e) => {
+                      onKeyDown={async (e) => {
                         if (e.key === "Enter" && socialInput.trim()) {
-                          setSocialChips((c) => [...c, socialInput.trim()]);
+                          const val = socialInput.trim();
                           setSocialInput("");
+                          await handleAddSocial(val);
                         }
                       }}
                       placeholder="Twitter handle, YouTube URL, or TikTok profile..."
@@ -1136,7 +1203,12 @@ export default function DataBankPage() {
                       onBlur={(e) => { (e.target as HTMLInputElement).style.borderColor = "var(--border)"; }}
                     />
                     <button
-                      onClick={() => { if (!socialInput.trim()) return; setSocialChips((c) => [...c, socialInput.trim()]); setSocialInput(""); }}
+                      onClick={async () => {
+                        if (!socialInput.trim()) return;
+                        const val = socialInput.trim();
+                        setSocialInput("");
+                        await handleAddSocial(val);
+                      }}
                       className="px-4 py-[9px] rounded-[10px] text-[12px] font-semibold transition-all duration-150 cursor-pointer"
                       style={{ background: "var(--green)", color: "#fff", border: "none" }}
                       onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green2)"; }}
@@ -1146,24 +1218,47 @@ export default function DataBankPage() {
                     </button>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {socialChips.map((chip) => (
-                      <div
-                        key={chip}
-                        className="flex items-center gap-[6px] px-3 py-[7px] rounded-[10px] text-[12px]"
-                        style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)" }}
-                      >
-                        <span>{chip}</span>
-                        <button
-                          onClick={() => setSocialChips((c) => c.filter((x) => x !== chip))}
-                          className="flex items-center justify-center w-4 h-4 text-[14px] leading-none transition-colors duration-150 cursor-pointer"
-                          style={{ color: "var(--muted)", background: "transparent", border: "none" }}
-                          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#E24B4A"; }}
-                          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--muted)"; }}
+                    {customSources.filter(s => s.signal_schema?.type === "youtube" || s.signal_schema?.type === "tiktok").map((src) => {
+                      const isEnabled = enabledSources.has(src.id);
+                      return (
+                        <div
+                          key={src.id}
+                          className="flex items-center gap-[6px] px-3 py-[7px] rounded-[10px] text-[12px]"
+                          style={{
+                            background: "var(--bg)",
+                            border: "1px solid var(--border)",
+                            color: "var(--text)",
+                          }}
                         >
-                          ×
-                        </button>
-                      </div>
-                    ))}
+                          <span
+                            className="cursor-pointer font-medium hover:text-[var(--green)]"
+                            onClick={() => handleToggleSource(src.id)}
+                            style={{ textDecoration: isEnabled ? "none" : "line-through", opacity: isEnabled ? 1 : 0.6 }}
+                          >
+                            {src.signal_schema?.type === "youtube" ? "▶" : "🎵"} {src.name}
+                          </span>
+                          <button
+                            onClick={async () => {
+                              const res = await fetch("/api/signals/custom", {
+                                method: "DELETE",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ sourceId: src.id }),
+                              });
+                              if (res.ok) {
+                                fetchCustomSources();
+                                fetchEnabledSources();
+                              }
+                            }}
+                            className="flex items-center justify-center w-4 h-4 text-[14px] leading-none transition-colors duration-150 cursor-pointer"
+                            style={{ color: "var(--muted)", background: "transparent", border: "none" }}
+                            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#E24B4A"; }}
+                            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--muted)"; }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1181,13 +1276,39 @@ export default function DataBankPage() {
                       />
                     );
                   })}
+                  {customSources.filter(s => s.signal_schema?.type === "podcast").map((src) => {
+                    const isEnabled = enabledSources.has(src.id);
+                    return (
+                      <SourceItem
+                        key={src.id} icon="🎙️" iconBg="rgba(74,144,217,.1)" name={src.name} sub="Custom Podcast Feed"
+                        on={isEnabled}
+                        onToggle={() => handleToggleSource(src.id)}
+                      />
+                    );
+                  })}
                   <SourceItem
                     icon={<span style={{ fontSize: 18, color: "var(--muted)" }}>+</span>}
                     iconBg="var(--bg)"
                     name="Add Podcast Feed"
-                    sub="Apple or Spotify RSS URL"
+                    sub="RSS URL"
                     isDashed
-                    onToggle={() => alert("Custom transcription engine setup in Phase 3")}
+                    onToggle={async () => {
+                      const url = prompt("Enter Podcast RSS Feed URL:");
+                      if (!url) return;
+                      const res = await fetch("/api/signals/custom", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ url, type: "podcast" }),
+                      });
+                      if (res.ok) {
+                        alert("Successfully registered custom podcast source!");
+                        fetchCustomSources();
+                        fetchEnabledSources();
+                      } else {
+                        const err = await res.json();
+                        alert(`Failed: ${err.error || "Unknown error"}`);
+                      }
+                    }}
                   />
                 </div>
               )}
@@ -1206,6 +1327,16 @@ export default function DataBankPage() {
                         />
                       );
                     })}
+                    {customSources.filter(s => s.signal_schema?.type === "newsletter").map((src) => {
+                      const isEnabled = enabledSources.has(src.id);
+                      return (
+                        <SourceItem
+                          key={src.id} icon="📬" iconBg="rgba(243,156,18,.1)" name={src.name} sub="Custom Newsletter"
+                          on={isEnabled}
+                          onToggle={() => handleToggleSource(src.id)}
+                        />
+                      );
+                    })}
                   </div>
                   <div className="text-[11px] font-semibold uppercase tracking-[.5px] mb-2" style={{ color: "var(--muted)" }}>Add Custom Substack / Newsletter</div>
                   <div className="flex gap-2">
@@ -1220,7 +1351,23 @@ export default function DataBankPage() {
                       onBlur={(e) => { (e.target as HTMLInputElement).style.borderColor = "var(--border)"; }}
                     />
                     <button
-                      onClick={() => setNewsletterInput("")}
+                      onClick={async () => {
+                        if (!newsletterInput.trim()) return;
+                        const res = await fetch("/api/signals/custom", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ url: newsletterInput, type: "newsletter" }),
+                        });
+                        if (res.ok) {
+                          alert("Successfully registered custom newsletter!");
+                          setNewsletterInput("");
+                          fetchCustomSources();
+                          fetchEnabledSources();
+                        } else {
+                          const err = await res.json();
+                          alert(`Failed: ${err.error || "Unknown error"}`);
+                        }
+                      }}
                       className="px-4 py-[9px] rounded-[10px] text-[12px] font-semibold transition-all duration-150 cursor-pointer"
                       style={{ background: "var(--green)", color: "#fff", border: "none" }}
                       onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green2)"; }}

@@ -493,7 +493,7 @@ function ChatHeader({ buddy }: { buddy: ReturnType<typeof getBuddy> }) {
 
 // ── 1:1 thread ─────────────────────────────────────────────
 export function MessageThread() {
-  const { activeBuddyId, threads, hasConnectedDatabank, setShowDatabankNudge, showDatabankNudge } = useChatStore();
+  const { activeBuddyId, threads, hasConnectedDatabank, setShowDatabankNudge, showDatabankNudge, signalAlerts, dismissSignalAlert } = useChatStore();
   const buddy = getBuddy(activeBuddyId);
   const messages = threads[activeBuddyId] ?? [];
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -562,11 +562,44 @@ export function MessageThread() {
               { label: "🕐 Listed:", highlight: "2hrs ago" },
             ]}
             manageHref="/databank"
-            onYes={() => {}}
-            onMore={() => {}}
+            onYes={() => {
+              useChatStore.getState().preFillInput("Let's discuss the signal: Lagos Real Estate Radar Flat for ₦185M");
+            }}
+            onMore={() => {
+              useChatStore.getState().preFillInput("Tell me more about the Banana Island Roadflat listing.");
+            }}
             onDismiss={() => {}}
           />
         )}
+
+        {/* Dynamic signal alerts */}
+        {signalAlerts
+          .filter((alert) => alert.buddyId === activeBuddyId)
+          .map((alert) => (
+            <SignalAlertCard
+              key={alert.id}
+              sourceLabel={`⚡ Signal · ${alert.sourceName}`}
+              buddyAv={buddy?.avatarContent ?? "🤖"}
+              buddyBg={buddy?.avatarBg ?? "var(--navy)"}
+              buddyIsSerif={buddy?.avatarIsSerif}
+              buddyName={buddy?.name ?? "Your Buddy"}
+              pastContextQuote={`💬 Past context quote from ${alert.sourceName} signal tracking:`}
+              signalText={alert.body}
+              dataChips={[{ label: alert.headline }]}
+              manageHref="/databank"
+              onYes={() => {
+                useChatStore.getState().preFillInput(`Let's discuss the signal from ${alert.sourceName}: "${alert.headline}"`);
+                dismissSignalAlert(alert.id);
+              }}
+              onMore={() => {
+                useChatStore.getState().preFillInput(`Tell me more about this alert: "${alert.headline}"`);
+                dismissSignalAlert(alert.id);
+              }}
+              onDismiss={() => {
+                dismissSignalAlert(alert.id);
+              }}
+            />
+          ))}
 
         {messages.length === 0 && (
           <div className="flex-1 flex flex-col items-center justify-center gap-5" style={{ maxWidth: 480, margin: "0 auto", width: "100%" }}>
