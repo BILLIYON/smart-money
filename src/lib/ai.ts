@@ -272,14 +272,36 @@ export async function sendMessage(params: {
   const system = getBuddySystemPrompt(buddy, contextStr, databankContext.currency ?? "NGN");
   const resolvedModel = resolveModel(buddy, modelOverride);
 
-  switch (resolvedModel) {
-    case "claude":
-      return streamClaude(system, messages);
-    case "gpt4":
-      return streamGPT4(system, messages);
-    case "gemini":
-      return streamGemini(system, messages);
+  // Define order of fallback
+  const modelsToTry: Array<"claude" | "gpt4" | "gemini"> = [resolvedModel];
+  if (resolvedModel !== "gemini") {
+    modelsToTry.push("gemini");
   }
+  if (resolvedModel !== "gpt4" && !modelsToTry.includes("gpt4")) {
+    modelsToTry.push("gpt4");
+  }
+  if (resolvedModel !== "claude" && !modelsToTry.includes("claude")) {
+    modelsToTry.push("claude");
+  }
+
+  let lastError: any = null;
+  for (const modelName of modelsToTry) {
+    try {
+      console.log(`[AI] Attempting stream with model: ${modelName}`);
+      if (modelName === "claude") {
+        return await streamClaude(system, messages);
+      } else if (modelName === "gpt4") {
+        return await streamGPT4(system, messages);
+      } else {
+        return await streamGemini(system, messages);
+      }
+    } catch (err) {
+      console.error(`[AI] Model ${modelName} failed, trying next fallback:`, err);
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error("All AI models failed");
 }
 
 // ── Claude ────────────────────────────────────────────────
@@ -288,7 +310,7 @@ async function streamClaude(
   messages: Message[]
 ): Promise<ReadableStream<Uint8Array>> {
   const stream = await anthropic().messages.create({
-    model: "claude-3-5-sonnet-latest",
+    model: "claude-3-5-sonnet-20241022",
     max_tokens: 1024,
     system,
     messages,
@@ -343,7 +365,7 @@ async function streamGemini(
   messages: Message[]
 ): Promise<ReadableStream<Uint8Array>> {
   const model = gemini().getGenerativeModel({
-    model: "gemini-1.5-pro",
+    model: "gemini-2.5-flash",
     systemInstruction: system,
   });
 
@@ -390,6 +412,29 @@ export async function sendGroupMessage(params: {
 // 4. processSignalAlert — decide relevance, draft buddy message
 // ════════════════════════════════════════════════════════════
 
+async function askAI(prompt: string, fallbackModel = "claude-3-5-haiku-latest"): Promise<string> {
+  if (process.env.ANTHROPIC_API_KEY) {
+    try {
+      console.log(`[AI] Attempting completion with Anthropic: ${fallbackModel}`);
+      const response = await anthropic().messages.create({
+        model: fallbackModel,
+        max_tokens: 512,
+        messages: [{ role: "user", content: prompt }],
+      });
+      return response.content[0].type === "text" ? response.content[0].text : "";
+    } catch (err) {
+      console.error("[AI] Anthropic completion failed, trying Gemini fallback:", err);
+    }
+  }
+
+  // Fallback to Gemini
+  console.log("[AI] Attempting completion with Gemini: gemini-2.5-flash");
+  const model = gemini().getGenerativeModel({ model: "gemini-2.5-flash" });
+  const result = await model.generateContent(prompt);
+  const response = await result.response;
+  return response.text();
+}
+
 export async function processSignalAlert(params: {
   signal: SignalPayload;
   userContext: UserContext;
@@ -418,22 +463,15 @@ Respond with valid JSON only — no markdown, no explanation:
 If not relevant, return { "relevant": false, "message": "" }.
 If relevant, write the message as ${activeBuddy.name} in your distinct voice — 2–3 sentences maximum.`;
 
-  const response = await anthropic().messages.create({
-    model: "claude-3-5-haiku-latest",  // haiku for speed/cost on signal processing
-    max_tokens: 256,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const raw = response.content[0].type === "text" ? response.content[0].text : "";
-
   try {
+    const raw = await askAI(prompt, "claude-3-5-haiku-latest");
     const parsed = JSON.parse(raw.trim());
     return {
       relevant: Boolean(parsed.relevant),
       message: String(parsed.message ?? ""),
     };
-  } catch {
-    // Parsing failed — treat as not relevant, don't surface to user
+  } catch (err) {
+    console.error("[processSignalAlert] Failed to process or parse JSON:", err);
     return { relevant: false, message: "" };
   }
 }
@@ -470,15 +508,8 @@ Respond with valid JSON only — no markdown, no explanation outside the JSON:
   "riskLevel": "low" | "medium" | "high"
 }`;
 
-  const response = await anthropic().messages.create({
-    model: "claude-3-5-sonnet-latest",
-    max_tokens: 256,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const raw = response.content[0].type === "text" ? response.content[0].text : "";
-
   try {
+    const raw = await askAI(prompt, "claude-3-5-sonnet-20241022");
     const parsed = JSON.parse(raw.trim());
     return {
       recommendation: parsed.recommendation === "proceed"
@@ -494,7 +525,8 @@ Respond with valid JSON only — no markdown, no explanation outside the JSON:
         ? "low"
         : "medium",
     };
-  } catch {
+  } catch (err) {
+    console.error("[getAgentSuggestion] Failed to get suggestion or parse JSON:", err);
     return {
       recommendation: "caution",
       reasoning: "Could not evaluate this action automatically. Please review manually.",

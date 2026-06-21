@@ -3,14 +3,23 @@ import { createServiceSupabaseClient } from "@/lib/supabase-server";
 import { processSignalAlert, type SignalPayload } from "@/lib/ai";
 import { getBuddy } from "@/lib/buddies";
 import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Lazy-loaded Anthropic client
+// Lazy-loaded clients
 let _anthropic: Anthropic | null = null;
 function getAnthropicClient() {
   if (!_anthropic) {
     _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   }
   return _anthropic;
+}
+
+let _gemini: GoogleGenerativeAI | null = null;
+function getGeminiClient() {
+  if (!_gemini) {
+    _gemini = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY!);
+  }
+  return _gemini;
 }
 
 export interface SignalData {
@@ -111,14 +120,24 @@ Respond with valid JSON only. Do not wrap in markdown code blocks. The JSON must
 }`;
 
   try {
-    const anthropic = getAnthropicClient();
-    const response = await anthropic.messages.create({
-      model: "claude-3-5-haiku-latest",
-      max_tokens: 350,
-      messages: [{ role: "user", content: prompt }],
-    });
+    let raw = "";
+    try {
+      const anthropic = getAnthropicClient();
+      const response = await anthropic.messages.create({
+        model: "claude-3-5-haiku-latest",
+        max_tokens: 350,
+        messages: [{ role: "user", content: prompt }],
+      });
+      raw = response.content[0].type === "text" ? response.content[0].text : "";
+    } catch (anthropicErr) {
+      console.warn("[transcribeMediaUrl] Anthropic failed, trying Gemini fallback:", anthropicErr);
+      const geminiClient = getGeminiClient();
+      const model = geminiClient.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      raw = response.text();
+    }
 
-    const raw = response.content[0].type === "text" ? response.content[0].text : "";
     const cleanJson = raw.replace(/```json/g, "").replace(/```/g, "").trim();
     const parsed = JSON.parse(cleanJson);
 

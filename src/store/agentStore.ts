@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { useMilestoneToast } from "@/components/ui/MilestoneToast";
+import { ALL_BUDDIES } from "@/lib/buddies";
 
 // ── Types ──────────────────────────────────────────────────
 export type AgentAction = {
@@ -37,6 +38,7 @@ type AgentStore = {
   walletBalance: number;   // kobo
   connections: BankConnection[];
   isLoading: boolean;
+  limits: { perAction: number; daily: number; monthly: number } | null;
 
   // ── Actions ────────────────────────────────────────────
   loadPending: () => Promise<void>;
@@ -56,14 +58,19 @@ type AgentStore = {
 
   /** Called by RealtimeProvider when an action status changes. */
   patchAction: (actionId: string, patch: Partial<AgentAction>) => void;
+
+  fetchWalletBalance: () => Promise<void>;
+  fetchLimits: () => Promise<void>;
+  saveLimits: (newLimits: { perAction: number; daily: number; monthly: number }) => Promise<boolean>;
 };
 
-export const useAgentStore = create<AgentStore>((set, _get) => ({
+export const useAgentStore = create<AgentStore>((set, get) => ({
   pendingActions: [],
   history: [],
   walletBalance: 0,
   connections: [],
   isLoading: false,
+  limits: null,
 
   loadPending: async () => {
     set({ isLoading: true });
@@ -71,7 +78,18 @@ export const useAgentStore = create<AgentStore>((set, _get) => ({
       const res = await fetch("/api/agent/pending");
       if (!res.ok) return;
       const data = (await res.json()) as AgentAction[];
-      set({ pendingActions: data });
+      
+      const mapped = data.map((action) => {
+        const buddy = ALL_BUDDIES.find((b) => b.id === action.buddy_id);
+        return {
+          ...action,
+          buddyName: buddy?.name || "AI Buddy",
+          buddyEmoji: buddy?.avatarContent || "⚡",
+          buddyBg: buddy?.avatarBg || "var(--border)",
+        };
+      });
+
+      set({ pendingActions: mapped });
     } catch (e) {
       console.error("[agentStore] loadPending:", e);
     } finally {
@@ -86,7 +104,11 @@ export const useAgentStore = create<AgentStore>((set, _get) => ({
       body: JSON.stringify({ actionId }),
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || "Failed to execute action");
+    }
+    
     const { reference } = await res.json() as { reference: string };
 
     // Capture action details before mutating state
@@ -114,6 +136,9 @@ export const useAgentStore = create<AgentStore>((set, _get) => ({
         executedAction.buddyEmoji ?? "🏆",
       );
     }
+
+    // Refresh wallet balance
+    await get().fetchWalletBalance();
 
     return { reference };
   },
@@ -168,4 +193,54 @@ export const useAgentStore = create<AgentStore>((set, _get) => ({
         ),
       };
     }),
+
+  fetchWalletBalance: async () => {
+    try {
+      const res = await fetch("/api/agent/wallet");
+      if (!res.ok) return;
+      const { balance } = await res.json() as { balance: number };
+      set({ walletBalance: balance });
+    } catch (e) {
+      console.error("[agentStore] fetchWalletBalance:", e);
+    }
+  },
+
+  fetchLimits: async () => {
+    try {
+      const res = await fetch("/api/agent/limits");
+      if (!res.ok) return;
+      const data = await res.json() as { limitPerAction: number; limitDaily: number; limitMonthly: number };
+      set({
+        limits: {
+          perAction: data.limitPerAction,
+          daily: data.limitDaily,
+          monthly: data.limitMonthly,
+        }
+      });
+    } catch (e) {
+      console.error("[agentStore] fetchLimits:", e);
+    }
+  },
+
+  saveLimits: async (newLimits) => {
+    try {
+      const res = await fetch("/api/agent/limits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          limitPerAction: newLimits.perAction,
+          limitDaily: newLimits.daily,
+          limitMonthly: newLimits.monthly,
+        }),
+      });
+      if (res.ok) {
+        set({ limits: newLimits });
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error("[agentStore] saveLimits:", e);
+      return false;
+    }
+  },
 }));

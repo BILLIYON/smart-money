@@ -1,7 +1,18 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+let _anthropic: Anthropic | null = null;
+function getAnthropic() {
+  if (!_anthropic) _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return _anthropic;
+}
+
+let _gemini: GoogleGenerativeAI | null = null;
+function getGemini() {
+  if (!_gemini) _gemini = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY!);
+  return _gemini;
+}
 
 type StudioConfig = {
   tone: number;        // 0–100
@@ -54,38 +65,70 @@ export async function POST(req: Request) {
     .filter(Boolean)
     .join("\n");
 
-  let stream: AsyncIterable<Anthropic.MessageStreamEvent>;
   try {
-    stream = await anthropic.messages.create({
-      model: "claude-3-5-sonnet-latest",
+    const stream = await getAnthropic().messages.create({
+      model: "claude-3-5-sonnet-20241022",
       max_tokens: 256,
       system,
       messages,
       stream: true,
     });
-  } catch (e) {
-    console.error("[/api/chat/preview]", e);
-    return NextResponse.json({ error: "AI service error" }, { status: 502 });
-  }
 
-  const readable = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      try {
-        for await (const chunk of stream) {
-          if (
-            chunk.type === "content_block_delta" &&
-            chunk.delta.type === "text_delta"
-          ) {
-            controller.enqueue(new TextEncoder().encode(chunk.delta.text));
+    const readable = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          for await (const chunk of stream) {
+            if (
+              chunk.type === "content_block_delta" &&
+              chunk.delta.type === "text_delta"
+            ) {
+              controller.enqueue(new TextEncoder().encode(chunk.delta.text));
+            }
           }
+        } finally {
+          controller.close();
         }
-      } finally {
-        controller.close();
-      }
-    },
-  });
+      },
+    });
 
-  return new Response(readable, {
-    headers: { "Content-Type": "text/plain; charset=utf-8" },
-  });
+    return new Response(readable, {
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  } catch (e) {
+    console.warn("[/api/chat/preview] Anthropic failed, falling back to Gemini:", e);
+    
+    try {
+      const model = getGemini().getGenerativeModel({
+        model: "gemini-2.5-flash",
+        systemInstruction: system,
+      });
+
+      const geminiMessages = messages.map((m) => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content }],
+      }));
+
+      const result = await model.generateContentStream({ contents: geminiMessages });
+
+      const readable = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          try {
+            for await (const chunk of result.stream) {
+              const text = chunk.text();
+              if (text) controller.enqueue(new TextEncoder().encode(text));
+            }
+          } finally {
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(readable, {
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
+    } catch (geminiErr) {
+      console.error("[/api/chat/preview] Gemini fallback failed:", geminiErr);
+      return NextResponse.json({ error: "AI service error" }, { status: 502 });
+    }
+  }
 }

@@ -1,8 +1,19 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase-server";
 import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+let _anthropic: Anthropic | null = null;
+function getAnthropic() {
+  if (!_anthropic) _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return _anthropic;
+}
+
+let _gemini: GoogleGenerativeAI | null = null;
+function getGemini() {
+  if (!_gemini) _gemini = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY!);
+  return _gemini;
+}
 
 const MONTH_START = new Date(
   new Date().getFullYear(),
@@ -118,23 +129,31 @@ export async function GET() {
   if (goals.length === 0) insights.push("No active goals — setting one goal today has been shown to improve financial outcomes.");
   if (goalScore >= 70) insights.push("Goal progress is strong — you're ahead of your targets.");
 
-  // ── Buddy-voice take from Claude ──────────────────────
+  // ── Buddy-voice take ──────────────────────
   let buddyTake = "";
+  const commentaryPrompt = `Financial health score: ${score}/100. Savings rate: ${Math.round(savingsRate * 100)}%. Key insight: ${insights[0] ?? "steady progress"}. Write 1–2 sentences of actionable commentary in the voice of a direct, no-nonsense finance advisor. Use ₦ for currency. No fluff.`;
   try {
-    const resp = await anthropic.messages.create({
-      model: "claude-3-5-haiku-latest",
-      max_tokens: 120,
-      messages: [
-        {
-          role: "user",
-          content: `Financial health score: ${score}/100. Savings rate: ${Math.round(savingsRate * 100)}%. Key insight: ${insights[0] ?? "steady progress"}. Write 1–2 sentences of actionable commentary in the voice of a direct, no-nonsense finance advisor. Use ₦ for currency. No fluff.`,
-        },
-      ],
-    });
-    buddyTake =
-      resp.content[0].type === "text" ? resp.content[0].text : "";
-  } catch {
-    // Non-critical — skip if AI call fails
+    try {
+      const resp = await getAnthropic().messages.create({
+        model: "claude-3-5-haiku-latest",
+        max_tokens: 120,
+        messages: [
+          {
+            role: "user",
+            content: commentaryPrompt,
+          },
+        ],
+      });
+      buddyTake = resp.content[0].type === "text" ? resp.content[0].text : "";
+    } catch (anthropicErr) {
+      console.warn("[health-score] Anthropic failed, trying Gemini fallback:", anthropicErr);
+      const model = getGemini().getGenerativeModel({ model: "gemini-2.5-flash" });
+      const result = await model.generateContent(commentaryPrompt);
+      const response = await result.response;
+      buddyTake = response.text();
+    }
+  } catch (err) {
+    console.error("[health-score] AI commentary failed:", err);
   }
 
   return NextResponse.json({

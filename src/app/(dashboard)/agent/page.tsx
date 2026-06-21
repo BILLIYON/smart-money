@@ -2,31 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
-// ── Types ─────────────────────────────────────────────────
-type PendingAction = {
-  id: string;
-  buddyEmoji: string;
-  buddyBg: string;
-  buddyName: string;
-  title: string;
-  reasoning: string;
-  from: string;
-  to: string;
-  amount: string;
-  fee: string;
-  benefit: string;
-  requestedAt: string;
-};
-
-type HistoryRow = {
-  id: string;
-  status: "done" | "declined";
-  title: string;
-  buddy: string;
-  date: string;
-  outcome: string;
-};
+import { useAgentStore, type AgentAction } from "@/store/agentStore";
+import toast from "react-hot-toast";
 
 type Connection = {
   id: string;
@@ -152,23 +129,38 @@ function CardHeader({
 }
 
 // ── Fund Wallet Modal ──────────────────────────────────────
-function FundWalletModal({ onClose, onFund }: { onClose: () => void; onFund: (amt: number) => void }) {
+function FundWalletModal({ onClose, onFund }: { onClose: () => void; onFund: (amtKobo: number) => void }) {
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
   const presets = [5000, 10000, 25000, 50000];
 
   async function submit() {
     const n = parseFloat(amount);
-    if (!n || n <= 0) return;
+    if (!n || n <= 0) {
+      toast.error("Please enter a valid amount");
+      return;
+    }
     setLoading(true);
-    await fetch("/api/agent/fund", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount: n }),
-    });
-    setLoading(false);
-    onFund(n);
-    onClose();
+    const amtKobo = Math.round(n * 100);
+    try {
+      const res = await fetch("/api/agent/fund", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: amtKobo }),
+      });
+      setLoading(false);
+      if (res.ok) {
+        onFund(amtKobo);
+        toast.success(`Successfully deposited ₦${n.toLocaleString()}`);
+        onClose();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "Failed to fund wallet");
+      }
+    } catch (e) {
+      setLoading(false);
+      toast.error("Network error funding wallet");
+    }
   }
 
   return (
@@ -204,12 +196,12 @@ function FundWalletModal({ onClose, onFund }: { onClose: () => void; onFund: (am
                 borderColor: amount === String(p) ? "var(--green)" : "var(--border)",
               }}
             >
-              ₦{p / 1000}k
+              ₦{(p).toLocaleString()}
             </button>
           ))}
         </div>
         <div className="text-[11px] px-3 py-2 rounded-[8px] mb-4" style={{ background: "rgba(0,196,140,.06)", color: "var(--muted)", border: "1px solid rgba(0,196,140,.15)" }}>
-          🔒 Transfer from GTBank (••••4521) via Open Banking. Instant.
+          🔒 Transfer from connected bank via Open Banking. Instant.
         </div>
         <div className="flex gap-2">
           <GhostBtn onClick={onClose}>Cancel</GhostBtn>
@@ -224,9 +216,46 @@ function FundWalletModal({ onClose, onFund }: { onClose: () => void; onFund: (am
 
 // ── Agent Limits Modal ────────────────────────────────────
 function AgentLimitsModal({ onClose }: { onClose: () => void }) {
-  const [perAction, setPerAction] = useState("50000");
-  const [daily, setDaily] = useState("150000");
-  const [monthly, setMonthly] = useState("500000");
+  const limits = useAgentStore((s) => s.limits);
+  const saveLimits = useAgentStore((s) => s.saveLimits);
+
+  const [perAction, setPerAction] = useState("");
+  const [daily, setDaily] = useState("");
+  const [monthly, setMonthly] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (limits) {
+      setPerAction(String(Math.round(limits.perAction / 100)));
+      setDaily(String(Math.round(limits.daily / 100)));
+      setMonthly(String(Math.round(limits.monthly / 100)));
+    } else {
+      setPerAction("50000");
+      setDaily("150000");
+      setMonthly("500000");
+    }
+  }, [limits]);
+
+  async function handleSave() {
+    const pa = Math.round(parseFloat(perAction) * 100);
+    const da = Math.round(parseFloat(daily) * 100);
+    const ma = Math.round(parseFloat(monthly) * 100);
+
+    if (isNaN(pa) || isNaN(da) || isNaN(ma) || pa < 0 || da < 0 || ma < 0) {
+      toast.error("Please enter valid positive numbers for all limits");
+      return;
+    }
+
+    setSaving(true);
+    const success = await saveLimits({ perAction: pa, daily: da, monthly: ma });
+    setSaving(false);
+    if (success) {
+      toast.success("Agent limits saved successfully");
+      onClose();
+    } else {
+      toast.error("Failed to save agent limits");
+    }
+  }
 
   return (
     <div
@@ -261,7 +290,7 @@ function AgentLimitsModal({ onClose }: { onClose: () => void }) {
         ))}
         <div className="flex gap-2 mt-1">
           <GhostBtn onClick={onClose}>Cancel</GhostBtn>
-          <PrimaryBtn onClick={onClose} flex1>Save Limits</PrimaryBtn>
+          <PrimaryBtn onClick={handleSave} flex1 loading={saving}>Save Limits</PrimaryBtn>
         </div>
       </div>
     </div>
@@ -271,46 +300,74 @@ function AgentLimitsModal({ onClose }: { onClose: () => void }) {
 // ── Main page ─────────────────────────────────────────────
 export default function AgentPage() {
   const router = useRouter();
-  const [pending, setPending] = useState<PendingAction[]>([]);
-  const [history, setHistory] = useState<HistoryRow[]>([]);
+
+  const pending = useAgentStore((s) => s.pendingActions);
+  const history = useAgentStore((s) => s.history);
+  const walletBalance = useAgentStore((s) => s.walletBalance);
+  const limits = useAgentStore((s) => s.limits);
+  const isLoading = useAgentStore((s) => s.isLoading);
+
+  const loadPending = useAgentStore((s) => s.loadPending);
+  const loadHistory = useAgentStore((s) => s.loadHistory);
+  const fetchWalletBalance = useAgentStore((s) => s.fetchWalletBalance);
+  const fetchLimits = useAgentStore((s) => s.fetchLimits);
+  const executeAction = useAgentStore((s) => s.executeAction);
+  const declineAction = useAgentStore((s) => s.declineAction);
+
   const [connections, setConnections] = useState<Connection[]>([]);
-  const [loadingPending, setLoadingPending] = useState(true);
   const [loadingConnections, setLoadingConnections] = useState(true);
-  const [approvedIds, setApprovedIds] = useState<Set<string>>(new Set());
-  const [declinedIds, setDeclinedIds] = useState<Set<string>>(new Set());
   const [executingId, setExecutingId] = useState<string | null>(null);
-  const [walletBalance, setWalletBalance] = useState(85000);
   const [showFundModal, setShowFundModal] = useState(false);
   const [showLimitsModal, setShowLimitsModal] = useState(false);
 
   useEffect(() => {
-    fetch("/api/agent/pending").then((r) => r.json()).then((d) => { setPending(d); setLoadingPending(false); });
-    fetch("/api/agent/history").then((r) => r.json()).then(setHistory);
-    fetch("/api/agent/connections").then((r) => r.json()).then((d) => { setConnections(d); setLoadingConnections(false); });
-  }, []);
+    loadPending();
+    loadHistory();
+    fetchWalletBalance();
+    fetchLimits();
+    fetch("/api/agent/connections")
+      .then((r) => r.json())
+      .then((d) => {
+        setConnections(d);
+        setLoadingConnections(false);
+      });
+  }, [loadPending, loadHistory, fetchWalletBalance, fetchLimits]);
 
-  async function handleApprove(action: PendingAction) {
+  async function handleApprove(action: AgentAction) {
+    const displayAmount = action.amount ? `₦${(Number(action.amount) / 100).toLocaleString()}` : "N/A";
     const confirmed = window.confirm(
-      `Approve and execute:\n"${action.title}"\n\nAmount: ${action.amount}  ·  Fee: ${action.fee}\n\nThis action cannot be undone.`
+      `Approve and execute:\n"${action.description}"\n\nAmount: ${displayAmount}\n\nThis action cannot be undone.`
     );
     if (!confirmed) return;
 
     setExecutingId(action.id);
-    await fetch("/api/agent/execute", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ actionId: action.id, title: action.title, amount: action.amount }),
-    });
-    setExecutingId(null);
-    setApprovedIds((s) => new Set([...s, action.id]));
-    // Prepend to history optimistically
-    setHistory((prev) => [
-      { id: action.id, status: "done", title: action.title, buddy: action.buddyName, date: "Today", outcome: action.benefit },
-      ...prev,
-    ]);
+    try {
+      await executeAction(action.id);
+      toast.success("Action executed successfully!");
+      loadHistory();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to execute action");
+    } finally {
+      setExecutingId(null);
+    }
   }
 
-  const activePending = pending.filter((p) => !declinedIds.has(p.id));
+  async function handleDecline(actionId: string) {
+    try {
+      await declineAction(actionId);
+      toast.success("Action declined.");
+      loadHistory();
+    } catch (e) {
+      toast.error("Failed to decline action");
+    }
+  }
+
+  // Calculate dynamic stats
+  const executedThisMonthKobo = history
+    .filter((h) => h.status === "done")
+    .reduce((sum, h) => sum + Number((h as any).amount || 0), 0);
+  const executedThisMonthText = `₦${(executedThisMonthKobo / 100).toLocaleString()}`;
+  const executedActionsCount = history.filter((h) => h.status === "done").length;
 
   return (
     <div className="flex-1 overflow-y-auto" style={{ background: "var(--bg)" }}>
@@ -394,15 +451,17 @@ export default function AgentPage() {
               <div className="rounded-[12px] p-4" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
                 <div className="text-[11px] font-semibold uppercase tracking-[.5px] mb-2" style={{ color: "var(--muted)" }}>Wallet Balance</div>
                 <div className="text-[22px] font-semibold mb-1" style={{ color: "var(--green2)", fontFamily: "var(--font-dm-serif)" }}>
-                  ₦{walletBalance.toLocaleString()}
+                  ₦{(walletBalance / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
                 <div className="text-[11px]" style={{ color: "var(--green2)" }}>Available for agent actions</div>
               </div>
 
               <div className="rounded-[12px] p-4" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
                 <div className="text-[11px] font-semibold uppercase tracking-[.5px] mb-2" style={{ color: "var(--muted)" }}>Executed This Month</div>
-                <div className="text-[22px] font-semibold mb-1" style={{ color: "var(--text)", fontFamily: "var(--font-dm-serif)" }}>₦215,000</div>
-                <div className="text-[11px]" style={{ color: "var(--muted)" }}>4 actions · all approved</div>
+                <div className="text-[22px] font-semibold mb-1" style={{ color: "var(--text)", fontFamily: "var(--font-dm-serif)" }}>
+                  {executedThisMonthText}
+                </div>
+                <div className="text-[11px]" style={{ color: "var(--muted)" }}>{executedActionsCount} actions · all approved</div>
               </div>
 
               <div
@@ -413,7 +472,9 @@ export default function AgentPage() {
                 onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border)"; }}
               >
                 <div className="text-[11px] font-semibold uppercase tracking-[.5px] mb-2" style={{ color: "var(--muted)" }}>Per-Action Limit</div>
-                <div className="text-[22px] font-semibold mb-1" style={{ color: "var(--text)", fontFamily: "var(--font-dm-serif)" }}>₦50,000</div>
+                <div className="text-[22px] font-semibold mb-1" style={{ color: "var(--text)", fontFamily: "var(--font-dm-serif)" }}>
+                  ₦{limits ? (limits.perAction / 100).toLocaleString() : "50,000"}
+                </div>
                 <div className="text-[11px]" style={{ color: "var(--muted)" }}>Tap to adjust ⚙</div>
               </div>
             </div>
@@ -434,15 +495,15 @@ export default function AgentPage() {
                 </svg>
               }
               title="Pending Your Approval"
-              badge={activePending.length > 0 ? `${activePending.length} waiting` : "All clear"}
+              badge={pending.length > 0 ? `${pending.length} waiting` : "All clear"}
               badgeStyle={
-                activePending.length > 0
+                pending.length > 0
                   ? { background: "rgba(245,166,35,.12)", color: "#C47F00", border: "1px solid rgba(245,166,35,.3)" }
                   : { background: "rgba(0,196,140,.1)", color: "var(--green2)", border: "1px solid rgba(0,196,140,.2)" }
               }
             />
 
-            {loadingPending ? (
+            {isLoading ? (
               <div className="flex flex-col gap-3">
                 {[0, 1].map((i) => (
                   <div key={i} className="rounded-[12px] p-4 animate-pulse" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
@@ -459,7 +520,7 @@ export default function AgentPage() {
                   </div>
                 ))}
               </div>
-            ) : activePending.length === 0 ? (
+            ) : pending.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <div className="text-[40px] mb-3">⚡</div>
                 <div className="text-[13px] font-semibold mb-2" style={{ color: "var(--text)" }}>No pending actions</div>
@@ -469,35 +530,47 @@ export default function AgentPage() {
               </div>
             ) : (
               <div className="flex flex-col gap-3">
-                {activePending.map((action) => {
-                  const approved = approvedIds.has(action.id);
+                {pending.map((action) => {
                   const executing = executingId === action.id;
+                  const displayAmount = action.amount ? `₦${(Number(action.amount) / 100).toLocaleString()}` : "Free";
+                  
+                  // Compute fallbacks for reasoning/benefit/accounts
+                  const fallbackReasoning = action.action_type.includes("investment") 
+                    ? "Based on high inflation in Nigeria, it is wise to allocate idle cash into high-yield mutual funds."
+                    : action.action_type.includes("cancellation")
+                    ? "You are paying for a service you haven't used this month. Cancelling it saves recurring fees."
+                    : "Optimises monthly cash flow and helps meet savings goals.";
+                    
+                  const displayReasoning = fallbackReasoning;
+                  const displayBenefit = action.action_type.includes("investment")
+                    ? "Yields ~15% annually"
+                    : action.action_type.includes("cancellation")
+                    ? "Saves recurring fees monthly"
+                    : "Boosts financial health";
+
+                  const fromAccount = action.from_account || "Smart Money Wallet";
+                  const toAccount = action.to_account || (action.action_type.includes("investment") ? "Mutual Fund" : "Service Provider");
+
                   return (
                     <div
                       key={action.id}
-                      className="rounded-[12px] p-4 transition-all duration-300"
-                      style={{
-                        background: "var(--bg)",
-                        border: approved
-                          ? "1px solid rgba(0,196,140,.35)"
-                          : "1px solid rgba(245,166,35,.25)",
-                        opacity: approved ? 0.55 : 1,
-                      }}
+                      className="rounded-[12px] p-4 transition-all duration-300 border rgba(245,166,35,0.25)"
+                      style={{ background: "var(--bg)", border: "1px solid var(--border)" }}
                     >
                       {/* Buddy row */}
                       <div className="flex items-start gap-3 mb-3">
                         <div
                           className="flex items-center justify-center rounded-[9px] text-[16px] flex-shrink-0"
-                          style={{ width: 34, height: 34, background: action.buddyBg }}
+                          style={{ width: 34, height: 34, background: action.buddyBg || "var(--border)" }}
                         >
-                          {action.buddyEmoji}
+                          {action.buddyEmoji || "⚡"}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-[12px] font-semibold mb-1" style={{ color: "var(--text)" }}>
-                            {action.title}
+                            {action.description}
                           </div>
                           <div className="text-[11px]" style={{ color: "var(--muted)", lineHeight: 1.5 }}>
-                            Suggested by {action.buddyName}. &ldquo;{action.reasoning}&rdquo;
+                            Suggested by {action.buddyName || "Buddy"}. &ldquo;{displayReasoning}&rdquo;
                           </div>
                         </div>
                       </div>
@@ -505,10 +578,10 @@ export default function AgentPage() {
                       {/* Detail row */}
                       <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
                         <div className="text-[10px]" style={{ color: "var(--muted)" }}>
-                          From: {action.from} · To: {action.to} · Fee: {action.fee}
+                          From: {fromAccount} · To: {toAccount} · Amount: {displayAmount}
                         </div>
                         <div className="text-[10px] font-semibold" style={{ color: "var(--gold)" }}>
-                          Requested {action.requestedAt}
+                          Requested {new Date(action.created_at).toLocaleDateString()}
                         </div>
                       </div>
 
@@ -517,32 +590,26 @@ export default function AgentPage() {
                         className="inline-flex items-center gap-1 px-[8px] py-[3px] rounded-full text-[10px] font-semibold mb-3"
                         style={{ background: "rgba(0,196,140,.1)", color: "var(--green2)", border: "1px solid rgba(0,196,140,.2)" }}
                       >
-                        ✦ {action.benefit}
+                        ✦ {displayBenefit}
                       </div>
 
-                      {/* Action buttons / success */}
-                      {approved ? (
-                        <div className="flex items-center gap-2 text-[12px] font-semibold" style={{ color: "var(--green2)" }}>
-                          ✅ Executed successfully
-                        </div>
-                      ) : (
-                        <div className="flex gap-2">
-                          <PrimaryBtn
-                            onClick={() => handleApprove(action)}
-                            flex1
-                            loading={executing}
-                          >
-                            ✓ Approve &amp; Execute
-                          </PrimaryBtn>
-                          <GhostBtn
-                            small
-                            onClick={() => setDeclinedIds((s) => new Set([...s, action.id]))}
-                          >
-                            Decline
-                          </GhostBtn>
-                          <GhostBtn small onClick={() => router.push("/chat")}>Discuss →</GhostBtn>
-                        </div>
-                      )}
+                      {/* Action buttons */}
+                      <div className="flex gap-2">
+                        <PrimaryBtn
+                          onClick={() => handleApprove(action)}
+                          flex1
+                          loading={executing}
+                        >
+                          ✓ Approve &amp; Execute
+                        </PrimaryBtn>
+                        <GhostBtn
+                          small
+                          onClick={() => handleDecline(action.id)}
+                        >
+                          Decline
+                        </GhostBtn>
+                        <GhostBtn small onClick={() => router.push("/chat")}>Discuss →</GhostBtn>
+                      </div>
                     </div>
                   );
                 })}
@@ -703,7 +770,9 @@ export default function AgentPage() {
       {showFundModal && (
         <FundWalletModal
           onClose={() => setShowFundModal(false)}
-          onFund={(amt) => setWalletBalance((b) => b + amt)}
+          onFund={async () => {
+            await fetchWalletBalance();
+          }}
         />
       )}
       {showLimitsModal && <AgentLimitsModal onClose={() => setShowLimitsModal(false)} />}
