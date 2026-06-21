@@ -183,6 +183,11 @@ export function AnalyticsDashboard() {
     context.recentTransactions.length > 0
   ));
 
+  const latestDate = context?.recentTransactions && context.recentTransactions.length > 0 
+    ? new Date(context.recentTransactions[0].date)
+    : new Date();
+  const monthYearStr = latestDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
   const visibleCount = timeframe === "1M" ? 1 : timeframe === "3M" ? 3 : timeframe === "6M" ? 6 : 12;
 
   // Resolved arrays
@@ -230,6 +235,15 @@ export function AnalyticsDashboard() {
     { name: "NGX Equities — GTCO", type: "Nigerian Stock Exchange", invested: "₦50,000", value: "₦85,000", returnN: "+₦35,000", returnPct: "+70%", yieldPa: "—", trend: "up" as const },
   ];
   
+  let budgetMetrics = [
+    { label: "50/30/20 Rule", pct: 80, color: "var(--green)" },
+    { label: "Debt-to-Income", pct: 21, color: "#F5A623" },
+    { label: "Emergency Fund", pct: 53, color: "#4A90D9" },
+    { label: "Investment Rate", pct: 38, color: "#9B59B6" },
+  ];
+
+  let healthScoreDescription = "You saved ₦275,000 this month — more than most Nigerians earn. But your food spending rose 12% and you're paying ₦22,800/year in unnecessary credit card interest. Two things to fix.";
+
   let transactions = [
     { icon: "🍔", bg: "#FEF9E7", name: "Chicken Republic", cat: "Food & Dining", date: "Mar 20", amt: "-₦4,800", type: "debit" as const },
     { icon: "💰", bg: "#E8F5E9", name: "March Salary", cat: "Income · GTBank", date: "Mar 19", amt: "+₦450,000", type: "credit" as const },
@@ -327,27 +341,61 @@ export function AnalyticsDashboard() {
     const savedKobo = context.savingsBalance;
     const debtKobo = context.netWorth < 0 ? Math.abs(context.netWorth) : 0;
     
-    portfolioData = [{
-      name: "Cash Savings",
-      value: Math.round(savedKobo / 100000),
-      pct: 100,
-      color: "var(--green)"
-    }];
+    portfolioData = context.assetsList.map((a, idx) => {
+      const colors = ["var(--green)", "#4A90D9", "#F5A623", "#9B59B6", "#E24B4A", "var(--gold)"];
+      return {
+        name: a.name,
+        value: a.value,
+        pct: a.pct,
+        color: colors[idx % colors.length]
+      };
+    });
     
     portfolioGrowth = rawChartData.map(d => ({ month: d.month, value: d.networth }));
     
-    holdingsData = [
-      {
-        name: "Cash Savings (DataBank)",
-        type: "Cash & Liquid MMF",
-        invested: `₦${Math.round(savedKobo / 100).toLocaleString()}`,
-        value: `₦${Math.round(savedKobo / 100).toLocaleString()}`,
-        returnN: "+₦0",
-        returnPct: "—",
-        yieldPa: "—",
-        trend: "flat" as const
-      }
+    holdingsData = context.assetsList.map((a) => ({
+      name: a.name,
+      type: a.name.toLowerCase().includes("cash") ? "Cash & Liquid MMF" : "Investment / Physical Asset",
+      invested: `₦${a.value.toLocaleString()}`,
+      value: `₦${a.value.toLocaleString()}`,
+      returnN: "+₦0",
+      returnPct: "—",
+      yieldPa: "—",
+      trend: "flat" as const
+    }));
+
+    const sr = context.monthlySummary.savingsRate;
+    const ti = context.monthlySummary.totalIncome;
+    const te = context.monthlySummary.totalExpenses;
+    const sb = context.savingsBalance;
+    const totalDebtNaira = context.liabilitiesList.reduce((sum, l) => sum + l.value, 0);
+    const incomeNaira = ti / 100;
+    const expenseNaira = te / 100;
+    const savingsNaira = sb / 100;
+
+    const savingsRulePct = clamp(Math.round((sr / 0.2) * 100), 0, 100);
+    const dtiPct = incomeNaira > 0 ? clamp(Math.round((totalDebtNaira / incomeNaira) * 100), 0, 100) : 0;
+    
+    const efMonths = expenseNaira > 0 ? (savingsNaira / expenseNaira) : 6;
+    const efPct = clamp(Math.round((efMonths / 6) * 100), 0, 100);
+    
+    const nonCashAssetsNaira = context.assetsList
+      .filter(a => !a.name.toLowerCase().includes("cash") && !a.name.toLowerCase().includes("savings"))
+      .reduce((sum, a) => sum + a.value, 0);
+    const investRatePct = savingsNaira > 0 ? clamp(Math.round((nonCashAssetsNaira / savingsNaira) * 100), 0, 100) : 0;
+
+    budgetMetrics = [
+      { label: "50/30/20 Rule", pct: savingsRulePct, color: "var(--green)" },
+      { label: "Debt-to-Income", pct: dtiPct, color: dtiPct > 35 ? "#E24B4A" : "#F5A623" },
+      { label: "Emergency Fund", pct: efPct, color: "#4A90D9" },
+      { label: "Investment Rate", pct: investRatePct, color: "#9B59B6" },
     ];
+
+    const largestSpendText = context.monthlySummary.largestDebit 
+      ? `your largest single expense was ₦${Math.round(Math.abs(context.monthlySummary.largestDebit.amount) / 100).toLocaleString()} for "${context.monthlySummary.largestDebit.description}"`
+      : "we don't see any large single expenses yet";
+      
+    healthScoreDescription = `Your savings rate is at ${Math.round(context.monthlySummary.savingsRate * 100)}% this month. Based on your parsed DataBank, ${largestSpendText}. Start a chat below with your buddy to get personalized recommendations.`;
     if (debtKobo > 0) {
       holdingsData.push({
         name: "Outstanding Liabilities",
@@ -560,15 +608,12 @@ export function AnalyticsDashboard() {
         <div className="rounded-[16px] p-6" style={{ background: "linear-gradient(135deg,var(--navy2),var(--navy))", color: "#fff" }}>
           <div className="flex items-start justify-between flex-wrap gap-4 mb-5">
             <div className="flex-1 min-w-[240px]">
-              <div className="text-[11px] font-semibold uppercase tracking-[.5px] mb-2" style={{ color: "rgba(255,255,255,.5)" }}>Financial Health · March 2026</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[.5px] mb-2" style={{ color: "rgba(255,255,255,.5)" }}>Financial Health · {monthYearStr}</div>
               <div className="text-[20px] font-semibold mb-2" style={{ fontFamily: "var(--font-dm-serif)", lineHeight: 1.3, whiteSpace: "pre-line" }}>
                 {healthScoreHeadline}
               </div>
               <div className="text-[12px] leading-relaxed" style={{ color: "rgba(255,255,255,.7)" }}>
-                {hasRealData 
-                  ? "Your financial indicators are parsed from your DataBank. Start a chat below with your buddy to get personalized recommendations."
-                  : "You saved ₦275,000 this month — more than most Nigerians earn. But your food spending rose 12% and you're paying ₦22,800/year in unnecessary credit card interest. Two things to fix."
-                }
+                {healthScoreDescription}
               </div>
             </div>
             <div className="flex flex-col items-center gap-1 flex-shrink-0">
@@ -853,12 +898,7 @@ export function AnalyticsDashboard() {
               </div>
 
               {/* Budget bars */}
-              {[
-                { label: "50/30/20 Rule", pct: 80, color: "var(--green)" },
-                { label: "Debt-to-Income", pct: 21, color: "#F5A623" },
-                { label: "Emergency Fund", pct: 53, color: "#4A90D9" },
-                { label: "Investment Rate", pct: 38, color: "#9B59B6" },
-              ].map((row, i) => {
+              {budgetMetrics.map((row, i) => {
                 const fg = row.color.startsWith("var(") ? (row.color === "var(--green)" ? "#00C48C" : row.color) : row.color;
                 return (
                   <div key={row.label} className="flex items-center gap-3">
@@ -962,8 +1002,8 @@ export function AnalyticsDashboard() {
             </select>
           </div>
           <div className="flex flex-col">
-            {visibleTxns.map((txn) => (
-              <div key={txn.name + txn.date} className="flex items-center gap-3 py-3" style={{ borderBottom: "1px solid var(--border)", borderBottomStyle: "solid", borderBottomWidth: 1, borderBottomColor: "var(--border)" }}>
+            {visibleTxns.map((txn, index) => (
+              <div key={`${txn.name}-${txn.date}-${txn.amt}-${index}`} className="flex items-center gap-3 py-3" style={{ borderBottom: "1px solid var(--border)", borderBottomStyle: "solid", borderBottomWidth: 1, borderBottomColor: "var(--border)" }}>
                 <div className="flex items-center justify-center rounded-[8px] text-[14px] flex-shrink-0" style={{ width: 36, height: 36, background: txn.bg }}>{txn.icon}</div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[13px] font-medium" style={{ color: "var(--text)" }}>{txn.name}</div>

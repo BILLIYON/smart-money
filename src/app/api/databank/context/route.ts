@@ -171,12 +171,19 @@ export async function GET() {
   const savingsBalance = Math.max(0, netSavingsAllTime) + totalAssets;
 
   const rawAssets = entries.filter((e) => e.entry_type === "asset");
+  const cashSavingsVal = Math.max(0, netSavingsAllTime);
   let assetsList = rawAssets.map((e) => ({
     name: e.description,
     value: Math.round(e.amount / 100),
     pct: Math.round((e.amount / Math.max(1, savingsBalance)) * 100),
   }));
-  if (assetsList.length === 0 && savingsBalance > 0) {
+  if (cashSavingsVal > 0) {
+    assetsList.unshift({
+      name: "Cash Savings",
+      value: Math.round(cashSavingsVal / 100),
+      pct: Math.round((cashSavingsVal / Math.max(1, savingsBalance)) * 100),
+    });
+  } else if (assetsList.length === 0 && savingsBalance > 0) {
     assetsList = [{
       name: "Cash Savings",
       value: Math.round(savingsBalance / 100),

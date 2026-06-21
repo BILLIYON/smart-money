@@ -12,7 +12,7 @@ export type AgentAction = {
   currency: string;
   from_account: string | null;
   to_account: string | null;
-  status: "pending" | "approved" | "executed" | "declined";
+  status: "pending" | "approved" | "executed" | "declined" | "done";
   reference: string | null;
   approved_at: string | null;
   executed_at: string | null;
@@ -21,6 +21,12 @@ export type AgentAction = {
   buddyName?: string;
   buddyEmoji?: string;
   buddyBg?: string;
+  
+  // History UI-only fields
+  title?: string;
+  buddy?: string;
+  date?: string;
+  outcome?: string;
 };
 
 export type BankConnection = {
