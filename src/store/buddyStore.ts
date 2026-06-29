@@ -6,9 +6,11 @@ type BuddyStore = {
   activeBuddy: Buddy | null;
   subscribedBuddies: Buddy[];
   allBuddies: Buddy[];
+  searchQuery: string;
 
   // ── Actions ────────────────────────────────────────────
   setActiveBuddy: (buddy: Buddy | string | null) => void;
+  setSearchQuery: (query: string) => void;
 
   /**
    * Fetches the user's active subscriptions from /api/subscriptions
@@ -21,6 +23,7 @@ export const useBuddyStore = create<BuddyStore>((set) => ({
   activeBuddy: getBuddy("contrarian") ?? null,
   subscribedBuddies: [],
   allBuddies: ALL_BUDDIES,
+  searchQuery: "",
 
   setActiveBuddy: (buddy) => {
     if (buddy === null) {
@@ -30,6 +33,10 @@ export const useBuddyStore = create<BuddyStore>((set) => ({
     const resolved =
       typeof buddy === "string" ? (getBuddy(buddy) ?? null) : buddy;
     set({ activeBuddy: resolved });
+  },
+
+  setSearchQuery: (query) => {
+    set({ searchQuery: query });
   },
 
   loadSubscribedBuddies: async () => {

@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { CelebrityHero } from "@/components/buddy/CelebrityHero";
 import { BuddyCard, CelebrityCard, CreateYourOwnCard } from "@/components/buddy/BuddyCard";
+import { useBuddyStore } from "@/store/buddyStore";
 import { ARCHETYPE_BUDDIES, CELEBRITY_BUDDIES, type Buddy, type BuddyCategory } from "@/lib/buddies";
 import type { CommunityBuddyRow } from "@/lib/db";
 import Link from "next/link";
@@ -62,6 +63,7 @@ export default function MarketplacePage() {
   const [activeFilter, setActiveFilter] = useState<string>("All");
   const [communityBuddies, setCommunityBuddies] = useState<Buddy[]>([]);
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  const searchQuery = useBuddyStore((s) => s.searchQuery);
 
   useEffect(() => {
     Promise.all([
@@ -80,24 +82,64 @@ export default function MarketplacePage() {
 
   // In "All" mode, show archetypes + celebs merged. Otherwise filter separately.
   const filteredArchetypes = useMemo(() => {
-    if (activeFilter === "All") return visibleArchetypes;
-    if (activeFilter === "Free Only") return visibleArchetypes.filter((b) => b.badgeType === "free");
-    if (activeFilter === "Celebrity Sim") return [];
-    return visibleArchetypes.filter((b) => b.categories.includes(activeFilter as BuddyCategory));
-  }, [activeFilter, visibleArchetypes]);
+    let list = visibleArchetypes;
+    if (activeFilter === "Free Only") {
+      list = list.filter((b) => b.badgeType === "free");
+    } else if (activeFilter !== "All") {
+      list = list.filter((b) => b.categories.includes(activeFilter as BuddyCategory));
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter(
+        (b) =>
+          b.name.toLowerCase().includes(q) ||
+          b.tag.toLowerCase().includes(q) ||
+          b.desc.toLowerCase().includes(q) ||
+          b.categories.some((cat) => cat.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [activeFilter, visibleArchetypes, searchQuery]);
 
   const filteredCelebs = useMemo(() => {
     if (activeFilter === "Free Only") return [];
-    if (activeFilter === "All" || activeFilter === "Celebrity Sim") return visibleCelebs;
-    return visibleCelebs.filter((b) => b.categories.includes(activeFilter as BuddyCategory));
-  }, [activeFilter, visibleCelebs]);
+    let list = visibleCelebs;
+    if (activeFilter !== "All" && activeFilter !== "Celebrity Sim") {
+      list = list.filter((b) => b.categories.includes(activeFilter as BuddyCategory));
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter(
+        (b) =>
+          b.name.toLowerCase().includes(q) ||
+          b.tag.toLowerCase().includes(q) ||
+          b.desc.toLowerCase().includes(q) ||
+          b.categories.some((cat) => cat.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [activeFilter, visibleCelebs, searchQuery]);
 
   const filteredCommunity = useMemo(() => {
     if (activeFilter === "Celebrity Sim") return [];
-    if (activeFilter === "All") return communityBuddies;
-    if (activeFilter === "Free Only") return communityBuddies.filter((b) => b.badgeType === "free");
-    return communityBuddies.filter((b) => b.categories.includes(activeFilter as BuddyCategory));
-  }, [activeFilter, communityBuddies]);
+    let list = communityBuddies;
+    if (activeFilter === "Free Only") {
+      list = list.filter((b) => b.badgeType === "free");
+    } else if (activeFilter !== "All") {
+      list = list.filter((b) => b.categories.includes(activeFilter as BuddyCategory));
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter(
+        (b) =>
+          b.name.toLowerCase().includes(q) ||
+          b.tag.toLowerCase().includes(q) ||
+          b.desc.toLowerCase().includes(q) ||
+          b.categories.some((cat) => cat.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [activeFilter, communityBuddies, searchQuery]);
 
   // Merged "All" grid: archetypes first, then celebs
   const showMergedAll = activeFilter === "All";

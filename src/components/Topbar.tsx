@@ -2,9 +2,11 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { Search, Bell, Swords } from "lucide-react";
 import { useNotificationStore, type Notification, type NotificationType } from "@/store/notificationStore";
 import { useCompareStore } from "@/store/compareStore";
+import { useBuddyStore } from "@/store/buddyStore";
 import { getBuddy } from "@/lib/buddies";
 import { createClient } from "@/lib/supabase/client";
 
@@ -45,9 +47,19 @@ function toBuddyLabel(n: Notification): string {
 // ── Component ──────────────────────────────────────────────
 export function Topbar() {
   const [notifOpen, setNotifOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const searchQuery = useBuddyStore((s) => s.searchQuery);
+  const setSearchQuery = useBuddyStore((s) => s.setSearchQuery);
+  const router = useRouter();
+  const pathname = usePathname();
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
   const notifRef = useRef<HTMLDivElement>(null);
+
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    if (val && pathname !== "/") {
+      router.push("/");
+    }
+  };
 
   useEffect(() => {
     const supabase = createClient();
@@ -113,7 +125,7 @@ export function Topbar() {
           type="text"
           placeholder="Search buddies, topics..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => handleSearchChange(e.target.value)}
           className="bg-transparent border-none outline-none text-[13px] w-full"
           style={{ color: "var(--text)", fontFamily: "var(--font-sora)" }}
         />
