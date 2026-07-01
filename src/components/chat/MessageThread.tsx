@@ -127,22 +127,26 @@ function MessageActions({ msg, threadKey, isGroup }: { msg: ChatMessage; threadK
     }
   }
 
+  const actions = [
+    { label: savedFeedback ? "✓ Saved!" : "💾 Save", onClick: handleSave, show: msg.content.trim() !== "" },
+    {
+      label: "🎯 Set as Goal",
+      onClick: () => patch({ goalCardOpen: !msg.goalCardOpen }),
+      show: !!msg.goalCardData,
+    },
+    {
+      label: "⚡ Execute This",
+      onClick: () => patch({ agentCardOpen: !msg.agentCardOpen }),
+      show: !!msg.agentCardData,
+    },
+    { label: "📤 Share", onClick: handleShare, show: msg.content.trim() !== "" },
+  ].filter((a) => a.show);
+
+  if (actions.length === 0) return null;
+
   return (
     <div className="flex gap-[6px] mt-[7px] flex-wrap">
-      {[
-        { label: savedFeedback ? "✓ Saved!" : "💾 Save", onClick: handleSave },
-        {
-          label: "🎯 Set as Goal",
-          onClick: () => { if (msg.goalCardData) patch({ goalCardOpen: !msg.goalCardOpen }); },
-          active: !!msg.goalCardData,
-        },
-        {
-          label: "⚡ Execute This",
-          onClick: () => { if (msg.agentCardData) patch({ agentCardOpen: !msg.agentCardOpen }); },
-          active: !!msg.agentCardData,
-        },
-        { label: "📤 Share", onClick: handleShare },
-      ].map((a) => (
+      {actions.map((a) => (
         <button
           key={a.label}
           onClick={a.onClick}

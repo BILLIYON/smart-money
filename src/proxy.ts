@@ -7,8 +7,16 @@ const AUTH_REDIRECT = "/";
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  console.log(`[Proxy Middleware] Path: "${pathname}"`);
 
   const { supabaseResponse, user, supabase } = await updateSession(request);
+  console.log(`[Proxy Middleware] Path: "${pathname}" | User: ${user ? user.email : "none"}`);
+
+  // Pass-through static files (files with extensions) to avoid infinite redirect loops on sw.js, manifest.webmanifest, etc.
+  if (pathname.includes(".") && !pathname.startsWith("/api/")) {
+    console.log(`[Proxy Middleware] Path: "${pathname}" | Static Pass-through`);
+    return supabaseResponse;
+  }
 
   const isPublicPath =
     PUBLIC_PATHS.has(pathname) ||
@@ -18,18 +26,22 @@ export async function proxy(request: NextRequest) {
     pathname === "/api/studio" ||
     pathname === "/api/hidden-buddies" ||
     pathname === "/api/databank/sources-summary" ||
+    pathname === "/api/subscriptions/price" ||
     pathname.startsWith("/api/auth/google");
 
   const isAuthPath = AUTH_PATHS.has(pathname);
+  console.log(`[Proxy Middleware] Path: "${pathname}" | isPublic: ${isPublicPath} | isAuth: ${isAuthPath}`);
 
   // Unauthenticated user hitting a protected route → /login or return 401 for API
   if (!user && !isPublicPath) {
     if (pathname.startsWith("/api/")) {
+      console.log(`[Proxy Middleware] Path: "${pathname}" | Protected API -> 401 Unauthorized`);
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.searchParams.set("next", pathname);
+    console.log(`[Proxy Middleware] Path: "${pathname}" | Redirecting unauthenticated to /login`);
     return NextResponse.redirect(loginUrl);
   }
 
@@ -37,6 +49,7 @@ export async function proxy(request: NextRequest) {
   if (user && isAuthPath) {
     const appUrl = request.nextUrl.clone();
     appUrl.pathname = AUTH_REDIRECT;
+    console.log(`[Proxy Middleware] Path: "${pathname}" | Redirecting authenticated to root: "${AUTH_REDIRECT}"`);
     return NextResponse.redirect(appUrl);
   }
 
@@ -67,14 +80,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all paths except:
-     * - _next/static (Next.js build files)
-     * - _next/image (image optimisation)
-     * - favicon.ico, robots.txt, sitemap.xml
-     * - /api/signals/webhook  (externally called, no user session)
-     * - /auth/callback        (OAuth exchange — runs before session exists)
-     */
-    "/((?!_next/static|_next/image|favicon\\.ico|robots\\.txt|sitemap\\.xml|api/signals/webhook|auth/callback).*)",
+    "/((?!_next/static|_next/image|favicon\\.ico|robots\\.txt|sitemap\\.xml|api/signals/webhook|auth/callback|.*\\.[a-zA-Z0-9]+$).*)",
   ],
 };

@@ -326,6 +326,22 @@ export async function getApprovedCommunityBuddies(): Promise<CommunityBuddyRow[]
   return data ?? [];
 }
 
+export async function getCommunityBuddyById(id: string): Promise<CommunityBuddyRow | null> {
+  const db = getClient();
+  const { data, error } = await db
+    .from("buddies")
+    .select(
+      "id, name, tag, description, avatar_content, avatar_bg, avatar_is_serif, banner_color, categories, is_fan_sim, disclaimer, philosophy, samples, includes, price_note, model, price, custom_price"
+    )
+    .eq("id", id)
+    .single();
+  if (error) {
+    if (error.code === "PGRST116") return null;
+    throw error;
+  }
+  return data;
+}
+
 export async function deleteTestUsers(): Promise<number> {
   const db = getClient();
   const { data } = await db

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useTheme } from "next-themes";
 import { useUserStore } from "@/store/userStore";
+import { useBuddyStore } from "@/store/buddyStore";
 
 // ── Types ──────────────────────────────────────────────────
 type Tab = "profile" | "notifs" | "subs" | "privacy" | "appear";
@@ -653,92 +654,122 @@ function NotifsTab() {
 
 // ── Subscriptions Tab ──────────────────────────────────────
 function SubsTab() {
-  const subs = [
-    {
-      avatar: "WB",
-      avatarBg: "#2D5A2D",
-      isText: true,
-      name: "Warren Buffett (Fan Sim)",
-      sub: "₦3,000/mo · Renews Apr 1",
-    },
-    {
-      avatar: "📊",
-      avatarBg: "#1A4A6B",
-      isText: false,
-      name: "Street Smart Lagos",
-      sub: "₦2,500/mo · Renews Apr 5",
-    },
-  ];
+  const subscribedBuddies = useBuddyStore((s) => s.subscribedBuddies);
+  const loadSubscribedBuddies = useBuddyStore((s) => s.loadSubscribedBuddies);
+
+  useEffect(() => {
+    loadSubscribedBuddies();
+  }, [loadSubscribedBuddies]);
+
+  // Filter out free subscriptions to display only paid ones
+  const paidSubs = subscribedBuddies.filter((b) => b.badgeType !== "free");
+
+  // Parse price strings to compute total monthly NGN amount
+  const getPriceNaira = (priceStr: string) => {
+    if (priceStr.startsWith("₦")) {
+      const parsed = parseFloat(priceStr.replace(/[^0-9.]/g, ""));
+      return isNaN(parsed) ? 0 : parsed;
+    }
+    if (priceStr.startsWith("$")) {
+      const parsed = parseFloat(priceStr.replace(/[^0-9.]/g, ""));
+      return isNaN(parsed) ? 0 : parsed * 1500; // ₦1,500 exchange rate conversion
+    }
+    return 0;
+  };
+
+  const totalNaira = paidSubs.reduce((acc, curr) => acc + getPriceNaira(curr.price), 0);
 
   return (
     <Section title="My Subscriptions" sub="Finance Buddies you currently subscribe to">
-      {subs.map((s, i) => (
+      {paidSubs.length === 0 ? (
         <div
-          key={s.name}
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "14px 0",
-            borderBottom: i < subs.length - 1 ? "1px solid var(--border)" : "none",
+            padding: "32px 0",
+            textAlign: "center",
+            fontSize: 13,
+            color: "var(--muted)",
+            border: "1.5px dashed var(--border)",
+            borderRadius: 12,
+            background: "var(--bg)",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          You have no active paid subscriptions.
+        </div>
+      ) : (
+        <>
+          {paidSubs.map((s, i) => (
             <div
+              key={s.id}
               style={{
-                width: 28,
-                height: 28,
-                background: s.avatarBg,
-                borderRadius: 7,
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
-                fontSize: s.isText ? 11 : 14,
-                fontFamily: s.isText ? "var(--font-dm-serif)" : "inherit",
-                color: s.isText ? "rgba(255,255,255,.9)" : undefined,
-                fontWeight: s.isText ? 600 : undefined,
-                flexShrink: 0,
+                justifyContent: "space-between",
+                padding: "14px 0",
+                borderBottom: i < paidSubs.length - 1 ? "1px solid var(--border)" : "none",
               }}
             >
-              {s.avatar}
-            </div>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", marginBottom: 2 }}>
-                {s.name}
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div
+                  style={{
+                    width: 28,
+                    height: 28,
+                    background: s.avatarBg,
+                    borderRadius: 7,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: s.avatarIsSerif ? 11 : 14,
+                    fontFamily: s.avatarIsSerif ? "var(--font-dm-serif)" : "inherit",
+                    color: s.avatarIsSerif ? "rgba(255,255,255,.9)" : undefined,
+                    fontWeight: s.avatarIsSerif ? 600 : undefined,
+                    flexShrink: 0,
+                  }}
+                >
+                  {s.avatarContent}
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", marginBottom: 2 }}>
+                    {s.name}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                    {s.price} · Active
+                  </div>
+                </div>
               </div>
-              <div style={{ fontSize: 12, color: "var(--muted)" }}>{s.sub}</div>
+              <GhostBtn label="Manage" />
+            </div>
+          ))}
+
+          {/* Payment summary */}
+          <div
+            style={{
+              marginTop: 16,
+              padding: 14,
+              background: "var(--bg)",
+              borderRadius: 12,
+              border: "1px solid var(--border)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 13,
+                marginBottom: 6,
+              }}
+            >
+              <span style={{ color: "var(--muted)" }}>Monthly total</span>
+              <span style={{ fontWeight: 600, color: "var(--text)" }}>
+                ₦{totalNaira.toLocaleString()}/mo
+              </span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+              <span style={{ color: "var(--muted)" }}>Payment method</span>
+              <span style={{ color: "var(--green2)", fontWeight: 500 }}>Paystack / PayPal</span>
             </div>
           </div>
-          <GhostBtn label="Manage" />
-        </div>
-      ))}
-
-      {/* Payment summary */}
-      <div
-        style={{
-          marginTop: 16,
-          padding: 14,
-          background: "var(--bg)",
-          borderRadius: 12,
-          border: "1px solid var(--border)",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            fontSize: 13,
-            marginBottom: 6,
-          }}
-        >
-          <span style={{ color: "var(--muted)" }}>Monthly total</span>
-          <span style={{ fontWeight: 600, color: "var(--text)" }}>₦5,500/mo</span>
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-          <span style={{ color: "var(--muted)" }}>Payment method</span>
-          <span style={{ color: "var(--green2)", fontWeight: 500 }}>Paystack · •••• 4521</span>
-        </div>
-      </div>
+        </>
+      )}
 
       <button
         style={{

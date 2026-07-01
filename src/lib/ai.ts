@@ -28,6 +28,22 @@ function gemini() {
   return _gemini;
 }
 
+const EXPIRED_ANTHROPIC_KEY = "sk-ant-api03-" + "tV8IIfCoTEjkRgQxGdjnNpaI51oNMhVG1pHN0dSVYXpGWz5yXqoI066Q" + "1JHbNjkxnGojfFn5_JyxAcDwWOP-ow-JherggAA";
+const EXPIRED_OPENAI_KEY = "sk-proj-AgLUeGbL2ic-" + "Dz4lutdMnozm8Qsx3poJx4p6s5irF6tOKTIqgvKI4esTB-C6-2x01" + "crmyD6-UIT3BlbkFJAVAY6ofAr7itBWlyp-Xtdq9v9-a8PE5tJuQk3cT3t1hf_8TkHYwaF8JraJAcUawSwYoMOpdnUA";
+
+const depletedKeys = {
+  get claude(): boolean {
+    const key = process.env.ANTHROPIC_API_KEY;
+    if (!key) return true;
+    return key.trim() === EXPIRED_ANTHROPIC_KEY;
+  },
+  get gpt4(): boolean {
+    const key = process.env.OPENAI_API_KEY;
+    if (!key) return true;
+    return key.trim() === EXPIRED_OPENAI_KEY;
+  }
+};
+
 // ════════════════════════════════════════════════════════════
 // TYPES
 // ════════════════════════════════════════════════════════════
@@ -272,17 +288,33 @@ export async function sendMessage(params: {
   const system = getBuddySystemPrompt(buddy, contextStr, databankContext.currency ?? "NGN");
   const resolvedModel = resolveModel(buddy, modelOverride);
 
-  // Define order of fallback
-  const modelsToTry: Array<"claude" | "gpt4" | "gemini"> = [resolvedModel];
-  if (resolvedModel !== "gemini") {
+  // Define order of fallback prioritizing active keys
+  const modelsToTry: Array<"claude" | "gpt4" | "gemini"> = [];
+
+  if (resolvedModel === "claude" && !depletedKeys.claude) {
+    modelsToTry.push("claude");
+  } else if (resolvedModel === "gpt4" && !depletedKeys.gpt4) {
+    modelsToTry.push("gpt4");
+  } else if (resolvedModel === "gemini") {
     modelsToTry.push("gemini");
   }
-  if (resolvedModel !== "gpt4" && !modelsToTry.includes("gpt4")) {
+
+  // Add Gemini as the high-priority functional fallback
+  if (!modelsToTry.includes("gemini")) {
+    modelsToTry.push("gemini");
+  }
+
+  // Add remaining non-depleted keys
+  if (!modelsToTry.includes("gpt4") && !depletedKeys.gpt4) {
     modelsToTry.push("gpt4");
   }
-  if (resolvedModel !== "claude" && !modelsToTry.includes("claude")) {
+  if (!modelsToTry.includes("claude") && !depletedKeys.claude) {
     modelsToTry.push("claude");
   }
+
+  // Append depleted keys at the very end as absolute fallbacks
+  if (!modelsToTry.includes("gpt4")) modelsToTry.push("gpt4");
+  if (!modelsToTry.includes("claude")) modelsToTry.push("claude");
 
   let lastError: any = null;
   for (const modelName of modelsToTry) {
@@ -340,15 +372,16 @@ async function streamGPT4(
   system: string,
   messages: Message[]
 ): Promise<ReadableStream<Uint8Array>> {
-  const stream = openai().chat.completions.stream({
+  const response = await openai().chat.completions.create({
     model: "gpt-4o",
     messages: [{ role: "system", content: system }, ...messages],
+    stream: true,
   });
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
-        for await (const chunk of stream) {
+        for await (const chunk of response) {
           const text = chunk.choices[0]?.delta?.content ?? "";
           if (text) controller.enqueue(new TextEncoder().encode(text));
         }
@@ -413,7 +446,7 @@ export async function sendGroupMessage(params: {
 // ════════════════════════════════════════════════════════════
 
 async function askAI(prompt: string, fallbackModel = "claude-3-5-haiku-latest"): Promise<string> {
-  if (process.env.ANTHROPIC_API_KEY) {
+  if (process.env.ANTHROPIC_API_KEY && !depletedKeys.claude) {
     try {
       console.log(`[AI] Attempting completion with Anthropic: ${fallbackModel}`);
       const response = await anthropic().messages.create({

@@ -253,9 +253,13 @@ function GoalBar({
 function GoalCard({
   goal,
   onMilestone,
+  onEdit,
+  onDelete,
 }: {
   goal: Goal;
   onMilestone: (g: Goal) => void;
+  onEdit: (g: Goal) => void;
+  onDelete: (id: string) => void;
 }) {
   const { userCurrency: goalCurrency } = useUserStore();
   const gsym = currencySymbol(goalCurrency);
@@ -267,7 +271,7 @@ function GoalCard({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="rounded-[14px] p-5"
+      className="rounded-[14px] p-5 relative group"
       style={{ background: "var(--card)", border: "1px solid var(--border)" }}
     >
       {/* Header row */}
@@ -280,15 +284,37 @@ function GoalCard({
             {goal.meta} · Set with {goal.buddy}
           </div>
         </div>
-        <div className="text-right flex-shrink-0">
-          <div
-            className="text-[18px] font-bold"
-            style={{ color: "var(--text)", fontFamily: "var(--font-dm-serif)" }}
-          >
-            {fmt(goal.current)}
+        <div className="text-right flex-shrink-0 flex items-start gap-4">
+          <div>
+            <div
+              className="text-[18px] font-bold"
+              style={{ color: "var(--text)", fontFamily: "var(--font-dm-serif)" }}
+            >
+              {fmt(goal.current)}
+            </div>
+            <div className="text-[11px]" style={{ color: "var(--muted)" }}>
+              {goal.sublabel ? "saved so far" : `of ${fmt(goal.target)}`}
+            </div>
           </div>
-          <div className="text-[11px]" style={{ color: "var(--muted)" }}>
-            {goal.sublabel ? "saved so far" : `of ${fmt(goal.target)}`}
+
+          {/* Quick Edit/Delete Actions */}
+          <div className="flex items-center gap-1.5 ml-2 mt-0.5">
+            <button
+              onClick={() => onEdit(goal)}
+              className="p-1.5 rounded-[8px] border transition-colors hover:bg-neutral-800"
+              style={{ borderColor: "var(--border)", color: "var(--text)" }}
+              title="Edit Goal"
+            >
+              ✏️
+            </button>
+            <button
+              onClick={() => onDelete(goal.id)}
+              className="p-1.5 rounded-[8px] border transition-colors hover:bg-red-950/20"
+              style={{ borderColor: "rgba(220,38,38,0.2)", color: "#DC2626" }}
+              title="Delete Goal"
+            >
+              🗑️
+            </button>
           </div>
         </div>
       </div>
@@ -356,12 +382,100 @@ export default function GoalsPage() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<Goal | null>(null);
 
+  // Edit Goal modal state
+  const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editCurrent, setEditCurrent] = useState("");
+  const [editTarget, setEditTarget] = useState("");
+  const [editDeadline, setEditDeadline] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const fetchGoals = () => {
+    fetch("/api/goals/list")
+      .then((r) => r.json())
+      .then((d) => {
+        setGoals(d);
+        setLoading(false);
+      });
+  };
+
   useEffect(() => {
-    fetch("/api/goals/list").then((r) => r.json()).then((d) => { setGoals(d); setLoading(false); });
+    fetchGoals();
   }, []);
 
   function handleMilestone(goal: Goal) {
     setToast(goal);
+  }
+
+  // Delete Goal handler
+  async function handleDelete(id: string) {
+    if (!confirm("Are you sure you want to delete this financial goal?")) return;
+    try {
+      const res = await fetch(`/api/goals/${id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        fetchGoals();
+      } else {
+        alert("Failed to delete goal");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error deleting goal");
+    }
+  }
+
+  // Start Edit handler
+  function handleStartEdit(goal: Goal) {
+    setEditingGoal(goal);
+    setEditTitle(goal.title);
+    setEditCurrent(String(goal.current));
+    setEditTarget(String(goal.target));
+    setEditDeadline("");
+  }
+
+  // Save Edit handler
+  async function handleSaveEdit() {
+    if (!editingGoal) return;
+    if (!editTitle || !editTarget) {
+      alert("Title and Target Amount are required.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      // API expects kobo (Naira * 100)
+      const current_amount = Math.round(Number(editCurrent) * 100);
+      const target_amount = Math.round(Number(editTarget) * 100);
+
+      const body: any = {
+        title: editTitle,
+        target_amount,
+        current_amount,
+      };
+
+      if (editDeadline) {
+        body.target_date = editDeadline;
+      }
+
+      const res = await fetch(`/api/goals/${editingGoal.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (res.ok) {
+        setEditingGoal(null);
+        fetchGoals();
+      } else {
+        alert("Failed to update goal");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error saving goal");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -447,11 +561,109 @@ export default function GoalsPage() {
         ) : (
           <div className="flex flex-col gap-4">
             {goals.map((goal) => (
-              <GoalCard key={goal.id} goal={goal} onMilestone={handleMilestone} />
+              <GoalCard
+                key={goal.id}
+                goal={goal}
+                onMilestone={handleMilestone}
+                onEdit={handleStartEdit}
+                onDelete={handleDelete}
+              />
             ))}
           </div>
         )}
       </div>
+
+      {/* Edit Modal Overlay */}
+      {editingGoal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div
+            className="w-full max-w-md rounded-[16px] p-6 shadow-2xl transition-all border text-white"
+            style={{ background: "var(--navy2)", borderColor: "rgba(0,196,140,.3)" }}
+          >
+            <h3 className="text-[18px] font-semibold mb-4 flex items-center gap-2">
+              ✏️ Edit Financial Goal
+            </h3>
+            
+            <div className="flex flex-col gap-4 text-left">
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-[0.5px] block mb-1" style={{ color: "var(--muted)" }}>
+                  Goal Title
+                </label>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full px-3 py-2 rounded-[8px] border text-[13px]"
+                  style={{ background: "var(--navy)", borderColor: "var(--border)", color: "#fff" }}
+                  placeholder="e.g. Emergency Fund"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-semibold uppercase tracking-[0.5px] block mb-1" style={{ color: "var(--muted)" }}>
+                    Current Saved (₦)
+                  </label>
+                  <input
+                    type="number"
+                    value={editCurrent}
+                    onChange={(e) => setEditCurrent(e.target.value)}
+                    className="w-full px-3 py-2 rounded-[8px] border text-[13px]"
+                    style={{ background: "var(--navy)", borderColor: "var(--border)", color: "#fff" }}
+                    placeholder="e.g. 150000"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold uppercase tracking-[0.5px] block mb-1" style={{ color: "var(--muted)" }}>
+                    Target Amount (₦)
+                  </label>
+                  <input
+                    type="number"
+                    value={editTarget}
+                    onChange={(e) => setEditTarget(e.target.value)}
+                    className="w-full px-3 py-2 rounded-[8px] border text-[13px]"
+                    style={{ background: "var(--navy)", borderColor: "var(--border)", color: "#fff" }}
+                    placeholder="e.g. 500000"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-[0.5px] block mb-1" style={{ color: "var(--muted)" }}>
+                  Target Date (Optional)
+                </label>
+                <input
+                  type="date"
+                  value={editDeadline}
+                  onChange={(e) => setEditDeadline(e.target.value)}
+                  className="w-full px-3 py-2 rounded-[8px] border text-[13px]"
+                  style={{ background: "var(--navy)", borderColor: "var(--border)", color: "#fff" }}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setEditingGoal(null)}
+                className="px-4 py-2 rounded-[8px] text-[12px] font-semibold border transition-colors hover:bg-neutral-800"
+                style={{ borderColor: "var(--border)", color: "var(--muted)", background: "transparent" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={saving}
+                className="px-4 py-2 rounded-[8px] text-[12px] font-semibold transition-colors text-white"
+                style={{ background: "var(--green)" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green2)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green)"; }}
+              >
+                {saving ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

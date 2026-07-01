@@ -1,7 +1,12 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { Buddy } from "@/lib/buddies";
+import { useBuddyStore } from "@/store/buddyStore";
+import { PaymentModal } from "@/components/buddy/PaymentModal";
+import { createClient } from "@/lib/supabase/client";
 
 function ModelDot({ color }: { color: string }) {
   return (
@@ -14,6 +19,39 @@ function ModelDot({ color }: { color: string }) {
 
 function SubscriptionPanel({ buddy }: { buddy: Buddy }) {
   const { name, price, priceNote, badge, badgeType, isFanSim, includes } = buddy;
+  const router = useRouter();
+  const subscribedBuddies = useBuddyStore((s) => s.subscribedBuddies);
+  const loadSubscribedBuddies = useBuddyStore((s) => s.loadSubscribedBuddies);
+
+  const [showPayment, setShowPayment] = useState(false);
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    loadSubscribedBuddies();
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user);
+    });
+  }, [loadSubscribedBuddies]);
+
+  const isSubscribed = badgeType === "free" || subscribedBuddies.some((b) => b.id === buddy.id);
+
+  const handleSubscribeClick = (e: React.MouseEvent) => {
+    if (!user) {
+      e.preventDefault();
+      router.push(`/login?next=${encodeURIComponent(window.location.pathname)}`);
+      return;
+    }
+    if (isSubscribed) return;
+    e.preventDefault();
+    setShowPayment(true);
+  };
+
+  const handlePaymentSuccess = (sessionId: string) => {
+    setShowPayment(false);
+    router.push(`/chat?buddy=${buddy.id}`);
+  };
+
   return (
     <>
       <div
@@ -27,14 +65,25 @@ function SubscriptionPanel({ buddy }: { buddy: Buddy }) {
       </div>
 
       <Link
-        href={`/chat?buddy=${buddy.id}`}
+        href={isSubscribed && user ? `/chat?buddy=${buddy.id}` : "#"}
+        onClick={handleSubscribeClick}
         className="block w-full py-[11px] rounded-[10px] text-[14px] font-semibold text-white text-center transition-colors duration-200 mb-3"
         style={{ background: "var(--navy)" }}
         onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "var(--green)"; }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "var(--navy)"; }}
       >
-        {badgeType === "free" ? "Start Chatting — Free" : `Subscribe & Chat · ${badge}`}
+        {isSubscribed
+          ? (badgeType === "free" ? "Start Chatting — Free" : "Start Chatting")
+          : `Subscribe & Chat · ${badge}`}
       </Link>
+
+      {showPayment && (
+        <PaymentModal
+          buddy={buddy}
+          onSuccess={handlePaymentSuccess}
+          onClose={() => setShowPayment(false)}
+        />
+      )}
 
       {isFanSim && (
         <div

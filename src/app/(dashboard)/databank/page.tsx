@@ -442,6 +442,7 @@ type UploadedFile = {
 export default function DataBankPage() {
   const [tab, setTab] = useState<"sources" | "analytics">("sources");
   const [signalTab, setSignalTab] = useState<"news" | "social" | "podcasts" | "newsletters" | "api">("news");
+  const [showExportMenu, setShowExportMenu] = useState(false);
   
   // Dynamic statement files
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
@@ -732,6 +733,32 @@ export default function DataBankPage() {
     window.location.href = "/api/settings/export";
   };
 
+  const handleWipeData = async () => {
+    if (
+      !confirm(
+        "⚠️ WARNING: This will permanently delete ALL your DataBank transactions, bank connections, and AI buddy chat memories. This action is irreversible.\n\nAre you sure you want to proceed?"
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/databank/wipe", {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        alert("✨ All DataBank data and conversation memories have been successfully cleared.");
+        window.location.reload();
+      } else {
+        alert(`Failed to delete data: ${data.error || "Unknown error"}`);
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert("An error occurred while trying to clear data.");
+    }
+  };
+
   const signalTabs = [
     { id: "news", label: "📰 News Media" },
     { id: "social", label: "🐦 Social & Creators" },
@@ -777,15 +804,75 @@ export default function DataBankPage() {
           <div className="text-[22px] font-semibold" style={{ color: "var(--text)", fontFamily: "var(--font-sora)" }}>
             Your <em style={{ fontFamily: "var(--font-dm-serif)", fontStyle: "italic", color: "var(--green)" }}>DataBank</em>
           </div>
-          <button
-            onClick={handleExportData}
-            className="px-4 py-[9px] rounded-[10px] text-[12px] font-medium border transition-all duration-150 cursor-pointer"
-            style={{ color: "var(--muted)", borderColor: "var(--border)", background: "var(--card)" }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--green)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--green)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--muted)"; }}
-          >
-            Export All Data
-          </button>
+          <div className="flex gap-2">
+            <div className="relative">
+              <button
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                className="px-4 py-[9px] rounded-[10px] text-[12px] font-medium border transition-all duration-150 cursor-pointer flex items-center gap-[6px]"
+                style={{ color: "var(--muted)", borderColor: "var(--border)", background: "var(--card)" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--green)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--green)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--muted)"; }}
+              >
+                📥 Export Data ▾
+              </button>
+
+              {showExportMenu && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setShowExportMenu(false)} />
+                  <div
+                    className="absolute right-0 mt-2 w-48 rounded-[12px] p-2 z-20 shadow-lg border"
+                    style={{ background: "var(--card)", borderColor: "var(--border)" }}
+                  >
+                    <button
+                      onClick={() => {
+                        setShowExportMenu(false);
+                        window.location.href = "/api/settings/export";
+                      }}
+                      className="w-full text-left px-3 py-[8px] rounded-[8px] text-[12px] font-medium transition-all duration-150 hover:text-[var(--green)] cursor-pointer"
+                      style={{ background: "transparent", border: "none", color: "var(--text)" }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,196,140,.05)"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+                    >
+                      📄 Export as JSON
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowExportMenu(false);
+                        window.location.href = "/api/settings/export?format=csv";
+                      }}
+                      className="w-full text-left px-3 py-[8px] rounded-[8px] text-[12px] font-medium transition-all duration-150 hover:text-[var(--green)] cursor-pointer"
+                      style={{ background: "transparent", border: "none", color: "var(--text)" }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,196,140,.05)"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+                    >
+                      📈 Export as Excel (CSV)
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowExportMenu(false);
+                        window.open("/databank/print", "_blank");
+                      }}
+                      className="w-full text-left px-3 py-[8px] rounded-[8px] text-[12px] font-medium transition-all duration-150 hover:text-[var(--green)] cursor-pointer"
+                      style={{ background: "transparent", border: "none", color: "var(--text)" }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,196,140,.05)"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+                    >
+                      📕 Export as PDF Statement
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+            <button
+              onClick={handleWipeData}
+              className="px-4 py-[9px] rounded-[10px] text-[12px] font-medium border transition-all duration-150 cursor-pointer"
+              style={{ color: "#EF4444", borderColor: "var(--border)", background: "var(--card)" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#EF4444"; (e.currentTarget as HTMLButtonElement).style.background = "rgba(239,68,68,.05)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.background = "var(--card)"; }}
+            >
+              Clear Databank & Memory
+            </button>
+          </div>
         </div>
 
         {/* Main tabs */}
