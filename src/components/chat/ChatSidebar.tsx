@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useChatStore, GROUPS } from "@/store/chatStore";
 import { ALL_BUDDIES, getBuddy } from "@/lib/buddies";
 import { FinancialSnapshot } from "./FinancialSnapshot";
+import { isImageAvatar } from "@/lib/utils";
 const BUDDY_LIST = ALL_BUDDIES;
 
 function GroupAvatarStack({ avatars }: { avatars: typeof GROUPS[0]["avatars"] }) {
@@ -118,7 +119,7 @@ export function ChatSidebar() {
                   }}
                 >
                   <div
-                    className="flex items-center justify-center flex-shrink-0 rounded-[10px] text-[18px]"
+                    className="flex items-center justify-center flex-shrink-0 rounded-[10px] text-[18px] overflow-hidden"
                     style={{
                       width: 38, height: 38,
                       background: buddy.avatarBg,
@@ -127,7 +128,11 @@ export function ChatSidebar() {
                         : {}),
                     }}
                   >
-                    {buddy.avatarContent}
+                    {isImageAvatar(buddy.avatarContent) ? (
+                      <img src={buddy.avatarContent} alt="avatar" className="w-full h-full object-cover" />
+                    ) : (
+                      buddy.avatarContent
+                    )}
                   </div>
                   <div className="flex-1 overflow-hidden">
                     <div className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>
@@ -172,7 +177,7 @@ export function ChatSidebar() {
                   onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
                 >
                   <div
-                    className="flex items-center justify-center flex-shrink-0 rounded-[10px] text-[18px]"
+                    className="flex items-center justify-center flex-shrink-0 rounded-[10px] text-[18px] overflow-hidden"
                     style={{
                       width: 38, height: 38,
                       background: buddy.avatarBg,
@@ -181,7 +186,11 @@ export function ChatSidebar() {
                         : {}),
                     }}
                   >
-                    {buddy.avatarContent}
+                    {isImageAvatar(buddy.avatarContent) ? (
+                      <img src={buddy.avatarContent} alt="avatar" className="w-full h-full object-cover" />
+                    ) : (
+                      buddy.avatarContent
+                    )}
                   </div>
                   <div className="flex-1 overflow-hidden">
                     <div className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>

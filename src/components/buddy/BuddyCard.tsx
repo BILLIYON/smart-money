@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Buddy } from "@/lib/buddies";
+import { isImageAvatar } from "@/lib/utils";
 
 function ModelDot({ color }: { color: string }) {
   return (
@@ -69,7 +70,7 @@ export function BuddyCard({ buddy }: { buddy: Buddy }) {
 
         {/* Avatar */}
         <div
-          className="absolute bottom-[-24px] left-5 w-[68px] h-[68px] rounded-full border-[3px] flex items-center justify-center text-[22px]"
+          className="absolute bottom-[-24px] left-5 w-[68px] h-[68px] rounded-full border-[3px] flex items-center justify-center text-[22px] overflow-hidden"
           style={{
             background: avatarBg,
             borderColor: "var(--card)",
@@ -78,7 +79,11 @@ export function BuddyCard({ buddy }: { buddy: Buddy }) {
               : {}),
           }}
         >
-          {avatarContent}
+          {isImageAvatar(avatarContent) ? (
+            <img src={avatarContent} alt="avatar" className="w-full h-full object-cover" />
+          ) : (
+            avatarContent
+          )}
         </div>
       </div>
 
@@ -188,7 +193,7 @@ export function CelebrityCard({ buddy }: { buddy: Buddy }) {
 
         {/* Larger serif avatar — overlaps banner bottom */}
         <div
-          className="absolute bottom-[-24px] left-5 w-[68px] h-[68px] rounded-full border-[3px] flex items-center justify-center"
+          className="absolute bottom-[-24px] left-5 w-[68px] h-[68px] rounded-full border-[3px] flex items-center justify-center overflow-hidden"
           style={{
             background: avatarBg,
             borderColor: "var(--card)",
@@ -198,7 +203,11 @@ export function CelebrityCard({ buddy }: { buddy: Buddy }) {
             letterSpacing: "-0.5px",
           }}
         >
-          {avatarContent}
+          {isImageAvatar(avatarContent) ? (
+            <img src={avatarContent} alt="avatar" className="w-full h-full object-cover" />
+          ) : (
+            avatarContent
+          )}
         </div>
       </div>
 

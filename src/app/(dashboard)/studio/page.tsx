@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { BuddyCategory } from "@/lib/buddies";
+import { isImageAvatar } from "@/lib/utils";
 
 // ── Types ──────────────────────────────────────────────────
 type StudioConfig = {
@@ -466,7 +467,7 @@ export default function StudioPage() {
               <div className="flex items-center gap-4 mb-3">
                 {/* Live preview */}
                 <div
-                  className="flex items-center justify-center rounded-full border-[3px] flex-shrink-0 text-[22px]"
+                  className="flex items-center justify-center rounded-full border-[3px] flex-shrink-0 text-[22px] overflow-hidden"
                   style={{
                     width: 56, height: 56,
                     background: config.avatarBg,
@@ -477,18 +478,62 @@ export default function StudioPage() {
                       : {}),
                   }}
                 >
-                  {config.avatarContent || "?"}
+                  {isImageAvatar(config.avatarContent) ? (
+                    <img src={config.avatarContent} alt="avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    config.avatarContent || "?"
+                  )}
                 </div>
                 <div className="flex-1 flex flex-col gap-2">
                   <input
                     type="text"
                     maxLength={4}
                     placeholder="Emoji or 2-letter initials (e.g. 🎯 or WB)"
-                    value={config.avatarContent}
+                    value={isImageAvatar(config.avatarContent) ? "" : config.avatarContent}
                     onChange={(e) => setConfig((c) => ({ ...c, avatarContent: e.target.value }))}
+                    disabled={isImageAvatar(config.avatarContent)}
                     className="w-full px-3 py-[8px] rounded-[10px] text-[13px] outline-none"
-                    style={inputStyle}
+                    style={{
+                      ...inputStyle,
+                      background: isImageAvatar(config.avatarContent) ? "rgba(255,255,255,0.05)" : "var(--bg)",
+                      color: isImageAvatar(config.avatarContent) ? "rgba(255,255,255,0.3)" : "var(--text)"
+                    }}
                   />
+                  <div className="flex items-center gap-2">
+                    <label
+                      className="px-3 py-1.5 rounded-[8px] text-[11px] font-semibold border cursor-pointer transition-colors hover:bg-neutral-800 flex items-center gap-1.5"
+                      style={{ borderColor: "var(--border)", color: "var(--text)" }}
+                    >
+                      📁 Upload Photo
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                              const base64 = event.target?.result as string;
+                              if (base64) {
+                                setConfig((c) => ({ ...c, avatarContent: base64 }));
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+                    {isImageAvatar(config.avatarContent) && (
+                      <button
+                        onClick={() => setConfig((c) => ({ ...c, avatarContent: "🎯" }))}
+                        className="px-3 py-1.5 rounded-[8px] text-[11px] font-semibold border transition-colors hover:bg-red-950/20"
+                        style={{ borderColor: "rgba(220,38,38,0.2)", color: "#DC2626" }}
+                      >
+                        Reset to Emoji
+                      </button>
+                    )}
+                  </div>
                   <label className="flex items-center gap-2 cursor-pointer select-none">
                     <Toggle
                       on={config.avatarIsSerif}
@@ -926,7 +971,7 @@ export default function StudioPage() {
                 </span>
                 {/* Avatar */}
                 <div
-                  className="absolute flex items-center justify-center rounded-full border-[2px] text-[16px]"
+                  className="absolute flex items-center justify-center rounded-full border-[2px] text-[16px] overflow-hidden"
                   style={{
                     width: 44, height: 44,
                     bottom: -16, left: 14,
@@ -937,7 +982,11 @@ export default function StudioPage() {
                       : {}),
                   }}
                 >
-                  {config.avatarContent || "?"}
+                  {isImageAvatar(config.avatarContent) ? (
+                    <img src={config.avatarContent} alt="avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    config.avatarContent || "?"
+                  )}
                 </div>
               </div>
               {/* Card body */}

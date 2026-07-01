@@ -7,6 +7,7 @@ import type { Buddy } from "@/lib/buddies";
 import { useBuddyStore } from "@/store/buddyStore";
 import { PaymentModal } from "@/components/buddy/PaymentModal";
 import { createClient } from "@/lib/supabase/client";
+import { isImageAvatar } from "@/lib/utils";
 
 function ModelDot({ color }: { color: string }) {
   return (
@@ -146,7 +147,7 @@ export function BuddyProfile({ buddy }: { buddy: Buddy }) {
             <div className="h-[100px] relative" style={{ background: bannerColor }}>
               {/* Avatar */}
               <div
-                className="absolute bottom-[-24px] left-7 w-[64px] h-[64px] rounded-[16px] border-[3px] flex items-center justify-center flex-shrink-0"
+                className="absolute bottom-[-24px] left-7 w-[64px] h-[64px] rounded-[16px] border-[3px] flex items-center justify-center flex-shrink-0 overflow-hidden"
                 style={{
                   background: avatarBg,
                   borderColor: "var(--card)",
@@ -156,7 +157,11 @@ export function BuddyProfile({ buddy }: { buddy: Buddy }) {
                     : {}),
                 }}
               >
-                {avatarContent}
+                {isImageAvatar(avatarContent) ? (
+                  <img src={avatarContent} alt="avatar" className="w-full h-full object-cover" />
+                ) : (
+                  avatarContent
+                )}
               </div>
             </div>
 
@@ -270,7 +275,7 @@ export function BuddyProfile({ buddy }: { buddy: Buddy }) {
         <div className="md:hidden rounded-[16px] border overflow-hidden" style={{ background: "var(--card)", borderColor: "var(--border)" }}>
           <div className="h-[100px] relative" style={{ background: bannerColor }}>
             <div
-              className="absolute bottom-[-24px] left-7 w-[64px] h-[64px] rounded-[16px] border-[3px] flex items-center justify-center flex-shrink-0"
+              className="absolute bottom-[-24px] left-7 w-[64px] h-[64px] rounded-[16px] border-[3px] flex items-center justify-center flex-shrink-0 overflow-hidden"
               style={{
                 background: avatarBg,
                 borderColor: "var(--card)",
@@ -278,7 +283,11 @@ export function BuddyProfile({ buddy }: { buddy: Buddy }) {
                 ...(avatarIsSerif ? { fontFamily: "var(--font-dm-serif)", color: "rgba(255,255,255,.9)" } : {}),
               }}
             >
-              {avatarContent}
+              {isImageAvatar(avatarContent) ? (
+                <img src={avatarContent} alt="avatar" className="w-full h-full object-cover" />
+              ) : (
+                avatarContent
+              )}
             </div>
           </div>
 
