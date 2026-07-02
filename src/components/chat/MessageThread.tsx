@@ -270,17 +270,14 @@ function AiMessage({
   }
 
   async function executeAgent() {
-    try {
-      const res = await fetch("/api/agent/execute", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(msg.agentCardData),
-      });
-      const json = await res.json();
-      patch({ agentCardDone: true, agentCardOpen: false, agentCardRef: json.ref });
-    } catch {
-      patch({ agentCardDone: true, agentCardOpen: false, agentCardRef: "SMxxxxxx" });
+    // If it's the hardcoded demo data, pretend it executed
+    if (msg.agentCardData?.amount === "₦200,000" && msg.agentCardData?.title?.includes("Deploy")) {
+      patch({ agentCardDone: true, agentCardOpen: false, agentCardRef: "SM" + Date.now().toString(36).toUpperCase() });
+      return;
     }
+    // Otherwise, direct the user to the Agentic Actions dashboard where pending actions live
+    patch({ agentCardOpen: false });
+    window.location.href = "/agent";
   }
 
   // System message (group only)

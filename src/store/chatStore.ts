@@ -1,5 +1,31 @@
 import { create } from "zustand";
 
+function extractAgentAction(content: string) {
+  let agentCardData;
+  let finalContent = content;
+  const actionRegex = /\[AGENT_ACTION:\s*(\{[\s\S]*?\})\s*\]/;
+  const match = actionRegex.exec(content);
+  if (match) {
+    try {
+      const payload = JSON.parse(match[1]);
+      agentCardData = {
+        title: payload.title || "Proposed Action",
+        action: payload.action || "Execute Transaction",
+        amount: payload.amount ? `₦${(payload.amount / 100).toLocaleString()}` : "-",
+        from: "Smart Money Wallet",
+        fee: "₦0",
+        benefit: "AI Recommended",
+        benefitColor: "var(--green2)",
+      };
+      finalContent = content.replace(actionRegex, "").trim();
+    } catch (e) {
+      console.error("Failed to parse agentCardData", e);
+    }
+  }
+  return { finalContent, agentCardData };
+}
+
+
 export type InsightHighlight = { label: string; text: string };
 export type SpendBar = { label: string; width: string; color: string; amount: string };
 export type SpendChart = { title: string; bars: SpendBar[] };
@@ -313,12 +339,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     })),
 
   finalizeStream: (buddyId, msgId) =>
-    set((s) => ({
-      threads: {
-        ...s.threads,
-        [buddyId]: patchMsg(s.threads[buddyId] ?? [], msgId, { streaming: false, showActions: true }),
-      },
-    })),
+    set((s) => {
+      const thread = s.threads[buddyId] ?? [];
+      const msg = thread.find((m) => m.id === msgId);
+      const { finalContent, agentCardData } = extractAgentAction(msg?.content ?? "");
+      return {
+        threads: {
+          ...s.threads,
+          [buddyId]: patchMsg(thread, msgId, { streaming: false, showActions: true, content: finalContent, agentCardData }),
+        },
+      };
+    }),
 
   updateMessage: (buddyId, msgId, patch) =>
     set((s) => ({ threads: { ...s.threads, [buddyId]: patchMsg(s.threads[buddyId] ?? [], msgId, patch) } })),
@@ -347,12 +378,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     })),
 
   finalizeGroupStream: (groupId, msgId) =>
-    set((s) => ({
-      groupThreads: {
-        ...s.groupThreads,
-        [groupId]: patchMsg(s.groupThreads[groupId] ?? [], msgId, { streaming: false, showActions: true }),
-      },
-    })),
+    set((s) => {
+      const thread = s.groupThreads[groupId] ?? [];
+      const msg = thread.find((m) => m.id === msgId);
+      const { finalContent, agentCardData } = extractAgentAction(msg?.content ?? "");
+      return {
+        groupThreads: {
+          ...s.groupThreads,
+          [groupId]: patchMsg(thread, msgId, { streaming: false, showActions: true, content: finalContent, agentCardData }),
+        },
+      };
+    }),
 
   updateGroupMessage: (groupId, msgId, patch) =>
     set((s) => ({

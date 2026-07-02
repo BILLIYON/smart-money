@@ -6,7 +6,30 @@ export type BuddyCategory =
   | "Academic"
   | "Crypto"
   | "Celebrity Sim"
-  | "Real Estate";
+  | "Real Estate"
+  | (string & {});
+
+export function getCategoryStyle(category: string) {
+  switch (category) {
+    case "Investing":
+      return { background: "rgba(0,196,140,.1)", color: "var(--green2)", borderColor: "rgba(0,196,140,.2)" };
+    case "Budgeting":
+      return { background: "rgba(245,166,35,.1)", color: "#C47F00", borderColor: "rgba(245,166,35,.2)" };
+    case "Entrepreneurship":
+      return { background: "rgba(123,104,238,.1)", color: "#7B68EE", borderColor: "rgba(123,104,238,.2)" };
+    case "Academic":
+      return { background: "rgba(66,133,244,.1)", color: "#4285F4", borderColor: "rgba(66,133,244,.2)" };
+    case "Crypto":
+      return { background: "rgba(255,100,100,.1)", color: "#FF6464", borderColor: "rgba(255,100,100,.2)" };
+    case "Real Estate":
+      return { background: "rgba(139,69,19,.1)", color: "#8B4513", borderColor: "rgba(139,69,19,.2)" };
+    case "Celebrity Sim":
+      return { background: "rgba(255,215,0,.1)", color: "var(--gold)", borderColor: "rgba(255,215,0,.2)" };
+    default:
+      return { background: "var(--bg)", color: "var(--text)", borderColor: "var(--border)" };
+  }
+}
+
 
 export type Review = {
   name: string;

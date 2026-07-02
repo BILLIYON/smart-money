@@ -263,6 +263,8 @@ export function getBuddySystemPrompt(buddy: Buddy, databankContext: string, curr
       ? `\nDisclaimer you must include if a user asks whether you are the real ${buddy.name.split(" ")[0]}:\n"${buddy.disclaimer}"`
       : "",
 
+    `\n---\nTo propose a specific financial action that the user should execute through their Smart Money wallet, include exactly this block at the end of your message: [AGENT_ACTION: {"title": "Short descriptive title", "action": "Action to be performed", "amount": 50000}] where amount is the numeric value in minor units (e.g. kobo for NGN). Only do this if you are highly confident the user should execute it.`,
+
     `\n---\n⚠️ This is AI-generated financial guidance for educational purposes only, not licensed financial, investment, or tax advice.`,
   ]
     .filter(Boolean)

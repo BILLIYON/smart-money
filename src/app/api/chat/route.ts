@@ -73,11 +73,41 @@ export async function POST(req: Request) {
             return merged;
           }, new Uint8Array())
         );
+        let finalContent = fullText;
+
+        // Extract [AGENT_ACTION: {...}]
+        const actionRegex = /\[AGENT_ACTION:\s*(\{[\s\S]*?\})\s*\]/g;
+        let match;
+        const actionsToInsert = [];
+        
+        while ((match = actionRegex.exec(fullText)) !== null) {
+          try {
+            const payload = JSON.parse(match[1]);
+            actionsToInsert.push({
+              user_id: user.id,
+              buddy_id: buddyId,
+              action_type: payload.action || 'generic',
+              description: payload.title || 'Agent Action',
+              amount: payload.amount || 0,
+              currency: 'NGN',
+              status: 'pending'
+            });
+          } catch (e) {
+            console.error("[/api/chat] Failed to parse agent action JSON:", e);
+          }
+        }
+
+        if (actionsToInsert.length > 0) {
+          await supabase.from("agent_actions").insert(actionsToInsert);
+          // Strip the action blocks from the final message saved to DB
+          finalContent = fullText.replace(/\[AGENT_ACTION:\s*\{[\s\S]*?\}\s*\]/g, '').trim();
+        }
+
         await supabase.from("messages").insert({
           session_id: sessionId,
           role: "assistant",
           buddy_id: buddyId,
-          content: fullText,
+          content: finalContent,
         });
       } catch (e) {
         console.error("[/api/chat] DB persist failed:", e);

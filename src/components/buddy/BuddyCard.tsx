@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { Buddy } from "@/lib/buddies";
+import { getCategoryStyle, type Buddy } from "@/lib/buddies";
 import { isImageAvatar } from "@/lib/utils";
 
 function ModelDot({ color }: { color: string }) {
@@ -16,38 +16,28 @@ export function BuddyCard({ buddy }: { buddy: Buddy }) {
   const {
     id, name, tag, desc, badge, badgeType, bannerColor, avatarBg,
     avatarContent, avatarIsSerif, model, modelColor, rating, reviewCount,
+    categories,
   } = buddy;
 
   return (
     <Link
       href={`/marketplace/${id}`}
-      className="flex flex-col h-full rounded-[16px] border overflow-hidden cursor-pointer transition-all duration-[250ms] group"
+      className="flex flex-col h-full rounded-[16px] overflow-hidden cursor-pointer transition-all duration-[250ms] group"
       style={{
         background: "var(--card)",
-        borderColor: "var(--border)",
+        border: "1px solid var(--border)",
+        boxShadow: "0 4px 20px rgba(0,0,0,.03)",
       }}
       onMouseEnter={(e) => {
         const el = e.currentTarget as HTMLAnchorElement;
-        el.style.transform = "translateY(-3px)";
-        el.style.boxShadow = "0 12px 40px var(--shadow)";
+        el.style.transform = "translateY(-4px)";
+        el.style.boxShadow = "0 12px 30px rgba(0,0,0,.08)";
         el.style.borderColor = "var(--green)";
       }}
       onMouseLeave={(e) => {
         const el = e.currentTarget as HTMLAnchorElement;
-        el.style.transform = "";
-        el.style.boxShadow = "";
-        el.style.borderColor = "var(--border)";
-      }}
-      onFocus={(e) => {
-        const el = e.currentTarget as HTMLAnchorElement;
-        el.style.transform = "translateY(-3px)";
-        el.style.boxShadow = "0 12px 40px var(--shadow)";
-        el.style.borderColor = "var(--green)";
-      }}
-      onBlur={(e) => {
-        const el = e.currentTarget as HTMLAnchorElement;
-        el.style.transform = "";
-        el.style.boxShadow = "";
+        el.style.transform = "none";
+        el.style.boxShadow = "0 4px 20px rgba(0,0,0,.03)";
         el.style.borderColor = "var(--border)";
       }}
     >
@@ -94,7 +84,30 @@ export function BuddyCard({ buddy }: { buddy: Buddy }) {
         </div>
 
         <div className="text-[11px] mb-[10px]" style={{ color: "var(--muted)" }}>{tag}</div>
-        <div className="text-[12px] leading-relaxed mb-[14px]" style={{ color: "var(--muted)" }}>{desc}</div>
+        <div className="text-[12px] leading-relaxed mb-[12px]" style={{ color: "var(--muted)" }}>{desc}</div>
+
+        <div className="flex flex-wrap gap-[6px] mb-[14px]">
+          {categories?.slice(0, 3).map((cat) => {
+            const style = getCategoryStyle(cat);
+            return (
+              <span
+                key={cat}
+                className="px-2 py-[2px] rounded-full text-[9px] font-semibold uppercase tracking-[.5px] border"
+                style={{ background: style.background, color: style.color, borderColor: style.borderColor }}
+              >
+                {cat}
+              </span>
+            );
+          })}
+          {categories && categories.length > 3 && (
+            <span
+              className="px-2 py-[2px] rounded-full text-[9px] font-semibold uppercase tracking-[.5px] border"
+              style={{ background: "var(--bg)", color: "var(--muted)", borderColor: "var(--border)" }}
+            >
+              +{categories.length - 3}
+            </span>
+          )}
+        </div>
 
         <div className="mt-auto pt-4">
           {/* Footer */}
@@ -129,7 +142,7 @@ export function BuddyCard({ buddy }: { buddy: Buddy }) {
 export function CelebrityCard({ buddy }: { buddy: Buddy }) {
   const {
     id, name, tag, desc, badge, badgeType, bannerColor, avatarBg,
-    avatarContent, model, modelColor, rating, reviewCount,
+    avatarContent, model, modelColor, rating, reviewCount, categories,
   } = buddy;
 
   return (
@@ -221,7 +234,30 @@ export function CelebrityCard({ buddy }: { buddy: Buddy }) {
         </div>
 
         <div className="text-[11px] mb-[10px]" style={{ color: "var(--muted)" }}>{tag}</div>
-        <div className="text-[12px] leading-relaxed mb-[14px]" style={{ color: "var(--muted)" }}>{desc}</div>
+        <div className="text-[12px] leading-relaxed mb-[12px]" style={{ color: "var(--muted)" }}>{desc}</div>
+
+        <div className="flex flex-wrap gap-[6px] mb-[14px]">
+          {categories?.slice(0, 3).map((cat) => {
+            const style = getCategoryStyle(cat);
+            return (
+              <span
+                key={cat}
+                className="px-2 py-[2px] rounded-full text-[9px] font-semibold uppercase tracking-[.5px] border"
+                style={{ background: style.background, color: style.color, borderColor: style.borderColor }}
+              >
+                {cat}
+              </span>
+            );
+          })}
+          {categories && categories.length > 3 && (
+            <span
+              className="px-2 py-[2px] rounded-full text-[9px] font-semibold uppercase tracking-[.5px] border"
+              style={{ background: "var(--bg)", color: "var(--muted)", borderColor: "var(--border)" }}
+            >
+              +{categories.length - 3}
+            </span>
+          )}
+        </div>
 
         <div className="mt-auto pt-4">
           {/* Footer */}

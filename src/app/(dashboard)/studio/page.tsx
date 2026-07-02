@@ -207,6 +207,7 @@ export default function StudioPage() {
 
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState(false);
+  const [customCategory, setCustomCategory] = useState("");
 
   // ── Preview chat ───────────────────────────────────────
   const [previewMsgs, setPreviewMsgs] = useState<PreviewMsg[]>([
@@ -309,6 +310,16 @@ export default function StudioPage() {
         ? c.categories.filter((x) => x !== cat)
         : [...c.categories, cat],
     }));
+  }
+
+  function handleAddCustomCategory(e: React.FormEvent) {
+    e.preventDefault();
+    const cat = customCategory.trim();
+    if (!cat) return;
+    if (!config.categories.includes(cat)) {
+      setConfig((c) => ({ ...c, categories: [...c.categories, cat] }));
+    }
+    setCustomCategory("");
   }
 
   function updateSample(i: number, val: string) {
@@ -594,7 +605,7 @@ export default function StudioPage() {
               {/* Categories */}
               <SectionLabel>Categories</SectionLabel>
               <div className="flex flex-wrap gap-2 mb-1">
-                {CATEGORY_OPTIONS.map((cat) => {
+                {Array.from(new Set([...CATEGORY_OPTIONS, ...config.categories])).map((cat) => {
                   const active = config.categories.includes(cat);
                   return (
                     <button
@@ -611,6 +622,25 @@ export default function StudioPage() {
                     </button>
                   );
                 })}
+                <form onSubmit={handleAddCustomCategory} className="flex gap-1">
+                  <input
+                    type="text"
+                    value={customCategory}
+                    onChange={(e) => setCustomCategory(e.target.value)}
+                    placeholder="Other..."
+                    className="px-3 py-[6px] rounded-full text-[12px] font-medium border transition-all duration-150 outline-none w-[100px]"
+                    style={{ background: "var(--bg)", color: "var(--text)", borderColor: "var(--border)" }}
+                  />
+                  {customCategory.trim() && (
+                    <button
+                      type="submit"
+                      className="flex items-center justify-center rounded-full text-[14px] font-bold w-[30px] h-[30px] border transition-all duration-150"
+                      style={{ background: "var(--navy)", color: "#fff", borderColor: "var(--navy)" }}
+                    >
+                      +
+                    </button>
+                  )}
+                </form>
               </div>
 
               <FieldDivider />

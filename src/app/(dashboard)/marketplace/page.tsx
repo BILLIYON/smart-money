@@ -141,6 +141,21 @@ export default function MarketplacePage() {
     return list;
   }, [activeFilter, communityBuddies, searchQuery]);
 
+  // Extract custom categories from community buddies
+  const dynamicFilters = useMemo(() => {
+    const predefinedValues = new Set(FILTERS.map((f) => f.value as string));
+    const customCats = new Set<string>();
+    for (const b of communityBuddies) {
+      for (const cat of b.categories) {
+        if (!predefinedValues.has(cat)) {
+          customCats.add(cat);
+        }
+      }
+    }
+    const customFilters = Array.from(customCats).map((cat) => ({ label: cat, value: cat }));
+    return [...FILTERS, ...customFilters];
+  }, [communityBuddies]);
+
   // Merged grid: archetypes first, then celebs, then community
   const allMergedBuddies = [...filteredArchetypes, ...filteredCelebs, ...filteredCommunity];
 
@@ -175,16 +190,16 @@ export default function MarketplacePage() {
         className="flex gap-2 overflow-x-auto pb-2 mb-6"
         style={{ scrollbarWidth: "none" }}
       >
-        {FILTERS.map((f) => {
+        {dynamicFilters.map((f) => {
           const active = activeFilter === f.value;
           return (
             <button
               key={f.value}
               onClick={() => setActiveFilter(f.value)}
-              className="flex-shrink-0 px-4 py-[7px] rounded-full text-[12px] font-medium border transition-all duration-200"
+              className="px-4 py-[7px] rounded-full text-[13px] font-medium transition-all duration-[250ms] border whitespace-nowrap cursor-pointer"
               style={
                 active
-                  ? { background: "var(--navy)", color: "#fff", borderColor: "var(--navy)" }
+                  ? { background: "var(--navy)", color: "white", borderColor: "var(--navy)" }
                   : { background: "var(--card)", color: "var(--muted)", borderColor: "var(--border)" }
               }
             >

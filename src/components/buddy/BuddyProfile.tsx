@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { Buddy } from "@/lib/buddies";
+import { getCategoryStyle, type Buddy } from "@/lib/buddies";
 import { useBuddyStore } from "@/store/buddyStore";
 import { PaymentModal } from "@/components/buddy/PaymentModal";
 import { createClient } from "@/lib/supabase/client";
@@ -115,7 +115,7 @@ export function BuddyProfile({ buddy }: { buddy: Buddy }) {
     name, tag,
     bannerColor, avatarBg, avatarContent, avatarIsSerif,
     model, modelColor, rating, reviewCount,
-    isFanSim, disclaimer, philosophy, samples, reviews,
+    isFanSim, disclaimer, philosophy, samples, reviews, categories,
   } = buddy;
 
   return (
@@ -200,6 +200,18 @@ export function BuddyProfile({ buddy }: { buddy: Buddy }) {
                   <span style={{ color: "var(--gold)" }}>★</span>
                   {rating} · {reviewCount} reviews
                 </span>
+                {categories?.map((cat) => {
+                  const style = getCategoryStyle(cat);
+                  return (
+                    <span
+                      key={cat}
+                      className="px-3 py-[4px] rounded-full text-[11px] font-semibold tracking-[.5px] border"
+                      style={{ background: style.background, color: style.color, borderColor: style.borderColor }}
+                    >
+                      {cat}
+                    </span>
+                  );
+                })}
               </div>
 
               {/* Fan disclaimer */}
