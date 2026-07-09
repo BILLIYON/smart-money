@@ -85,7 +85,7 @@ export function AdminSidebar() {
         }}
       >
         <Link
-          href="/dashboard"
+          href="/marketplace"
           style={{
             display: "flex",
             alignItems: "center",
@@ -110,7 +110,7 @@ export function AdminSidebar() {
             (e.currentTarget as HTMLAnchorElement).style.color = "rgba(255,255,255,.7)";
           }}
         >
-          <span>←</span> Back to User App
+          <span>←</span> Back to Marketplace
         </Link>
         <div style={{ fontSize: 11, color: "rgba(255,255,255,.3)", textAlign: "center" }}>
           Admin only · v1.0
