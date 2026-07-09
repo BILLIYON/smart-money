@@ -79,11 +79,42 @@ export function AdminSidebar() {
         style={{
           padding: "16px 20px",
           borderTop: "1px solid rgba(255,255,255,.08)",
-          fontSize: 11,
-          color: "rgba(255,255,255,.3)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
         }}
       >
-        Admin only · v1.0
+        <Link
+          href="/dashboard"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            padding: "8px 12px",
+            background: "rgba(255,255,255,.05)",
+            border: "1px solid rgba(255,255,255,.1)",
+            borderRadius: 8,
+            color: "rgba(255,255,255,.7)",
+            fontSize: 12,
+            fontWeight: 600,
+            textDecoration: "none",
+            transition: "all .15s",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,.1)";
+            (e.currentTarget as HTMLAnchorElement).style.color = "#ffffff";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,.05)";
+            (e.currentTarget as HTMLAnchorElement).style.color = "rgba(255,255,255,.7)";
+          }}
+        >
+          <span>←</span> Back to User App
+        </Link>
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,.3)", textAlign: "center" }}>
+          Admin only · v1.0
+        </div>
       </div>
     </aside>
   );

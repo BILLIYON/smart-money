@@ -42,6 +42,20 @@ export async function POST(req: Request) {
       })
       .select("id")
       .single(),
+
+    // 4. Insert the onboarding goal into the goals table if provided
+    ...(goal ? [
+      supabase
+        .from("goals")
+        .insert({
+          user_id: userId,
+          buddy_id: buddyId,
+          title: goal,
+          target_amount: 100000000, // ₦1,000,000 default target
+          current_amount: 0,
+          status: "active",
+        })
+    ] : [])
   ]);
 
   const errors = [profileUpdate.error, subInsert.error, sessionInsert.error].filter(Boolean);

@@ -20,7 +20,28 @@ export async function GET() {
 
   // 2. Seed default goals if database is empty
   if (!goals || goals.length === 0) {
-    const seedGoals = [
+    // Check if the user has an onboarding goal
+    const { data: userRow } = await supabase
+      .from("users")
+      .select("primary_goal")
+      .eq("id", userId)
+      .single();
+
+    const seedGoals = [];
+
+    // Add onboarding goal if present
+    if (userRow?.primary_goal) {
+      seedGoals.push({
+        user_id: userId,
+        buddy_id: "contrarian", // default buddy
+        title: userRow.primary_goal,
+        target_amount: 100000000, // ₦1,000,000 default
+        current_amount: 0,
+        status: "active",
+      });
+    }
+
+    seedGoals.push(
       {
         user_id: userId,
         buddy_id: "contrarian",
@@ -48,7 +69,7 @@ export async function GET() {
         target_date: "2026-03-31",
         status: "active",
       }
-    ];
+    );
 
     const { data: insertedGoals, error: insertError } = await supabase
       .from("goals")
