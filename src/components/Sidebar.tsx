@@ -15,6 +15,7 @@ import {
   Sun,
   Moon,
   LogOut,
+  Shield,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,7 @@ const NAV_TOOLS = [
   { href: "/studio",  icon: PenLine,   label: "AI Studio" },
   { href: "/creator", icon: BarChart2, label: "Creator Dashboard" },
   { href: "/agent",   icon: Zap,       label: "Agentic Actions" },
+  { href: "/admin",   icon: Shield,    label: "Admin Console" },
 ];
 
 function NavItem({
@@ -93,7 +95,7 @@ function getInitials(fullName: string | null | undefined, email: string | undefi
   return "?";
 }
 
-export function Sidebar({ user }: { user?: { email: string; fullName: string | null } }) {
+export function Sidebar({ user }: { user?: { email: string; fullName: string | null; isAdmin?: boolean } }) {
   const pathname = usePathname();
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -142,9 +144,10 @@ export function Sidebar({ user }: { user?: { email: string; fullName: string | n
       <span className="w-6 h-px my-1 flex-shrink-0" style={{ background: "rgba(255,255,255,.1)" }} />
 
       {/* Tool nav */}
-      {NAV_TOOLS.map((item) => (
-        <NavItem key={item.href} {...item} isActive={isActive(item.href)} />
-      ))}
+      {NAV_TOOLS.map((item) => {
+        if (item.href === "/admin" && !user?.isAdmin) return null;
+        return <NavItem key={item.href} {...item} isActive={isActive(item.href)} />;
+      })}
 
       {/* Spacer pushes bottom widget down */}
       <div className="flex-1" />

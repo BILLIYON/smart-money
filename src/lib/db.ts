@@ -149,6 +149,12 @@ export async function deleteUser(userId: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function changeUserPassword(userId: string, password: string): Promise<void> {
+  const db = getClient();
+  const { error } = await db.auth.admin.updateUserById(userId, { password });
+  if (error) throw error;
+}
+
 export async function bulkDeleteUsers(userIds: string[]): Promise<void> {
   const db = getClient();
   await Promise.all(userIds.map((id) => db.auth.admin.deleteUser(id)));

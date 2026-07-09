@@ -18,17 +18,19 @@ export default async function DashboardLayout({
   const { data: { user } } = await supabase.auth.getUser();
 
   let fullName: string | null = null;
+  let isAdmin = false;
   if (user) {
     const { data: profile } = await supabase
       .from("users")
-      .select("full_name")
+      .select("full_name, is_admin")
       .eq("id", user.id)
       .single();
     fullName = profile?.full_name ?? null;
+    isAdmin = profile?.is_admin ?? false;
   }
 
   const sidebarUser = user
-    ? { email: user.email ?? "", fullName }
+    ? { email: user.email ?? "", fullName, isAdmin }
     : undefined;
 
   return (

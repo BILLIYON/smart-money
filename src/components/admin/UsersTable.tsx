@@ -2,12 +2,13 @@
 
 import { useState, useTransition } from "react";
 import type { AdminUser } from "@/lib/db";
-import { deleteUserAction, bulkDeleteUsersAction } from "@/app/admin/users/actions";
+import { deleteUserAction, bulkDeleteUsersAction, changePasswordAction } from "@/app/admin/users/actions";
 
 type ModalState =
   | { open: false }
   | { open: true; type: "single"; userId: string; email: string }
-  | { open: true; type: "bulk"; userIds: string[] };
+  | { open: true; type: "bulk"; userIds: string[] }
+  | { open: true; type: "password"; userId: string; email: string };
 
 function fmt(iso: string | null) {
   if (!iso) return "—";
@@ -77,15 +78,25 @@ export function UsersTable({
     setModal({ open: true, type: "bulk", userIds: [...selected] });
   }
 
+  function openChangePassword(user: AdminUser) {
+    setConfirmInput("");
+    setModal({ open: true, type: "password", userId: user.id, email: user.email ?? user.id });
+  }
+
   function closeModal() {
     setModal({ open: false });
     setConfirmInput("");
   }
 
   function handleConfirm() {
-    if (confirmInput !== "DELETE" || !modal.open) return;
+    if (!modal.open) return;
+    if (modal.type !== "password" && confirmInput !== "DELETE") return;
+    if (modal.type === "password" && confirmInput.length < 6) return; // simple length check
+
     startTransition(async () => {
-      if (modal.type === "single") {
+      if (modal.type === "password") {
+        await changePasswordAction(modal.userId, confirmInput);
+      } else if (modal.type === "single") {
         await deleteUserAction(modal.userId);
         setSelected((prev) => { const next = new Set(prev); next.delete(modal.userId); return next; });
       } else {
@@ -103,7 +114,7 @@ export function UsersTable({
     return `?${params.toString()}`;
   }
 
-  const confirmReady = confirmInput === "DELETE";
+  const confirmReady = modal.open && modal.type === "password" ? confirmInput.length >= 6 : confirmInput === "DELETE";
 
   return (
     <>
@@ -219,6 +230,22 @@ export function UsersTable({
                 </td>
                 <td style={{ padding: "13px 20px 13px 0", textAlign: "right" }}>
                   <button
+                    onClick={() => openChangePassword(user)}
+                    style={{
+                      padding: "5px 12px",
+                      borderRadius: 7,
+                      border: "1px solid #E2E7F0",
+                      background: "transparent",
+                      color: "#6B7A99",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      marginRight: 8,
+                    }}
+                  >
+                    Password
+                  </button>
+                  <button
                     onClick={() => openSingleDelete(user)}
                     style={{
                       padding: "5px 12px",
@@ -309,28 +336,39 @@ export function UsersTable({
             }}
           >
             <div style={{ fontSize: 18, fontWeight: 700, color: "#0B1E3D", marginBottom: 8 }}>
-              {modal.type === "single" ? "Delete user?" : `Delete ${modal.userIds.length} users?`}
+              {modal.type === "password"
+                ? "Change Password"
+                : modal.type === "single"
+                ? "Delete user?"
+                : `Delete ${modal.userIds.length} users?`}
             </div>
             <p style={{ fontSize: 13, color: "#6B7A99", marginBottom: 20, lineHeight: 1.6 }}>
-              {modal.type === "single"
+              {modal.type === "password"
+                ? <>Enter a new password for <strong style={{ color: "#0B1E3D" }}>{modal.email}</strong>.</>
+                : modal.type === "single"
                 ? <>This will permanently delete <strong style={{ color: "#0B1E3D" }}>{modal.email}</strong> and all their data. This cannot be undone.</>
                 : <>This will permanently delete <strong style={{ color: "#0B1E3D" }}>{modal.userIds.length} users</strong> and all their associated data. This cannot be undone.</>}
             </p>
             <div style={{ marginBottom: 20 }}>
               <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#6B7A99", marginBottom: 6 }}>
-                Type <strong style={{ color: "#EF4444" }}>DELETE</strong> to confirm
+                {modal.type === "password" ? (
+                  <>New Password <span style={{ fontWeight: 400 }}>(min 6 characters)</span></>
+                ) : (
+                  <>Type <strong style={{ color: "#EF4444" }}>DELETE</strong> to confirm</>
+                )}
               </label>
               <input
                 autoFocus
+                type={modal.type === "password" ? "password" : "text"}
                 value={confirmInput}
                 onChange={(e) => setConfirmInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && confirmReady && handleConfirm()}
-                placeholder="DELETE"
+                placeholder={modal.type === "password" ? "••••••••" : "DELETE"}
                 style={{
                   width: "100%",
                   height: 40,
                   padding: "0 14px",
-                  border: `1px solid ${confirmReady ? "#EF4444" : "#E2E7F0"}`,
+                  border: `1px solid ${confirmReady ? (modal.type === "password" ? "#00C48C" : "#EF4444") : "#E2E7F0"}`,
                   borderRadius: 10,
                   fontSize: 13,
                   color: "#0B1E3D",
@@ -364,7 +402,7 @@ export function UsersTable({
                   height: 40,
                   borderRadius: 10,
                   border: "none",
-                  background: confirmReady ? "#EF4444" : "#E2E7F0",
+                  background: confirmReady ? (modal.type === "password" ? "#00C48C" : "#EF4444") : "#E2E7F0",
                   fontSize: 13,
                   fontWeight: 600,
                   color: confirmReady ? "#ffffff" : "#9CA3AF",
@@ -372,7 +410,7 @@ export function UsersTable({
                   transition: "all .15s",
                 }}
               >
-                Delete permanently
+                {modal.type === "password" ? "Change Password" : "Delete permanently"}
               </button>
             </div>
           </div>

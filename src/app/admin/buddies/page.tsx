@@ -15,6 +15,9 @@ export default async function AdminBuddiesPage() {
     return (
       <div
         style={{
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
           background: "#ffffff",
           borderRadius: 16,
           overflow: "hidden",
@@ -65,7 +68,7 @@ export default async function AdminBuddiesPage() {
         </div>
 
         {/* Body */}
-        <div style={{ padding: "24px 16px 16px" }}>
+        <div style={{ padding: "24px 16px 16px", display: "flex", flexDirection: "column", flex: 1 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#0B1E3D", marginBottom: 2 }}>
             {buddy.name}
           </div>
@@ -103,7 +106,9 @@ export default async function AdminBuddiesPage() {
               </span>
             )}
           </div>
-          <BuddyHideAction buddyId={buddy.id} hidden={hidden} />
+          <div style={{ marginTop: "auto" }}>
+            <BuddyHideAction buddyId={buddy.id} hidden={hidden} />
+          </div>
         </div>
       </div>
     );
