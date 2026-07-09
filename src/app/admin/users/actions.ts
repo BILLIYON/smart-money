@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { deleteUser, bulkDeleteUsers, changeUserPassword } from "@/lib/db";
+import { deleteUser, bulkDeleteUsers, changeUserPassword, toggleAdminRole } from "@/lib/db";
 
 export async function deleteUserAction(userId: string): Promise<void> {
   await deleteUser(userId);
@@ -15,4 +15,9 @@ export async function bulkDeleteUsersAction(userIds: string[]): Promise<void> {
 
 export async function changePasswordAction(userId: string, password: string): Promise<void> {
   await changeUserPassword(userId, password);
+}
+
+export async function toggleAdminRoleAction(userId: string, isAdmin: boolean): Promise<void> {
+  await toggleAdminRole(userId, isAdmin);
+  revalidatePath("/admin/users");
 }

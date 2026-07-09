@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import type { AdminUser } from "@/lib/db";
-import { deleteUserAction, bulkDeleteUsersAction, changePasswordAction } from "@/app/admin/users/actions";
+import { deleteUserAction, bulkDeleteUsersAction, changePasswordAction, toggleAdminRoleAction } from "@/app/admin/users/actions";
 
 type ModalState =
   | { open: false }
@@ -204,8 +204,22 @@ export function UsersTable({
                   />
                 </td>
                 <td style={{ padding: "13px 20px 13px 0", fontSize: 13, color: "#0B1E3D", maxWidth: 260 }}>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
                     {user.email ?? "—"}
+                    {user.is_admin && (
+                      <span style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        padding: "2px 6px",
+                        borderRadius: 12,
+                        background: "rgba(0,196,140,.1)",
+                        color: "#00A677",
+                        textTransform: "uppercase",
+                        letterSpacing: ".5px"
+                      }}>
+                        Admin
+                      </span>
+                    )}
                   </span>
                 </td>
                 <td style={{ padding: "13px 20px 13px 0" }}>
@@ -229,6 +243,22 @@ export function UsersTable({
                   {fmtRelative(user.last_active)}
                 </td>
                 <td style={{ padding: "13px 20px 13px 0", textAlign: "right" }}>
+                  <button
+                    onClick={() => startTransition(async () => await toggleAdminRoleAction(user.id, !user.is_admin))}
+                    style={{
+                      padding: "5px 12px",
+                      borderRadius: 7,
+                      border: "1px solid #E2E7F0",
+                      background: "transparent",
+                      color: user.is_admin ? "#C47F00" : "#6B7A99",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      marginRight: 8,
+                    }}
+                  >
+                    {user.is_admin ? "Revoke Admin" : "Make Admin"}
+                  </button>
                   <button
                     onClick={() => openChangePassword(user)}
                     style={{

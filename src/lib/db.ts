@@ -110,6 +110,7 @@ export type AdminUser = {
   plan: string;
   created_at: string;
   last_active: string | null;
+  is_admin: boolean;
 };
 
 export async function getAdminUsers(
@@ -122,7 +123,7 @@ export async function getAdminUsers(
 
   let query = db
     .from("users")
-    .select("id, email, plan, created_at, chat_sessions(last_message_at)", { count: "exact" })
+    .select("id, email, plan, created_at, is_admin, chat_sessions(last_message_at)", { count: "exact" })
     .order("created_at", { ascending: false })
     .range(from, to);
 
@@ -137,7 +138,7 @@ export async function getAdminUsers(
     const sessions = (row.chat_sessions ?? []) as { last_message_at: string | null }[];
     const lastActive =
       sessions.map((s) => s.last_message_at).filter(Boolean).sort().at(-1) ?? null;
-    return { id: row.id, email: row.email, plan: row.plan, created_at: row.created_at, last_active: lastActive };
+    return { id: row.id, email: row.email, plan: row.plan, created_at: row.created_at, last_active: lastActive, is_admin: row.is_admin ?? false };
   });
 
   return { users, total: count ?? 0 };
@@ -152,6 +153,15 @@ export async function deleteUser(userId: string): Promise<void> {
 export async function changeUserPassword(userId: string, password: string): Promise<void> {
   const db = getClient();
   const { error } = await db.auth.admin.updateUserById(userId, { password });
+  if (error) throw error;
+}
+
+export async function toggleAdminRole(userId: string, isAdmin: boolean): Promise<void> {
+  const db = getClient();
+  const { error } = await db
+    .from("users")
+    .update({ is_admin: isAdmin })
+    .eq("id", userId);
   if (error) throw error;
 }
 
