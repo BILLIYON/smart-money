@@ -167,8 +167,9 @@ export function PaymentModal({ buddy, onSuccess, onClose }: PaymentModalProps) {
     setProcessing(true);
 
     if (!paystackLoaded || !(window as any).PaystackPop) {
-      console.warn("Paystack SDK not loaded. Simulating mock payment.");
-      triggerMockSubscription("paystack");
+      console.error("Paystack SDK not loaded.");
+      alert("Payment gateway could not be loaded. Please check your internet connection or disable any adblockers and try again.");
+      setProcessing(false);
       return;
     }
 
@@ -210,36 +211,11 @@ export function PaymentModal({ buddy, onSuccess, onClose }: PaymentModalProps) {
       handler.openIframe();
     } catch (e) {
       console.error("Paystack initialization failed:", e);
-      triggerMockSubscription("paystack");
-    }
-  };
-
-  // Mock subscription fallback for dev testing
-  const triggerMockSubscription = async (mockGateway: "paystack" | "paypal") => {
-    console.log(`[PaymentModal] Triggering mock checkout registration for ${mockGateway}...`);
-    try {
-      const res = await fetch("/api/subscriptions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          buddyId: buddy.id,
-          gateway: mockGateway,
-          reference: `mock_${mockGateway}_ref_${Math.random().toString(36).substring(2)}_${Date.now()}`,
-        }),
-      });
-      const subData = await res.json();
-      if (res.ok && subData.sessionId) {
-        onSuccess(subData.sessionId);
-      } else {
-        alert("Mock subscription registration failed.");
-        setProcessing(false);
-      }
-    } catch (e) {
-      console.error("Mock subscription failed:", e);
-      alert("Verification failed.");
+      alert("Paystack initialization failed. Please try again or use another payment method.");
       setProcessing(false);
     }
   };
+
 
   return (
     <div
@@ -389,15 +365,8 @@ export function PaymentModal({ buddy, onSuccess, onClose }: PaymentModalProps) {
                   <div className="text-center p-3">
                     <div className="text-[11px] mb-3 flex items-center justify-center gap-1.5" style={{ color: "var(--muted)" }}>
                       <AlertCircle size={14} />
-                      PayPal checkout popup failed to load.
+                      PayPal checkout popup failed to load. Please check your connection or disable adblockers.
                     </div>
-                    <button
-                      onClick={() => triggerMockSubscription("paypal")}
-                      className="w-full py-3 rounded-[12px] text-[13px] font-bold text-white transition-all border-none cursor-pointer"
-                      style={{ background: "#0070ba" }}
-                    >
-                      Bypass &amp; Subscribe (Mock PayPal)
-                    </button>
                   </div>
                 ) : !paypalLoaded ? (
                   <div className="p-4 text-center flex flex-col items-center justify-center gap-2">

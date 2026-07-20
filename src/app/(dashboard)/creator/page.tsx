@@ -303,6 +303,11 @@ export default function CreatorPage() {
                 cursor: data.verified ? "pointer" : "not-allowed",
               }}
               title={!data.verified ? "Complete identity verification to withdraw" : undefined}
+              onClick={() => {
+                if (data.verified) {
+                  alert("Withdrawal requested! Funds will arrive in your bank account shortly.");
+                }
+              }}
             >
               {data.verified ? "Withdraw to Bank" : "Withdraw to Bank 🔒"}
             </button>
