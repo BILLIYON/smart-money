@@ -434,8 +434,57 @@ export default function GoalsPage() {
     setEditDeadline("");
   }
 
+  // Create Goal handler
+  async function handleCreateGoal() {
+    if (!editTitle || !editTarget) {
+      alert("Title and Target Amount are required.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const target_amount = Math.round(Number(editTarget) * 100);
+      const current_amount = Math.round(Number(editCurrent || "0") * 100);
+
+      const body: any = {
+        title: editTitle,
+        target_amount,
+        current_amount,
+        category: "General",
+        status: "in_progress",
+        ai_advice: "Manually created goal.",
+      };
+
+      if (editDeadline) {
+        body.target_date = editDeadline;
+      }
+
+      const res = await fetch(`/api/goals/list`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (res.ok) {
+        setEditingGoal(null); // Close modal
+        fetchGoals();
+      } else {
+        alert("Failed to create goal");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error creating goal");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   // Save Edit handler
   async function handleSaveEdit() {
+    if (editingGoal && editingGoal.id === "new") {
+      return handleCreateGoal();
+    }
+
     if (!editingGoal) return;
     if (!editTitle || !editTarget) {
       alert("Title and Target Amount are required.");
@@ -500,15 +549,32 @@ export default function GoalsPage() {
               Financial Goals
             </em>
           </div>
-          <button
-            onClick={() => router.push("/chat")}
-            className="px-4 py-[9px] rounded-[10px] text-[12px] font-semibold transition-all duration-150"
-            style={{ background: "var(--green)", color: "#fff", border: "none" }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green2)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green)"; }}
-          >
-            + New Goal in Chat
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setEditingGoal({ id: "new", title: "", current: 0, target: 0 } as any);
+                setEditTitle("");
+                setEditCurrent("");
+                setEditTarget("");
+                setEditDeadline("");
+              }}
+              className="px-4 py-[9px] rounded-[10px] text-[12px] font-semibold transition-all duration-150 border"
+              style={{ borderColor: "var(--border)", color: "var(--text)", background: "transparent" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--navy)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+            >
+              + Manual Goal
+            </button>
+            <button
+              onClick={() => router.push("/chat")}
+              className="px-4 py-[9px] rounded-[10px] text-[12px] font-semibold transition-all duration-150"
+              style={{ background: "var(--green)", color: "#fff", border: "none" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green2)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green)"; }}
+            >
+              + New Goal in Chat
+            </button>
+          </div>
         </div>
 
         {/* Hint badge */}
@@ -581,7 +647,7 @@ export default function GoalsPage() {
             style={{ background: "var(--navy2)", borderColor: "rgba(0,196,140,.3)" }}
           >
             <h3 className="text-[18px] font-semibold mb-4 flex items-center gap-2">
-              ✏️ Edit Financial Goal
+              {editingGoal.id === "new" ? "🎯 Create Financial Goal" : "✏️ Edit Financial Goal"}
             </h3>
             
             <div className="flex flex-col gap-4 text-left">

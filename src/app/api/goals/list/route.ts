@@ -140,3 +140,41 @@ export async function GET() {
 
   return NextResponse.json(formattedGoals);
 }
+
+export async function POST(req: Request) {
+  const { supabase, userId, error } = await requireAuth();
+  if (error) return error;
+
+  try {
+    const body = await req.json();
+    
+    // Set a default buddy if not provided
+    const buddy_id = body.buddy_id || "contrarian";
+
+    const { data, error: insertError } = await supabase
+      .from("goals")
+      .insert({
+        user_id: userId,
+        buddy_id,
+        title: body.title,
+        target_amount: body.target_amount,
+        current_amount: body.current_amount || 0,
+        target_date: body.target_date || null,
+        status: body.status || "active",
+        category: body.category || "General",
+        ai_advice: body.ai_advice || "Manually created goal.",
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error("[POST /api/goals/list] Insert error:", insertError);
+      return NextResponse.json({ error: "Failed to create goal" }, { status: 500 });
+    }
+
+    return NextResponse.json(data);
+  } catch (err) {
+    console.error("[POST /api/goals/list] Error:", err);
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+}
