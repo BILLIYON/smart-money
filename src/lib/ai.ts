@@ -565,7 +565,62 @@ Respond with valid JSON only — no markdown, no explanation outside the JSON:
     return {
       recommendation: "caution",
       reasoning: "Could not evaluate this action automatically. Please review manually.",
-      riskLevel: "medium",
     };
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// 6. extractFinancialDataFromEmail — AI-powered Gmail parsing
+// ════════════════════════════════════════════════════════════
+
+export async function extractFinancialDataFromEmail(
+  emailBody: string,
+  subject: string,
+  from: string
+) {
+  // We use OpenAI's gpt-4o-mini with response_format for structured extraction.
+  // It is fast, cheap, and very accurate.
+  const prompt = `You are a highly accurate financial data extractor.
+Analyze the following email and extract the transaction details.
+
+SENDER: ${from}
+SUBJECT: ${subject}
+BODY:
+${emailBody.slice(0, 3000) /* limit length */}
+
+If this email is NOT a financial transaction (e.g. promotional, marketing, security alert, or login notification), return {"relevant": false}.
+If it IS a financial transaction (debit, credit, transfer, receipt, invoice, subscription payment), return valid JSON exactly matching this structure:
+{
+  "relevant": true,
+  "amount": <number representing the transaction amount. E.g. for $450.50 or NGN 450.50, return 450.50>,
+  "description": "<merchant name or short transaction description (max 40 chars)>",
+  "entry_type": "income" | "expense",
+  "category": "<one of: Salary, Utilities, Phone & Data, Food & Dining, Transport, Shopping, Subscriptions, Income, or General Expense>"
+}`;
+
+  try {
+    const ai = openai();
+    const res = await ai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" },
+      temperature: 0,
+    });
+
+    const raw = res.choices[0].message.content || "{}";
+    const parsed = JSON.parse(raw);
+
+    if (!parsed.relevant) return null;
+    if (typeof parsed.amount !== "number") return null;
+
+    return {
+      amount: parsed.amount,
+      description: String(parsed.description || "Unknown"),
+      entry_type: parsed.entry_type === "income" ? "income" : "expense",
+      category: String(parsed.category || "General Expense"),
+    } as const;
+  } catch (err) {
+    console.error("[extractFinancialDataFromEmail] Error parsing email:", err);
+    return null;
   }
 }
