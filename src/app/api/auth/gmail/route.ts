@@ -12,6 +12,13 @@ export async function GET(req: Request) {
     redirectUri
   );
 
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    return new Response(
+      "Missing Google OAuth credentials in environment variables (GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)",
+      { status: 500 }
+    );
+  }
+
   // Get current user session to secure the OAuth callback
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -26,16 +33,21 @@ export async function GET(req: Request) {
   const statePayload = JSON.stringify({ userId: user.id, returnPath });
   const state = encrypt(statePayload);
 
-  const url = oauth2Client.generateAuthUrl({
-    access_type: "offline",  // gets refresh_token for background sync
-    prompt: "consent",       // always show consent (ensures refresh token)
-    scope: [
-      "https://www.googleapis.com/auth/gmail.readonly",
-      "https://www.googleapis.com/auth/gmail.labels",
-    ],
-    state,
-  });
-  return Response.redirect(url);
+  try {
+    const url = oauth2Client.generateAuthUrl({
+      access_type: "offline",  // gets refresh_token for background sync
+      prompt: "consent",       // always show consent (ensures refresh token)
+      scope: [
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/gmail.labels",
+      ],
+      state,
+    });
+    return Response.redirect(url);
+  } catch (err: any) {
+    console.error("[gmail/route] Auth URL generation failed:", err);
+    return new Response(`Failed to generate Google Auth URL: ${err.message}`, { status: 500 });
+  }
 }
 
 
