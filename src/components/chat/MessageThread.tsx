@@ -4,7 +4,7 @@ import * as React from "react";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { useChatStore, GROUPS, type ChatMessage } from "@/store/chatStore";
+import { useChatStore, GROUPS, type ChatMessage, type GoalCardData } from "@/store/chatStore";
 import { getBuddy } from "@/lib/buddies";
 import { InChatGoalCard } from "./InChatGoalCard";
 import { InChatAgentCard } from "./InChatAgentCard";
@@ -258,12 +258,30 @@ function AiMessage({
     else updateMessage(threadKey, msg.id, p);
   }
 
-  async function confirmGoal(data: Parameters<typeof patch>[0] extends { goalCardData?: infer T } ? T : never) {
+  async function confirmGoal(data: GoalCardData) {
+    // Parse the amount string (e.g. "₦500,000" or "500000") into kobo
+    const rawAmount = String(data.amount ?? "0").replace(/[^\d.]/g, "");
+    const amountNaira = parseFloat(rawAmount) || 0;
+    const amountKobo = Math.round(amountNaira * 100);
+
+    // Parse target date — if it's a month+year like "Dec 2026", convert to ISO
+    let targetDate: string | undefined;
+    try {
+      const parsed = new Date(data.date);
+      if (!isNaN(parsed.getTime())) targetDate = parsed.toISOString().split("T")[0];
+    } catch { /* leave undefined */ }
+
     try {
       await fetch("/api/goals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          title: data.name,
+          target_amount: amountKobo,
+          current_amount: 0,
+          target_date: targetDate,
+          buddy_id: threadKey,
+        }),
       });
     } catch { /* non-blocking */ }
     patch({ goalCardDone: true, goalCardOpen: false });
@@ -345,7 +363,7 @@ function AiMessage({
           <InChatGoalCard
             data={msg.goalCardData}
             done={false}
-            onConfirm={(d) => confirmGoal(d as never)}
+            onConfirm={(d) => confirmGoal(d)}
             onDismiss={() => patch({ goalCardOpen: false })}
           />
         )}

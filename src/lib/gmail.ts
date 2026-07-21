@@ -2,7 +2,6 @@ import { google } from "googleapis";
 import { encrypt, decrypt } from "./crypto";
 import { createServiceClient } from "./supabase/service";
 import { extractFinancialDataFromEmail } from "./ai";
-import { createServiceClient } from "./supabase/service";
 
 type DataBankEntry = {
   user_id?: string;
@@ -99,8 +98,6 @@ export async function getEmailBody(
 
   const body = extractText(res.data.payload);
   return { messageId, subject, from, date, body };
-}
-
 }
 
 function stripHtml(html: string): string {

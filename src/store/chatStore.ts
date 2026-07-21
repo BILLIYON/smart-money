@@ -25,6 +25,28 @@ function extractAgentAction(content: string) {
   return { finalContent, agentCardData };
 }
 
+function extractGoalData(content: string, buddyName: string) {
+  let goalCardData;
+  let finalContent = content;
+  const goalRegex = /\[GOAL:\s*(\{[\s\S]*?\})\s*\]/;
+  const match = goalRegex.exec(content);
+  if (match) {
+    try {
+      const payload = JSON.parse(match[1]);
+      goalCardData = {
+        name: payload.name || "New Financial Goal",
+        amount: payload.amount || "₦0",
+        date: payload.date || "TBD",
+        buddyName,
+      };
+      finalContent = content.replace(goalRegex, "").trim();
+    } catch (e) {
+      console.error("Failed to parse goalCardData", e);
+    }
+  }
+  return { finalContent, goalCardData };
+}
+
 
 export type InsightHighlight = { label: string; text: string };
 export type SpendBar = { label: string; width: string; color: string; amount: string };
@@ -342,11 +364,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set((s) => {
       const thread = s.threads[buddyId] ?? [];
       const msg = thread.find((m) => m.id === msgId);
-      const { finalContent, agentCardData } = extractAgentAction(msg?.content ?? "");
+      const rawContent = msg?.content ?? "";
+      // first extract agent action, then goal from whatever remains
+      const { finalContent: afterAgent, agentCardData } = extractAgentAction(rawContent);
+      const buddyName = buddyId; // will be overridden by the buddy's display name in the UI
+      const { finalContent, goalCardData } = extractGoalData(afterAgent, buddyName);
       return {
         threads: {
           ...s.threads,
-          [buddyId]: patchMsg(thread, msgId, { streaming: false, showActions: true, content: finalContent, agentCardData }),
+          [buddyId]: patchMsg(thread, msgId, { streaming: false, showActions: true, content: finalContent, agentCardData, goalCardData }),
         },
       };
     }),
@@ -381,11 +407,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set((s) => {
       const thread = s.groupThreads[groupId] ?? [];
       const msg = thread.find((m) => m.id === msgId);
-      const { finalContent, agentCardData } = extractAgentAction(msg?.content ?? "");
+      const rawContent = msg?.content ?? "";
+      const { finalContent: afterAgent, agentCardData } = extractAgentAction(rawContent);
+      const buddyName = msg?.buddyId ?? groupId;
+      const { finalContent, goalCardData } = extractGoalData(afterAgent, buddyName);
       return {
         groupThreads: {
           ...s.groupThreads,
-          [groupId]: patchMsg(thread, msgId, { streaming: false, showActions: true, content: finalContent, agentCardData }),
+          [groupId]: patchMsg(thread, msgId, { streaming: false, showActions: true, content: finalContent, agentCardData, goalCardData }),
         },
       };
     }),

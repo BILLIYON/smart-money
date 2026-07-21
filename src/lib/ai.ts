@@ -263,7 +263,11 @@ export function getBuddySystemPrompt(buddy: Buddy, databankContext: string, curr
       ? `\nDisclaimer you must include if a user asks whether you are the real ${buddy.name.split(" ")[0]}:\n"${buddy.disclaimer}"`
       : "",
 
-    `\n---\nTo propose a specific financial action that the user should execute through their Smart Money wallet, include exactly this block at the end of your message: [AGENT_ACTION: {"title": "Short descriptive title", "action": "Action to be performed", "amount": 50000}] where amount is the numeric value in minor units (e.g. kobo for NGN). Only do this if you are highly confident the user should execute it.`,
+    `\n---\nSpecial output tags — use these to make chat interactive:
+
+1. GOAL TAG: When you recommend a specific financial goal to the user (e.g. build an emergency fund, save for a car, pay off debt), include this tag at the end of your message:\n[GOAL: {"name": "Short goal title", "amount": "₦500,000", "date": "Dec 2026"}]\nOnly include one goal tag per message. Only use it if you are genuinely recommending a goal they should set.
+
+2. AGENT ACTION TAG: When you recommend a specific transaction the user should execute through their Smart Money wallet, include this tag at the end of your message:\n[AGENT_ACTION: {"title": "Short descriptive title", "action": "Action description", "amount": 50000}]\nwhere amount is in minor currency units (e.g. kobo for NGN). Only include this when you are highly confident in a specific executable action.\n\nNever include both tags in the same message. Never fabricate transaction amounts.`,
 
     `\n---\n⚠️ This is AI-generated financial guidance for educational purposes only, not licensed financial, investment, or tax advice.`,
   ]
@@ -565,6 +569,7 @@ Respond with valid JSON only — no markdown, no explanation outside the JSON:
     return {
       recommendation: "caution",
       reasoning: "Could not evaluate this action automatically. Please review manually.",
+      riskLevel: "medium",
     };
   }
 }

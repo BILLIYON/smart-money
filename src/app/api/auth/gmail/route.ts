@@ -15,8 +15,6 @@ export async function GET(req: Request) {
     redirectUri
   );
 
-  if (!clientId || !clientSecret) {
-
   // Get current user session to secure the OAuth callback
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
