@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useTheme } from "next-themes";
 import { useUserStore } from "@/store/userStore";
 import { useBuddyStore } from "@/store/buddyStore";
+import { popup } from "@/store/popupStore";
 
 // ── Types ──────────────────────────────────────────────────
 type Tab = "profile" | "notifs" | "subs" | "privacy" | "appear";
@@ -796,35 +797,43 @@ function PrivacyTab() {
 
   async function handleExport() {
     await fetch("/api/settings/export");
-    alert("Export started — you'll receive a download link via email.");
+    popup.success("Export Started", "Export started — you'll receive a download link via email.");
   }
 
-  async function handleRevokeGmail() {
-    if (!confirm("Revoke Gmail access? This will disconnect all Gmail-synced data.")) return;
-    await fetch("/api/auth/gmail/revoke", { method: "POST" });
-    alert("Gmail access revoked.");
+  function handleRevokeGmail() {
+    popup.danger(
+      "Revoke Gmail Access",
+      "Revoke Gmail access? This will disconnect all Gmail-synced data.",
+      async () => {
+        await fetch("/api/auth/gmail/revoke", { method: "POST" });
+        popup.success("Gmail Revoked", "Gmail access revoked.");
+      },
+      "Revoke"
+    );
   }
 
-  async function handleWipe() {
-    if (
-      !confirm(
-        "Delete ALL DataBank data? This permanently removes all statements, transactions, and synced emails. This cannot be undone."
-      )
-    )
-      return;
-    await fetch("/api/databank/wipe", { method: "DELETE" });
-    alert("All DataBank data deleted.");
+  function handleWipe() {
+    popup.danger(
+      "Delete All DataBank Data",
+      "Delete ALL DataBank data? This permanently removes all statements, transactions, and synced emails. This cannot be undone.",
+      async () => {
+        await fetch("/api/databank/wipe", { method: "DELETE" });
+        popup.success("Data Cleared", "All DataBank data deleted.");
+      },
+      "Delete All Data"
+    );
   }
 
-  async function handleDeleteAccount() {
-    if (
-      !confirm(
-        "Delete your account? This permanently removes your profile, all data, and all subscriptions. This cannot be undone."
-      )
-    )
-      return;
-    await fetch("/api/user/delete", { method: "DELETE" });
-    alert("Account deletion initiated.");
+  function handleDeleteAccount() {
+    popup.danger(
+      "Delete Account",
+      "Delete your account? This permanently removes your profile, all data, and all subscriptions. This cannot be undone.",
+      async () => {
+        await fetch("/api/user/delete", { method: "DELETE" });
+        popup.success("Account Deletion", "Account deletion initiated.");
+      },
+      "Delete Account"
+    );
   }
 
   return (

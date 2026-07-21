@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAgentStore, type AgentAction } from "@/store/agentStore";
 import toast from "react-hot-toast";
+import { popup } from "@/store/popupStore";
 
 type Connection = {
   id: string;
@@ -333,23 +334,25 @@ export default function AgentPage() {
       });
   }, [loadPending, loadHistory, fetchWalletBalance, fetchLimits]);
 
-  async function handleApprove(action: AgentAction) {
+  function handleApprove(action: AgentAction) {
     const displayAmount = action.amount ? `₦${(Number(action.amount) / 100).toLocaleString()}` : "N/A";
-    const confirmed = window.confirm(
-      `Approve and execute:\n"${action.description}"\n\nAmount: ${displayAmount}\n\nThis action cannot be undone.`
+    popup.confirm(
+      "Approve & Execute Action",
+      `Approve and execute:\n"${action.description}"\n\nAmount: ${displayAmount}\n\nThis action cannot be undone.`,
+      async () => {
+        setExecutingId(action.id);
+        try {
+          await executeAction(action.id);
+          toast.success("Action executed successfully!");
+          loadHistory();
+        } catch (err: any) {
+          toast.error(err.message || "Failed to execute action");
+        } finally {
+          setExecutingId(null);
+        }
+      },
+      { confirmText: "Approve & Execute", type: "confirm" }
     );
-    if (!confirmed) return;
-
-    setExecutingId(action.id);
-    try {
-      await executeAction(action.id);
-      toast.success("Action executed successfully!");
-      loadHistory();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to execute action");
-    } finally {
-      setExecutingId(null);
-    }
   }
 
   async function handleDecline(actionId: string) {

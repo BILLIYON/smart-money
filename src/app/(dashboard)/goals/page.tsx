@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { useUserStore } from "@/store/userStore";
 import { currencySymbol } from "@/lib/currency";
+import { popup } from "@/store/popupStore";
 
 // ── Types ─────────────────────────────────────────────────
 type Goal = {
@@ -408,21 +409,28 @@ export default function GoalsPage() {
   }
 
   // Delete Goal handler
-  async function handleDelete(id: string) {
-    if (!confirm("Are you sure you want to delete this financial goal?")) return;
-    try {
-      const res = await fetch(`/api/goals/${id}`, {
-        method: "DELETE",
-      });
-      if (res.ok) {
-        fetchGoals();
-      } else {
-        alert("Failed to delete goal");
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Error deleting goal");
-    }
+  function handleDelete(id: string) {
+    popup.danger(
+      "Delete Financial Goal",
+      "Are you sure you want to delete this financial goal?",
+      async () => {
+        try {
+          const res = await fetch(`/api/goals/${id}`, {
+            method: "DELETE",
+          });
+          if (res.ok) {
+            fetchGoals();
+            popup.success("Goal Deleted", "Your financial goal has been deleted.");
+          } else {
+            popup.error("Error", "Failed to delete goal");
+          }
+        } catch (err) {
+          console.error(err);
+          popup.error("Error", "Error deleting goal");
+        }
+      },
+      "Delete Goal"
+    );
   }
 
   // Start Edit handler
@@ -437,7 +445,7 @@ export default function GoalsPage() {
   // Create Goal handler
   async function handleCreateGoal() {
     if (!editTitle || !editTarget) {
-      alert("Title and Target Amount are required.");
+      popup.alert("Missing Required Fields", "Title and Target Amount are required.");
       return;
     }
 
@@ -468,12 +476,13 @@ export default function GoalsPage() {
       if (res.ok) {
         setEditingGoal(null); // Close modal
         fetchGoals();
+        popup.success("Goal Created", "Your new financial goal has been created.");
       } else {
-        alert("Failed to create goal");
+        popup.error("Error", "Failed to create goal");
       }
     } catch (err) {
       console.error(err);
-      alert("Error creating goal");
+      popup.error("Error", "Error creating goal");
     } finally {
       setSaving(false);
     }
@@ -487,7 +496,7 @@ export default function GoalsPage() {
 
     if (!editingGoal) return;
     if (!editTitle || !editTarget) {
-      alert("Title and Target Amount are required.");
+      popup.alert("Missing Required Fields", "Title and Target Amount are required.");
       return;
     }
 
@@ -516,12 +525,13 @@ export default function GoalsPage() {
       if (res.ok) {
         setEditingGoal(null);
         fetchGoals();
+        popup.success("Goal Updated", "Your goal details have been saved.");
       } else {
-        alert("Failed to update goal");
+        popup.error("Error", "Failed to update goal");
       }
     } catch (err) {
       console.error(err);
-      alert("Error saving goal");
+      popup.error("Error", "Error saving goal");
     } finally {
       setSaving(false);
     }

@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { AnalyticsDashboard } from "@/components/analytics/AnalyticsDashboard";
 import { createClient } from "@/lib/supabase/client";
 import { useDatabankStore } from "@/store/databankStore";
+import { popup } from "@/store/popupStore";
 
 // ── Gmail helpers ─────────────────────────────────────────────
 function timeAgo(iso: string | null): string {
@@ -610,7 +611,7 @@ export default function DataBankPage() {
       .filter("metadata->>fileName", "eq", fileName);
 
     if (error) {
-      alert("Failed to delete statement");
+      popup.error("Delete Failed", "Failed to delete statement");
       return;
     }
 
@@ -626,9 +627,9 @@ export default function DataBankPage() {
     try {
       await uploadStatement(file);
       await fetchUploadedFiles();
-      alert(`Successfully uploaded & parsed ${file.name}`);
+      popup.success("Statement Uploaded", `Successfully uploaded & parsed ${file.name}`);
     } catch (err: any) {
-      alert(err.message ?? "Failed to upload file");
+      popup.error("Upload Failed", err.message ?? "Failed to upload file");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -638,13 +639,13 @@ export default function DataBankPage() {
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualAmount || !manualDescription) {
-      alert("Please enter both an amount and description");
+      popup.alert("Missing Input", "Please enter both an amount and description");
       return;
     }
 
     const amt = parseFloat(manualAmount);
     if (isNaN(amt) || amt <= 0) {
-      alert("Please enter a valid positive number for amount");
+      popup.alert("Invalid Amount", "Please enter a valid positive number for amount");
       return;
     }
 
@@ -667,9 +668,9 @@ export default function DataBankPage() {
       // Reset
       setManualAmount("");
       setManualDescription("");
-      alert("Manual entry added successfully!");
+      popup.success("Entry Added", "Manual entry added successfully!");
     } catch (err: any) {
-      alert(err.message ?? "Failed to add manual entry");
+      popup.error("Error", err.message ?? "Failed to add manual entry");
     } finally {
       setSavingManual(false);
     }
@@ -677,10 +678,12 @@ export default function DataBankPage() {
 
   const handleOpenBankingClick = (bank: BankItem) => {
     if (enabledSources.has(bank.id)) {
-      // Prompt to disconnect
-      if (confirm(`Do you want to disconnect ${bank.name} from your DataBank?`)) {
-        handleToggleSource(bank.id);
-      }
+      popup.danger(
+        "Disconnect Bank",
+        `Do you want to disconnect ${bank.name} from your DataBank?`,
+        () => handleToggleSource(bank.id),
+        "Disconnect"
+      );
     } else {
       setConnectingBank(bank);
       setConnectStep(1);
@@ -692,7 +695,7 @@ export default function DataBankPage() {
 
   const handleObConnectNext = () => {
     if (!obUsername || !obPassword) {
-      alert("Please enter login credentials");
+      popup.alert("Credentials Required", "Please enter login credentials");
       return;
     }
     setModalLoading(true);
@@ -704,7 +707,7 @@ export default function DataBankPage() {
 
   const handleObVerifyOtp = async () => {
     if (!obOtp) {
-      alert("Please enter OTP code");
+      popup.alert("OTP Required", "Please enter OTP code");
       return;
     }
     if (!connectingBank) return;
@@ -720,10 +723,10 @@ export default function DataBankPage() {
         setEnabledSources((prev) => new Set([...prev, connectingBank.id]));
         setConnectStep(3);
       } else {
-        alert("Failed to authenticate with bank");
+        popup.error("Authentication Failed", "Failed to authenticate with bank");
       }
     } catch {
-      alert("Connection failed");
+      popup.error("Connection Error", "Connection failed");
     } finally {
       setModalLoading(false);
     }
@@ -733,30 +736,27 @@ export default function DataBankPage() {
     window.location.href = "/api/settings/export";
   };
 
-  const handleWipeData = async () => {
-    if (
-      !confirm(
-        "⚠️ WARNING: This will permanently delete ALL your DataBank transactions, bank connections, and AI buddy chat memories. This action is irreversible.\n\nAre you sure you want to proceed?"
-      )
-    ) {
-      return;
-    }
-
-    try {
-      const res = await fetch("/api/databank/wipe", {
-        method: "DELETE",
-      });
-      const data = await res.json();
-      if (res.ok && data.ok) {
-        alert("✨ All DataBank data and conversation memories have been successfully cleared.");
-        window.location.reload();
-      } else {
-        alert(`Failed to delete data: ${data.error || "Unknown error"}`);
-      }
-    } catch (err: any) {
-      console.error(err);
-      alert("An error occurred while trying to clear data.");
-    }
+  const handleWipeData = () => {
+    popup.danger(
+      "Clear Databank & Memory",
+      "⚠️ WARNING: This will permanently delete ALL your DataBank transactions, bank connections, and AI buddy chat memories. This action is irreversible.",
+      async () => {
+        try {
+          const res = await fetch("/api/databank/wipe", { method: "DELETE" });
+          const data = await res.json();
+          if (res.ok && data.ok) {
+            popup.success("Data Cleared", "✨ All DataBank data and conversation memories have been successfully cleared.");
+            setTimeout(() => window.location.reload(), 1200);
+          } else {
+            popup.error("Failed to delete data", data.error || "Unknown error");
+          }
+        } catch (err: any) {
+          console.error(err);
+          popup.error("Error", "An error occurred while trying to clear data.");
+        }
+      },
+      "Yes, Clear Everything"
+    );
   };
 
   const signalTabs = [
@@ -968,9 +968,9 @@ export default function DataBankPage() {
                       try {
                         await uploadStatement(file);
                         await fetchUploadedFiles();
-                        alert(`Successfully uploaded & parsed ${file.name}`);
+                        popup.success("Upload Successful", `Successfully uploaded & parsed ${file.name}`);
                       } catch (err: any) {
-                        alert(err.message ?? "Failed to upload file");
+                        popup.error("Upload Error", err.message ?? "Failed to upload file");
                       } finally {
                         setUploading(false);
                       }
@@ -1253,12 +1253,12 @@ export default function DataBankPage() {
                         body: JSON.stringify({ url, type: "rss" }),
                       });
                       if (res.ok) {
-                        alert("Successfully registered custom RSS source!");
+                        popup.success("Source Added", "Successfully registered custom RSS source!");
                         fetchCustomSources();
                         fetchEnabledSources();
                       } else {
                         const err = await res.json();
-                        alert(`Failed: ${err.error || "Unknown error"}`);
+                        popup.error("Registration Failed", err.error || "Unknown error");
                       }
                     }}
                   />

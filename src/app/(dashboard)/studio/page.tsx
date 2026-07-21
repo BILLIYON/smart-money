@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { BuddyCategory } from "@/lib/buddies";
 import { isImageAvatar } from "@/lib/utils";
+import { popup } from "@/store/popupStore";
 
 // ── Types ──────────────────────────────────────────────────
 type StudioConfig = {
@@ -288,15 +289,15 @@ export default function StudioPage() {
     if (publishing || published) return;
 
     if (!config.buddyName.trim() || !config.tag.trim() || !config.desc.trim()) {
-      alert("Please fill in all compulsory fields (*).");
+      popup.alert("Compulsory Fields Required", "Please fill in all compulsory fields marked with an asterisk (*).");
       return;
     }
     if (config.categories.length === 0) {
-      alert("Please select at least one category (*).");
+      popup.alert("Category Required", "Please select at least one category (*).");
       return;
     }
     if (config.price === "custom" && (!config.customPrice || Number(config.customPrice) <= 0)) {
-      alert("Please enter a valid custom price (*).");
+      popup.alert("Invalid Price", "Please enter a valid custom price (*).");
       return;
     }
 

@@ -82,10 +82,42 @@ export const usePopupStore = create<PopupState>((set, get) => ({
   }
 }));
 
-// Quick access helpers to be used anywhere (even outside components)
 export const popup = {
-  alert: (title: string, description?: string, type?: PopupType) => usePopupStore.getState().alert(title, description, type),
-  confirm: (title: string, description: string, onConfirm: () => void | Promise<void>) => usePopupStore.getState().ask(title, description, onConfirm),
+  alert: (title: string, description?: string, type: PopupType = "info") =>
+    usePopupStore.getState().alert(title, description, type),
+  success: (title: string, description?: string) =>
+    usePopupStore.getState().alert(title, description, "success"),
+  error: (title: string, description?: string) =>
+    usePopupStore.getState().alert(title, description, "danger"),
+  confirm: (
+    title: string,
+    description: string,
+    onConfirm: () => void | Promise<void>,
+    options?: { confirmText?: string; cancelText?: string; type?: PopupType }
+  ) =>
+    usePopupStore.getState().show({
+      title,
+      description,
+      type: options?.type || "confirm",
+      confirmText: options?.confirmText || "Confirm",
+      cancelText: options?.cancelText || "Cancel",
+      onConfirm,
+    }),
+  danger: (
+    title: string,
+    description: string,
+    onConfirm: () => void | Promise<void>,
+    confirmText = "Delete"
+  ) =>
+    usePopupStore.getState().show({
+      title,
+      description,
+      type: "danger",
+      confirmText,
+      cancelText: "Cancel",
+      onConfirm,
+    }),
   show: (options: PopupOptions) => usePopupStore.getState().show(options),
   hide: () => usePopupStore.getState().hide(),
 };
+
