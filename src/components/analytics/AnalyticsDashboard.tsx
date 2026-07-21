@@ -10,64 +10,11 @@ import {
 import { useChatStore } from "@/store/chatStore";
 import { useDatabankStore } from "@/store/databankStore";
 
-// ── 12-month time-series data (Apr 2025 – Mar 2026) ─────
-const ALL_INCOME_SPEND = [
-  { month: "Apr", income: 420, spent: 398, saved: 22 },
-  { month: "May", income: 420, spent: 385, saved: 35 },
-  { month: "Jun", income: 420, spent: 390, saved: 30 },
-  { month: "Jul", income: 450, spent: 405, saved: 45 },
-  { month: "Aug", income: 450, spent: 395, saved: 55 },
-  { month: "Sep", income: 450, spent: 388, saved: 62 },
-  { month: "Oct", income: 450, spent: 378, saved: 72 },
-  { month: "Nov", income: 450, spent: 360, saved: 90 },
-  { month: "Dec", income: 450, spent: 369, saved: 81 },
-  { month: "Jan", income: 450, spent: 320, saved: 130 },
-  { month: "Feb", income: 450, spent: 333, saved: 117 },
-  { month: "Mar", income: 450, spent: 175, saved: 275 },
-];
-
-const ALL_CASHFLOW = [
-  { month: "Apr", in: 420, out: 398 },
-  { month: "May", in: 420, out: 385 },
-  { month: "Jun", in: 420, out: 390 },
-  { month: "Jul", in: 450, out: 405 },
-  { month: "Aug", in: 450, out: 395 },
-  { month: "Sep", in: 450, out: 388 },
-  { month: "Oct", in: 450, out: 378 },
-  { month: "Nov", in: 450, out: 360 },
-  { month: "Dec", in: 450, out: 369 },
-  { month: "Jan", in: 450, out: 320 },
-  { month: "Feb", in: 450, out: 333 },
-  { month: "Mar", in: 450, out: 175 },
-];
-
-const ALL_NETWORTH = [
-  { month: "Apr", nw: 185 },
-  { month: "May", nw: 220 },
-  { month: "Jun", nw: 255 },
-  { month: "Jul", nw: 300 },
-  { month: "Aug", nw: 360 },
-  { month: "Sep", nw: 470 },
-  { month: "Oct", nw: 560 },
-  { month: "Nov", nw: 640 },
-  { month: "Dec", nw: 700 },
-  { month: "Jan", nw: 780 },
-  { month: "Feb", nw: 900 },
-  { month: "Mar", nw: 1070 },
-];
+// Demo data removed
 
 const TIMEFRAMES = ["1M", "3M", "6M", "12M"] as const;
 
-// ── Category trend data (6 months available) ────────────
-const TREND_MONTHS_6M = ["Oct", "Nov", "Dec", "Jan", "Feb", "Mar"] as const;
-
-const CAT_TREND_ROWS = [
-  { cat: "🍔 Food & Dining", vals: [67, 68, 70, 73, 74, 82], trend: "↑ +12%", trendDir: "up"   as const },
-  { cat: "🔄 Subscriptions", vals: [34, 34, 34, 34, 34, 34], trend: "→ 0%",  trendDir: "flat"  as const },
-  { cat: "🚗 Transport",     vals: [33, 32, 30, 31, 30, 28], trend: "↓ -8%", trendDir: "down"  as const },
-  { cat: "🛍️ Shopping",      vals: [8,  9,  12, 11, 15, 19], trend: "↑ +22%", trendDir: "up"   as const },
-  { cat: "⚡ Utilities",     vals: [14, 13, 14, 13, 13, 12], trend: "↓ -3%", trendDir: "down"  as const },
-];
+// Demo trend data removed
 
 // ── Small helpers ────────────────────────────────────────
 function Kpi({ label, value, delta, deltaDir }: { label: string; value: string; delta: string; deltaDir?: "up" | "down" | "neutral" }) {
@@ -186,33 +133,15 @@ export function AnalyticsDashboard() {
   const visibleCount = timeframe === "1M" ? 1 : timeframe === "3M" ? 3 : timeframe === "6M" ? 6 : 12;
 
   // Resolved arrays
-  let incomeVsSpendData = ALL_INCOME_SPEND.slice(-visibleCount);
-  let cashflowData      = ALL_CASHFLOW.slice(-visibleCount);
-  let networthData      = ALL_NETWORTH.slice(-visibleCount);
-  let trendMonthsList: string[] = [...TREND_MONTHS_6M];
-  let catTrendRows = CAT_TREND_ROWS;
+  let incomeVsSpendData: any[] = [];
+  let cashflowData: any[] = [];
+  let networthData: any[] = [];
+  let trendMonthsList: string[] = [];
+  let catTrendRows: any[] = [];
   
-  let categoryData = [
-    { name: "Food & Dining", value: 82, pct: 47, color: "var(--green)", change: "+12%", changeDir: "up" as const },
-    { name: "Subscriptions", value: 34, pct: 19, color: "var(--gold)", change: "—", changeDir: "neutral" as const },
-    { name: "Transport", value: 28, pct: 16, color: "#4A90D9", change: "-8%", changeDir: "down" as const },
-    { name: "Shopping", value: 19, pct: 11, color: "#9B59B6", change: "+22%", changeDir: "up" as const },
-    { name: "Other", value: 12, pct: 7, color: "var(--muted)", change: "-3%", changeDir: "down" as const },
-  ];
-  
-  let portfolioData = [
-    { name: "MMF (ARM)", value: 188, color: "#4A90D9", pct: 31 },
-    { name: "Treasury Bills", value: 152, color: "#00C48C", pct: 25 },
-    { name: "Emergency Fund", value: 180, color: "#F5A623", pct: 30 },
-    { name: "NGX Equities", value: 85, color: "#9B59B6", pct: 14 },
-  ];
-  
-  let portfolioGrowth = [
-    { month: "Jan", value: 400 },
-    { month: "Feb", value: 480 },
-    { month: "Mar", value: 560 },
-    { month: "Now", value: 605 },
-  ];
+  let categoryData: any[] = [];
+  let portfolioData: any[] = [];
+  let portfolioGrowth: any[] = [];
   
   let holdingsData: {
     name: string;
@@ -223,87 +152,55 @@ export function AnalyticsDashboard() {
     returnPct: string;
     yieldPa: string;
     trend: "up" | "down" | "flat";
-  }[] = [
-    { name: "ARM Money Market Fund", type: "Money Market · Liquid 48hrs", invested: "₦160,000", value: "₦188,000", returnN: "+₦28,000", returnPct: "+17.5%", yieldPa: "16.4%", trend: "up" as const },
-    { name: "GTBank T-Bills", type: "Treasury Bills · 91-day", invested: "₦140,000", value: "₦152,000", returnN: "+₦12,000", returnPct: "+8.6%", yieldPa: "18.2%", trend: "up" as const },
-    { name: "Emergency Fund (MMF)", type: "ARM MMF · Emergency Reserve", invested: "₦180,000", value: "₦180,000", returnN: "+₦0", returnPct: "0%", yieldPa: "16.4%", trend: "flat" as const },
-    { name: "NGX Equities — GTCO", type: "Nigerian Stock Exchange", invested: "₦50,000", value: "₦85,000", returnN: "+₦35,000", returnPct: "+70%", yieldPa: "—", trend: "up" as const },
-  ];
+  }[] = [];
   
-  let budgetMetrics = [
-    { label: "50/30/20 Rule", pct: 80, color: "var(--green)" },
-    { label: "Debt-to-Income", pct: 21, color: "#F5A623" },
-    { label: "Emergency Fund", pct: 53, color: "#4A90D9" },
-    { label: "Investment Rate", pct: 38, color: "#9B59B6" },
-  ];
+  let budgetMetrics: any[] = [];
 
-  let healthScoreDescription = "You saved ₦275,000 this month — more than most Nigerians earn. But your food spending rose 12% and you're paying ₦22,800/year in unnecessary credit card interest. Two things to fix.";
+  let healthScoreDescription = "Your databank is completely empty. Sync your Gmail, upload a statement, or add manual entries to begin.";
 
-  let transactions = [
-    { icon: "🍔", bg: "#FEF9E7", name: "Chicken Republic", cat: "Food & Dining", date: "Mar 20", amt: "-₦4,800", type: "debit" as const },
-    { icon: "💰", bg: "#E8F5E9", name: "March Salary", cat: "Income · GTBank", date: "Mar 19", amt: "+₦450,000", type: "credit" as const },
-    { icon: "🚗", bg: "#E3F2FD", name: "Bolt Nigeria", cat: "Transport", date: "Mar 18", amt: "-₦2,200", type: "debit" as const },
-    { icon: "🎬", bg: "#FCE4EC", name: "Netflix", cat: "Subscriptions", date: "Mar 15", amt: "-₦4,400", type: "debit" as const },
-    { icon: "🍔", bg: "#FEF9E7", name: "Domino's Pizza", cat: "Food & Dining", date: "Mar 14", amt: "-₦8,600", type: "debit" as const },
-    { icon: "🎵", bg: "#F3E5F5", name: "Spotify Premium", cat: "Subscriptions", date: "Mar 10", amt: "-₦2,700", type: "debit" as const },
-    { icon: "🏦", bg: "#E8F5E9", name: "ARM MMF Transfer", cat: "Investment · Agent Action", date: "Mar 9", amt: "₦80,000", type: "invest" as const },
-  ];
+  let transactions: any[] = [];
 
-  let healthScore = 78;
-  let healthScoreHeadline = "You're in strong shape, Tunde.\nYour savings rate is 3× the national average.";
-  let healthScoreBuddyTake = `You’re doing the fundamentals right — savings rate climbing, investments growing. Two moves will take your score from 78 to 90: eliminate the credit card this month, and put a hard cap on food delivery. Those two changes are worth ₦60,000 a year back in your pocket.`;
-  let insights = [
-    { icon: "💰", label: "Savings Rate", value: "61%", delta: "↑ +9pts vs last month", type: "positive" as const, question: "My savings rate is 61% this month. How do I keep this up and what should I do with the extra savings?" },
-    { icon: "📈", label: "Net Worth Growth", value: "+₦285k", delta: "↑ +36% in 3 months", type: "positive" as const, question: "My net worth grew ₦285k in 3 months. How do I accelerate this?" },
-    { icon: "🍔", label: "Food Spending", value: "₦82k", delta: "↑ +12% vs Feb · Watch this", type: "warning" as const, question: "My food spending rose 12% last month. Help me bring it down without misery." },
-    { icon: "💳", label: "Credit Card Debt", value: "₦95k", delta: "24% APR · Costs ₦22.8k/yr", type: "alert" as const, question: "I have ₦95k in credit card debt at 24% APR. What's the fastest way to clear this?" }
-  ];
+  let healthScore = 0;
+  let healthScoreHeadline = "No Data Found.";
+  let healthScoreBuddyTake = "Please add transactions to the databank to generate your AI-powered financial insights.";
+  let insights: any[] = [];
 
-  let totalIncomeKpi = "₦450k";
-  let totalIncomeKpiDelta = "↑ Stable · 3 months";
-  let totalIncomeKpiDeltaDir: "up" | "down" | "neutral" = "up";
+  let totalIncomeKpi = "₦0";
+  let totalIncomeKpiDelta = "No data";
+  let totalIncomeKpiDeltaDir: "up" | "down" | "neutral" = "neutral";
   
-  let totalExpensesKpi = "₦166k";
-  let totalExpensesKpiDelta = "↑ +₦8k vs prev period";
-  let totalExpensesKpiDeltaDir: "up" | "down" | "neutral" = "up";
+  let totalExpensesKpi = "₦0";
+  let totalExpensesKpiDelta = "No data";
+  let totalExpensesKpiDeltaDir: "up" | "down" | "neutral" = "neutral";
 
-  let savingsRateKpi = "61%";
-  let savingsRateKpiDelta = "↑ +9pts vs prev period";
-  let savingsRateKpiDeltaDir: "up" | "down" | "neutral" = "up";
+  let savingsRateKpi = "0%";
+  let savingsRateKpiDelta = "No data";
+  let savingsRateKpiDeltaDir: "up" | "down" | "neutral" = "neutral";
 
-  let netWorthKpi = "₦1.07M";
-  let netWorthKpiDelta = "↑ +₦285k this period";
-  let netWorthKpiDeltaDir: "up" | "down" | "neutral" = "up";
+  let netWorthKpi = "₦0";
+  let netWorthKpiDelta = "No data";
+  let netWorthKpiDeltaDir: "up" | "down" | "neutral" = "neutral";
 
-  let totalAssetKpiValue = "₦1,165,000";
-  let totalDebtKpiValue = "₦95,000";
+  let totalAssetKpiValue = "₦0";
+  let totalDebtKpiValue = "₦0";
 
-  let assetsList = [
-    { name: "ARM MMF", value: "₦188,000", pct: 16 },
-    { name: "Treasury Bills", value: "₦152,000", pct: 13 },
-    { name: "Emergency Fund", value: "₦180,000", pct: 15 },
-    { name: "NGX Equities", value: "₦85,000", pct: 7 },
-    { name: "GTBank Savings", value: "₦560,000", pct: 48 },
-  ];
+  let assetsList: any[] = [];
+  let liabilitiesList: any[] = [];
 
-  let liabilitiesList = [
-    { name: "GTBank Credit Card", value: "₦95,000", pct: 100 }
-  ];
+  let portfolioKpiValue = "₦0";
+  let portfolioKpiDelta = "No data";
+  let portfolioKpiDeltaDir: "up" | "down" | "neutral" = "neutral";
 
-  let portfolioKpiValue = "₦605k";
-  let portfolioKpiDelta = "↑ +₦38k this month";
-  let portfolioKpiDeltaDir: "up" | "down" | "neutral" = "up";
+  let totalInvestedKpiValue = "₦0";
+  let totalInvestedKpiDelta = "No data";
 
-  let totalInvestedKpiValue = "₦530k";
-  let totalInvestedKpiDelta = "Across 4 instruments";
+  let totalReturnKpiValue = "₦0";
+  let totalReturnKpiDelta = "No data";
+  let totalReturnKpiDeltaDir: "up" | "down" | "neutral" = "neutral";
 
-  let totalReturnKpiValue = "+₦75k";
-  let totalReturnKpiDelta = "↑ +14.2% overall";
-  let totalReturnKpiDeltaDir: "up" | "down" | "neutral" = "up";
-
-  let avgYieldKpiValue = "15.8%";
-  let avgYieldKpiDelta = "↑ vs 5.5% savings rate";
-  let avgYieldKpiDeltaDir: "up" | "down" | "neutral" = "up";
+  let avgYieldKpiValue = "0%";
+  let avgYieldKpiDelta = "No data";
+  let avgYieldKpiDeltaDir: "up" | "down" | "neutral" = "neutral";
 
   if (hasRealData && context) {
     const rawChartData = context.chartData;

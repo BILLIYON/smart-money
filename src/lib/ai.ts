@@ -591,49 +591,55 @@ export async function extractFinancialDataFromEmail(
   subject: string,
   from: string
 ) {
-  // We use OpenAI's gpt-4o-mini with response_format for structured extraction.
-  // It is fast, cheap, and very accurate.
-  const prompt = `You are a highly accurate financial data extractor.
-Analyze the following email and extract the transaction details.
-
-SENDER: ${from}
-SUBJECT: ${subject}
-BODY:
-${emailBody.slice(0, 3000) /* limit length */}
-
-If this email is NOT a financial transaction (e.g. promotional, marketing, security alert, or login notification), return {"relevant": false}.
-If it IS a financial transaction (debit, credit, transfer, receipt, invoice, subscription payment), return valid JSON exactly matching this structure:
-{
-  "relevant": true,
-  "amount": <number representing the transaction amount. E.g. for $450.50 or NGN 450.50, return 450.50>,
-  "description": "<merchant name or short transaction description (max 40 chars)>",
-  "entry_type": "income" | "expense",
-  "category": "<one of: Salary, Utilities, Phone & Data, Food & Dining, Transport, Shopping, Subscriptions, Income, or General Expense>"
-}`;
-
   try {
-    const ai = openai();
-    const res = await ai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      temperature: 0,
-    });
+    const text = `${subject} ${emailBody}`.replace(/\s+/g, ' ');
+    const lowerText = text.toLowerCase();
 
-    const raw = res.choices[0].message.content || "{}";
-    const parsed = JSON.parse(raw);
+    // Quick skip if it doesn't look like a transaction
+    if (!/(debit|credit|receipt|payment|transfer|invoice|charge|alert|salary)/.test(lowerText)) {
+      return null;
+    }
 
-    if (!parsed.relevant) return null;
-    if (typeof parsed.amount !== "number") return null;
+    // Extract Amount
+    const amountMatch = text.match(/(?:NGN|₦|Amt|Amount)[:\s]*([\d,]+\.?\d*)/i) || text.match(/[$£€]([\d,]+\.?\d*)/i);
+    if (!amountMatch) return null;
+
+    const amountStr = amountMatch[1].replace(/,/g, '');
+    const amount = parseFloat(amountStr);
+    if (isNaN(amount) || amount <= 0) return null;
+
+    // Determine entry type
+    let entry_type: "income" | "expense" = "expense";
+    if (/(credit|salary|inflow|received)/.test(lowerText)) {
+      entry_type = "income";
+    }
+
+    // Extract Description
+    let description = "Transaction";
+    const descMatch = text.match(/(?:Desc|Description|Remarks|Narration|Merchant)[:\s]+([^,.\n]+)/i);
+    if (descMatch && descMatch[1]) {
+      description = descMatch[1].trim().slice(0, 40);
+    } else if (from) {
+      description = from.split('<')[0].replace(/"/g, '').trim().slice(0, 40);
+    }
+
+    // Guess Category
+    let category = entry_type === "income" ? "Income" : "General Expense";
+    if (/(uber|bolt|indrive|transport|flight|uber|ride)/.test(lowerText)) category = "Transport";
+    else if (/(netflix|spotify|apple|amazon prime|subscription|dstv|gotv)/.test(lowerText)) category = "Subscriptions";
+    else if (/(food|restaurant|pizza|kfc|chicken republic|eat|chow)/.test(lowerText)) category = "Food & Dining";
+    else if (/(mtn|airtel|glo|9mobile|data|airtime|recharge)/.test(lowerText)) category = "Phone & Data";
+    else if (/(salary|payroll|wages)/.test(lowerText)) category = "Salary";
+    else if (/(shoprite|spar|supermarket|mall|store|buy)/.test(lowerText)) category = "Shopping";
 
     return {
-      amount: parsed.amount,
-      description: String(parsed.description || "Unknown"),
-      entry_type: parsed.entry_type === "income" ? "income" : "expense",
-      category: String(parsed.category || "General Expense"),
+      amount,
+      description,
+      entry_type,
+      category,
     } as const;
   } catch (err) {
-    console.error("[extractFinancialDataFromEmail] Error parsing email:", err);
+    console.error("[extractFinancialDataFromEmail] Regex parsing error:", err);
     return null;
   }
 }
