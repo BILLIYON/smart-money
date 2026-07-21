@@ -1,11 +1,12 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { cache } from "react";
 
 /**
  * Server-side Supabase client for Server Components and Route Handlers.
  * Reads and writes auth cookies via next/headers.
  */
-export async function createClient() {
+export const createClient = cache(async () => {
   const cookieStore = await cookies();
 
   return createServerClient(
@@ -28,4 +29,4 @@ export async function createClient() {
       },
     }
   );
-}
+});

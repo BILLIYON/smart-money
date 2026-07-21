@@ -378,24 +378,32 @@ async function streamGPT4(
   system: string,
   messages: Message[]
 ): Promise<ReadableStream<Uint8Array>> {
-  const response = await openai().chat.completions.create({
-    model: "gpt-4o",
-    messages: [{ role: "system", content: system }, ...messages],
-    stream: true,
-  });
+  try {
+    const response = await openai().chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "system", content: system }, ...messages],
+      stream: true,
+    });
 
-  return new ReadableStream<Uint8Array>({
-    async start(controller) {
-      try {
-        for await (const chunk of response) {
-          const text = chunk.choices[0]?.delta?.content ?? "";
-          if (text) controller.enqueue(new TextEncoder().encode(text));
+    return new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          for await (const chunk of response) {
+            const text = chunk.choices[0]?.delta?.content ?? "";
+            if (text) controller.enqueue(new TextEncoder().encode(text));
+          }
+        } finally {
+          controller.close();
         }
-      } finally {
-        controller.close();
-      }
-    },
-  });
+      },
+    });
+  } catch (err: any) {
+    if (err?.error?.type === "insufficient_quota" || err?.type === "insufficient_quota" || err?.status === 429) {
+      console.warn("OpenAI quota exceeded in streamGPT4. Falling back to Gemini.");
+      return streamGemini(system, messages);
+    }
+    throw err;
+  }
 }
 
 // ── Gemini ────────────────────────────────────────────────
