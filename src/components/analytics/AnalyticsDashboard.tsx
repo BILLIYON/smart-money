@@ -176,12 +176,7 @@ export function AnalyticsDashboard() {
   // Helper function to clamp values
   const clamp = (n: number, min = 0, max = 100) => Math.min(max, Math.max(min, n));
 
-  const hasRealData = !!(context && (
-    (context.chartData && context.chartData.some(d => d.income > 0 || d.spent > 0 || d.networth !== 0)) ||
-    context.savingsBalance !== 0 ||
-    context.netWorth !== 0 ||
-    context.recentTransactions.length > 0
-  ));
+  const hasRealData = !!context;
 
   const latestDate = context?.recentTransactions && context.recentTransactions.length > 0 
     ? new Date(context.recentTransactions[0].date)
