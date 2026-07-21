@@ -286,6 +286,20 @@ export default function StudioPage() {
 
   async function handlePublish() {
     if (publishing || published) return;
+
+    if (!config.buddyName.trim() || !config.tag.trim() || !config.desc.trim()) {
+      alert("Please fill in all compulsory fields (*).");
+      return;
+    }
+    if (config.categories.length === 0) {
+      alert("Please select at least one category (*).");
+      return;
+    }
+    if (config.price === "custom" && (!config.customPrice || Number(config.customPrice) <= 0)) {
+      alert("Please enter a valid custom price (*).");
+      return;
+    }
+
     setPublishing(true);
     try {
       await fetch("/api/studio", {
@@ -437,7 +451,7 @@ export default function StudioPage() {
               {/* Basic info */}
               <div className="flex flex-col gap-3 mb-0">
                 <div>
-                  <SectionLabel>Buddy Name</SectionLabel>
+                  <SectionLabel>Buddy Name *</SectionLabel>
                   <input
                     type="text"
                     placeholder="e.g. The Naira Navigator"
@@ -448,7 +462,7 @@ export default function StudioPage() {
                   />
                 </div>
                 <div>
-                  <SectionLabel>Tagline</SectionLabel>
+                  <SectionLabel>Tagline *</SectionLabel>
                   <input
                     type="text"
                     placeholder="e.g. Practical Finance · Lagos-Focused"
@@ -459,7 +473,7 @@ export default function StudioPage() {
                   />
                 </div>
                 <div>
-                  <SectionLabel>Description</SectionLabel>
+                  <SectionLabel>Description *</SectionLabel>
                   <textarea
                     rows={3}
                     placeholder="2–3 sentences summarising the buddy's focus and value for users browsing the marketplace."
@@ -603,7 +617,7 @@ export default function StudioPage() {
               <FieldDivider />
 
               {/* Categories */}
-              <SectionLabel>Categories</SectionLabel>
+              <SectionLabel>Categories *</SectionLabel>
               <div className="flex flex-wrap gap-2 mb-1">
                 {Array.from(new Set([...CATEGORY_OPTIONS, ...config.categories])).map((cat) => {
                   const active = config.categories.includes(cat);
@@ -925,7 +939,7 @@ export default function StudioPage() {
 
               {config.price === "custom" && (
                 <div className="mb-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[.4px] mb-[6px]" style={{ color: "var(--muted)" }}>Monthly Price ($)</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[.4px] mb-[6px]" style={{ color: "var(--muted)" }}>Monthly Price ($) *</div>
                   <input
                     type="number"
                     value={config.customPrice}
