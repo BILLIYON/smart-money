@@ -9,6 +9,8 @@ import { SalaryMomentOverlay } from "@/components/ui/SalaryMomentOverlay";
 import { CompareBuddiesModal } from "@/components/buddy/CompareBuddiesModal";
 import { createClient } from "@/lib/supabase/server";
 
+export const dynamic = "force-dynamic";
+
 export default async function DashboardLayout({
   children,
 }: {

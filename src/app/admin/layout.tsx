@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 
 export const metadata: Metadata = { title: "Admin · Smart Money" };
+export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
