@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/lib/supabase-server";
+import { createClient } from "@/lib/supabase/server";
 
 // In-memory fallback ticket store so tickets persist across sessions during development
 export type Ticket = {
@@ -94,27 +94,53 @@ let IN_MEMORY_TICKETS: Ticket[] = [
 
 export async function POST(req: Request) {
   try {
-    const { supabase, userId, error } = await requireAuth();
-    if (error || !supabase) {
-      return error ?? NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
     const body = await req.json();
-    const { rating, type, subject, message, category } = body;
+    const { rating, type, subject, message, category, email, name } = body;
 
     if (!message || !message.trim()) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
 
-    // Get user details
-    const { data: userProfile } = await supabase
-      .from("users")
-      .select("email, full_name")
-      .eq("id", userId)
-      .single();
+    let userId = user?.id || null;
+    let userEmail = user?.email || (email ? email.trim().toLowerCase() : "");
+    let userName = name ? name.trim() : "Smart Money User";
 
-    const userEmail = userProfile?.email || "user@smartmoney.app";
-    const userName = userProfile?.full_name || "Smart Money User";
+    // Require email for guest submissions to enable account tracking
+    if (!userEmail) {
+      return NextResponse.json(
+        { error: "Please enter your email address so we can track and link your inquiry to your account." },
+        { status: 400 }
+      );
+    }
+
+    // If logged in, fetch full name
+    if (user) {
+      const { data: profile } = await supabase
+        .from("users")
+        .select("full_name")
+        .eq("id", user.id)
+        .single();
+      if (profile?.full_name) userName = profile.full_name;
+    } else {
+      // If guest submission, match email against existing users table to auto-link to account
+      try {
+        const { data: matchedUser } = await supabase
+          .from("users")
+          .select("id, full_name")
+          .eq("email", userEmail)
+          .maybeSingle();
+
+        if (matchedUser) {
+          userId = matchedUser.id;
+          if (!name && matchedUser.full_name) userName = matchedUser.full_name;
+        }
+      } catch {
+        // Fallback if table query fails
+      }
+    }
 
     // AI Synthesis for instant response
     let aiReply = "Thank you so much for your feedback! Our engineering team has received your review and will use it to make Smart Money even better.";
@@ -133,7 +159,7 @@ export async function POST(req: Request) {
 
     const newTicket: Ticket = {
       id: ticketId,
-      userId: userId || "user",
+      userId: userId || "guest",
       userEmail,
       userName,
       rating: rating || 5,
@@ -179,47 +205,69 @@ export async function POST(req: Request) {
   }
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const { supabase, userId, error } = await requireAuth();
-    if (error || !supabase) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    const { searchParams } = new URL(req.url);
+    const filterEmail = searchParams.get("email");
+
+    // If query email provided, filter for that user
+    if (filterEmail) {
+      const emailLower = filterEmail.toLowerCase().trim();
+      const filtered = IN_MEMORY_TICKETS.filter((t) => t.userEmail.toLowerCase() === emailLower);
+      return NextResponse.json(filtered);
+    }
+
+    // Check if user is admin
+    let isAdmin = false;
+    if (user) {
+      const { data: profile } = await supabase
+        .from("users")
+        .select("is_admin")
+        .eq("id", user.id)
+        .single();
+      isAdmin = profile?.is_admin ?? false;
+    }
+
+    // Admin gets all tickets
+    if (isAdmin) {
+      try {
+        const { data: dbTickets } = await supabase
+          .from("feedback_tickets")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (dbTickets && dbTickets.length > 0) {
+          const formatted = dbTickets.map((t: any) => ({
+            id: t.id,
+            userId: t.user_id,
+            userEmail: t.user_email || "user@smartmoney.app",
+            userName: t.user_name || "User",
+            rating: t.rating ?? 5,
+            type: t.type ?? "review",
+            category: t.category ?? "General",
+            subject: t.subject ?? "Feedback",
+            message: t.message,
+            aiReply: t.ai_reply,
+            adminReply: t.admin_reply,
+            status: t.status ?? "new",
+            created_at: t.created_at,
+          }));
+          return NextResponse.json(formatted);
+        }
+      } catch {
+        // Ignored
+      }
       return NextResponse.json(IN_MEMORY_TICKETS);
     }
 
-    // Check if admin
-    const { data: profile } = await supabase
-      .from("users")
-      .select("is_admin")
-      .eq("id", userId)
-      .single();
-
-    if (!profile?.is_admin) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
-
-    // Attempt Supabase fetch
-    const { data: dbTickets } = await supabase
-      .from("feedback_tickets")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (dbTickets && dbTickets.length > 0) {
-      const formatted = dbTickets.map((t: any) => ({
-        id: t.id,
-        userId: t.user_id,
-        userEmail: t.user_email || "user@smartmoney.app",
-        userName: t.user_name || "User",
-        rating: t.rating ?? 5,
-        type: t.type ?? "review",
-        category: t.category ?? "General",
-        subject: t.subject ?? "Feedback",
-        message: t.message,
-        aiReply: t.ai_reply,
-        adminReply: t.admin_reply,
-        status: t.status ?? "new",
-        created_at: t.created_at,
-      }));
-      return NextResponse.json(formatted);
+    // Logged-in non-admin user gets their own tickets
+    if (user?.email) {
+      const userLower = user.email.toLowerCase().trim();
+      const filtered = IN_MEMORY_TICKETS.filter((t) => t.userEmail.toLowerCase() === userLower);
+      return NextResponse.json(filtered);
     }
 
     return NextResponse.json(IN_MEMORY_TICKETS);
@@ -231,9 +279,11 @@ export async function GET() {
 
 export async function PATCH(req: Request) {
   try {
-    const { supabase, userId, error } = await requireAuth();
-    if (error || !supabase) {
-      return error ?? NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { ticketId, status, adminReply } = await req.json();

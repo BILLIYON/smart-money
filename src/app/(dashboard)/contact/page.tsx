@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -12,10 +12,12 @@ import {
   HelpCircle,
   Bug,
   Lightbulb,
-  MessageSquare,
   ShieldCheck,
   Mail,
   ArrowRight,
+  User,
+  Clock,
+  MessageCircle,
 } from "lucide-react";
 import { popup } from "@/store/popupStore";
 
@@ -77,8 +79,18 @@ const COMMUNITY_FEEDBACK = [
   },
 ];
 
+const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }> = {
+  new: { bg: "#E3F2FD", text: "#1976D2", label: "New Inquiry" },
+  in_progress: { bg: "#FFF3E0", text: "#E65100", label: "In Progress 🚀" },
+  resolved: { bg: "#E8F5E9", text: "#2E7D32", label: "Resolved 🟢" },
+  implemented: { bg: "#F3E5F5", text: "#7B1FA2", label: "Implemented 🎉" },
+};
+
 export default function ContactPage() {
   const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [rating, setRating] = useState(5);
   const [hoverRating, setHoverRating] = useState(0);
   const [feedbackType, setFeedbackType] = useState<FeedbackType>("review");
@@ -88,6 +100,46 @@ export default function ContactPage() {
   const [refining, setRefining] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ ticketId: string; aiReply: string } | null>(null);
+  const [myTickets, setMyTickets] = useState<any[]>([]);
+
+  // Load user profile on mount
+  useEffect(() => {
+    async function loadUser() {
+      try {
+        const res = await fetch("/api/user/profile");
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.email) {
+            setEmail(data.email);
+            setIsLoggedIn(true);
+          }
+          if (data?.full_name) {
+            setName(data.full_name);
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    loadUser();
+  }, []);
+
+  // Fetch tracked tickets whenever email is populated
+  const fetchTrackedTickets = (emailToFetch: string) => {
+    if (!emailToFetch) return;
+    fetch(`/api/contact?email=${encodeURIComponent(emailToFetch)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) setMyTickets(data);
+      })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    if (email) {
+      fetchTrackedTickets(email);
+    }
+  }, [email]);
 
   const handleRefineWithAI = () => {
     if (!message.trim()) {
@@ -111,6 +163,15 @@ export default function ContactPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!email || !email.trim()) {
+      popup.alert(
+        "Email Required",
+        "Please enter your email address so the system can store and track your inquiry under your account!"
+      );
+      return;
+    }
+
     if (!message.trim()) {
       popup.alert("Missing Message", "Please enter your review or feedback message before submitting.");
       return;
@@ -122,10 +183,12 @@ export default function ContactPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          email: email.trim(),
+          name: name.trim(),
           rating,
           type: feedbackType,
           subject: subject.trim() || `${feedbackType.toUpperCase()} Feedback`,
-          message,
+          message: message.trim(),
           category,
         }),
       });
@@ -136,7 +199,11 @@ export default function ContactPage() {
           ticketId: data.ticketId,
           aiReply: data.aiReply,
         });
-        popup.success("Review Submitted", "Thank you! Your feedback has been recorded.");
+        popup.success(
+          "Inquiry Submitted",
+          `Thank you! Your feedback (Ticket ID: ${data.ticketId}) has been stored and linked to ${email}.`
+        );
+        fetchTrackedTickets(email);
       } else {
         popup.error("Submission Error", data.error || "Failed to send feedback.");
       }
@@ -154,13 +221,13 @@ export default function ContactPage() {
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.5px] mb-1" style={{ color: "var(--green)" }}>
-            <MessageSquareHeart size={16} /> Contact &amp; Community Feedback
+            <MessageSquareHeart size={16} /> Contact &amp; Community Support Desk
           </div>
           <div className="text-[24px] sm:text-[28px] font-bold" style={{ color: "var(--text)", fontFamily: "var(--font-sora)" }}>
             Help Us Make <em style={{ fontFamily: "var(--font-dm-serif)", fontStyle: "italic", color: "var(--green)" }}>Smart Money</em> Better
           </div>
           <div className="text-[13px] mt-1 max-w-[640px]" style={{ color: "var(--muted)", lineHeight: 1.6 }}>
-            Have ideas for new features, feedback on existing tools, or an issue to report? Submit your review below and our AI team will process it instantly!
+            Have ideas for new features, feedback on existing tools, or an issue to report? Enter your email to submit and track your inquiry under your account!
           </div>
         </div>
 
@@ -175,10 +242,52 @@ export default function ContactPage() {
               
               <form onSubmit={handleSubmit} className="flex flex-col gap-5">
                 
-                {/* 1. Feedback Type Selection */}
+                {/* 1. Account & Email Identity Section */}
+                <div className="p-4 rounded-[14px]" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
+                  <div className="flex items-center gap-2 text-[12px] font-semibold mb-3" style={{ color: "var(--text)" }}>
+                    <Mail size={16} className="text-emerald-500" />
+                    <span>Your Contact Email &amp; Account Info *</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] font-semibold uppercase tracking-[0.5px] block mb-1" style={{ color: "var(--muted)" }}>
+                        Email Address *
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        placeholder="Enter your email (e.g. user@example.com)"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-[10px] text-[13px] outline-none border"
+                        style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--text)", fontFamily: "var(--font-sora)" }}
+                      />
+                      <p className="text-[10px] mt-1" style={{ color: "var(--green)" }}>
+                        {isLoggedIn ? "✓ Automatically linked to your logged-in profile" : "📧 Required to store and track your inquiry"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-semibold uppercase tracking-[0.5px] block mb-1" style={{ color: "var(--muted)" }}>
+                        Full Name
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Your full name"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-[10px] text-[13px] outline-none border"
+                        style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--text)", fontFamily: "var(--font-sora)" }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Feedback Type Selection */}
                 <div>
                   <label className="text-[11px] font-semibold uppercase tracking-[0.5px] block mb-2" style={{ color: "var(--muted)" }}>
-                    1. Select Feedback Category
+                    Select Inquiry Category
                   </label>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {FEEDBACK_TYPES.map((t) => {
@@ -205,10 +314,10 @@ export default function ContactPage() {
                   </div>
                 </div>
 
-                {/* 2. Star Rating (if Review/Feedback) */}
+                {/* 3. Star Rating */}
                 <div>
                   <label className="text-[11px] font-semibold uppercase tracking-[0.5px] block mb-2" style={{ color: "var(--muted)" }}>
-                    2. Rate Your Smart Money Experience
+                    Rate Your Experience
                   </label>
                   <div className="flex items-center gap-2">
                     <div className="flex items-center gap-1">
@@ -236,7 +345,7 @@ export default function ContactPage() {
                   </div>
                 </div>
 
-                {/* 3. Category & Subject */}
+                {/* 4. Area & Subject */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-[11px] font-semibold uppercase tracking-[0.5px] block mb-1.5" style={{ color: "var(--muted)" }}>
@@ -268,11 +377,11 @@ export default function ContactPage() {
                   </div>
                 </div>
 
-                {/* 4. Message & AI Refine */}
+                {/* 5. Message & AI Refine */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="text-[11px] font-semibold uppercase tracking-[0.5px]" style={{ color: "var(--muted)" }}>
-                      Your Review / Message
+                      Your Message / Inquiry
                     </label>
                     <button
                       type="button"
@@ -303,7 +412,7 @@ export default function ContactPage() {
                   style={{ background: "var(--green)" }}
                 >
                   <Send size={15} />
-                  {submitting ? "Submitting Review..." : "Submit Review & Send Feedback"}
+                  {submitting ? "Submitting..." : "Submit Inquiry & Link to Account"}
                 </button>
               </form>
             </div>
@@ -325,11 +434,11 @@ export default function ContactPage() {
                       </div>
                       <div>
                         <div className="text-[13px] font-semibold">AI Assistant Response</div>
-                        <div className="text-[10px] text-gray-400">Ticket ID: {result.ticketId}</div>
+                        <div className="text-[10px] text-gray-400">Ticket ID: {result.ticketId} · Tracked to {email}</div>
                       </div>
                     </div>
                     <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      Logged to Roadmap
+                      Logged &amp; Tracked
                     </span>
                   </div>
 
@@ -339,7 +448,7 @@ export default function ContactPage() {
 
                   <div className="flex items-center justify-between text-[11px] text-gray-400 border-t border-white/10 pt-3">
                     <span className="flex items-center gap-1.5">
-                      <CheckCircle2 size={14} className="text-emerald-400" /> Received by Engineering Squad
+                      <CheckCircle2 size={14} className="text-emerald-400" /> Stored &amp; Linked to your account
                     </span>
                     <button
                       onClick={() => {
@@ -349,90 +458,128 @@ export default function ContactPage() {
                       }}
                       className="text-emerald-400 font-semibold hover:underline bg-transparent border-0 cursor-pointer"
                     >
-                      Submit Another Feedback
+                      Submit Another Inquiry
                     </button>
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
 
+            {/* Tracked Tickets History List */}
+            {myTickets.length > 0 && (
+              <div className="rounded-[18px] p-6" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                <div className="flex items-center gap-2 text-[14px] font-bold mb-4" style={{ color: "var(--text)", fontFamily: "var(--font-sora)" }}>
+                  <MessageCircle size={18} className="text-emerald-500" />
+                  Your Tracked Inquiries &amp; Support History ({myTickets.length})
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  {myTickets.map((t) => {
+                    const statusInfo = STATUS_COLORS[t.status] || STATUS_COLORS.new;
+                    return (
+                      <div
+                        key={t.id}
+                        className="p-4 rounded-[12px] border transition-all"
+                        style={{ background: "var(--bg)", borderColor: "var(--border)" }}
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-bold text-emerald-500">{t.id}</span>
+                            <span className="text-[12px] font-semibold" style={{ color: "var(--text)" }}>{t.subject}</span>
+                          </div>
+                          <span
+                            className="px-2.5 py-0.5 rounded-full text-[10px] font-bold"
+                            style={{ background: statusInfo.bg, color: statusInfo.text }}
+                          >
+                            {statusInfo.label}
+                          </span>
+                        </div>
+
+                        <p className="text-[12px] leading-relaxed mb-2" style={{ color: "var(--muted)" }}>
+                          {t.message}
+                        </p>
+
+                        {t.adminReply && (
+                          <div className="mt-2 p-2.5 rounded-[8px] text-[11px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-600">
+                            <strong>Admin Response:</strong> {t.adminReply}
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between text-[10px] mt-2 pt-2 border-t" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
+                          <span>Category: {t.category}</span>
+                          <span className="flex items-center gap-1">
+                            <Clock size={10} /> {new Date(t.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
           </div>
 
-          {/* Right Column: Support & Community Roadmap */}
+          {/* Right Column: Support Info & Community Feed */}
           <div className="flex flex-col gap-5">
             
-            {/* Direct Support Card */}
-            <div className="rounded-[18px] p-5 flex flex-col gap-3" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-              <div className="text-[14px] font-semibold flex items-center gap-2" style={{ color: "var(--text)", fontFamily: "var(--font-sora)" }}>
-                <ShieldCheck size={16} className="text-emerald-400" /> Direct Support Channels
+            {/* Direct Support Channels Card */}
+            <div className="rounded-[18px] p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+              <div className="text-[14px] font-bold mb-3 flex items-center gap-2" style={{ color: "var(--text)", fontFamily: "var(--font-sora)" }}>
+                <ShieldCheck size={18} className="text-emerald-500" />
+                Direct Support Channels
               </div>
-              <div className="text-[12px] leading-relaxed" style={{ color: "var(--muted)" }}>
-                Need immediate help with your account, DataBank integration, or billing?
-              </div>
-
-              <div className="flex flex-col gap-2 mt-1">
-                <a
-                  href="mailto:support@smartmoney.app"
-                  className="flex items-center justify-between p-3 rounded-[12px] border transition-colors hover:border-emerald-500/40"
-                  style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
-                >
-                  <div className="flex items-center gap-2.5 text-[12px]">
-                    <Mail size={16} className="text-emerald-400" />
+              <div className="flex flex-col gap-3 text-[12px]">
+                <div className="p-3 rounded-[12px] flex items-center justify-between" style={{ background: "var(--bg)" }}>
+                  <div className="flex items-center gap-2.5">
+                    <Mail size={16} className="text-emerald-500" />
                     <div>
-                      <div className="font-semibold">Email Us</div>
-                      <div className="text-[10px]" style={{ color: "var(--muted)" }}>support@smartmoney.app</div>
+                      <div className="font-semibold" style={{ color: "var(--text)" }}>Email Engineering</div>
+                      <div className="text-[11px]" style={{ color: "var(--muted)" }}>support@smartmoney.app</div>
                     </div>
                   </div>
-                  <ArrowRight size={14} style={{ color: "var(--muted)" }} />
-                </a>
+                  <span className="text-[10px] font-semibold text-emerald-500">24/7 Monitored</span>
+                </div>
 
-                <button
-                  onClick={() => router.push("/chat")}
-                  className="flex items-center justify-between p-3 rounded-[12px] border transition-colors text-left cursor-pointer hover:border-emerald-500/40"
-                  style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
-                >
-                  <div className="flex items-center gap-2.5 text-[12px]">
-                    <MessageSquare size={16} className="text-emerald-400" />
+                <div className="p-3 rounded-[12px] flex items-center justify-between" style={{ background: "var(--bg)" }}>
+                  <div className="flex items-center gap-2.5">
+                    <User size={16} className="text-blue-500" />
                     <div>
-                      <div className="font-semibold">Ask Finance Buddy</div>
-                      <div className="text-[10px]" style={{ color: "var(--muted)" }}>Instant AI answers 24/7</div>
+                      <div className="font-semibold" style={{ color: "var(--text)" }}>Account Inquiry Tracking</div>
+                      <div className="text-[11px]" style={{ color: "var(--muted)" }}>Auto-linked by Email</div>
                     </div>
                   </div>
-                  <ArrowRight size={14} style={{ color: "var(--muted)" }} />
-                </button>
+                  <span className="text-[10px] font-semibold text-blue-500">Auto-Synced</span>
+                </div>
               </div>
             </div>
 
-            {/* Community Feedback & Roadmap */}
-            <div className="rounded-[18px] p-5 flex flex-col gap-3" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-              <div className="flex items-center justify-between">
-                <div className="text-[14px] font-semibold" style={{ color: "var(--text)", fontFamily: "var(--font-sora)" }}>
-                  🗺️ Community Feedback Roadmap
+            {/* Community Roadmap Card */}
+            <div className="rounded-[18px] p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-[14px] font-bold flex items-center gap-2" style={{ color: "var(--text)", fontFamily: "var(--font-sora)" }}>
+                  <Sparkles size={16} className="text-emerald-500" />
+                  Community Feature Roadmap
                 </div>
               </div>
-              <div className="text-[11px]" style={{ color: "var(--muted)" }}>
-                See what users have suggested and what we&apos;re building next:
-              </div>
 
-              <div className="flex flex-col gap-2.5 mt-1">
+              <div className="flex flex-col gap-2.5">
                 {COMMUNITY_FEEDBACK.map((fb) => (
                   <div
                     key={fb.id}
-                    className="p-3 rounded-[12px] border flex flex-col gap-1.5"
+                    className="p-3 rounded-[12px] border text-[12px] flex flex-col gap-1.5"
                     style={{ background: "var(--bg)", borderColor: "var(--border)" }}
                   >
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-semibold text-emerald-400">{fb.type}</span>
-                      <span className="px-2 py-0.5 rounded-full text-[9px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-[11px]" style={{ color: "var(--green)" }}>{fb.type}</span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500">
                         {fb.status}
                       </span>
                     </div>
-                    <div className="text-[12px] font-medium" style={{ color: "var(--text)" }}>
-                      {fb.title}
-                    </div>
-                    <div className="flex items-center justify-between text-[10px]" style={{ color: "var(--muted)" }}>
-                      <span>By {fb.user} · {fb.date}</span>
-                      <span>👍 {fb.likes} votes</span>
+                    <div className="font-medium" style={{ color: "var(--text)" }}>{fb.title}</div>
+                    <div className="flex items-center justify-between text-[10px] text-gray-400 pt-1">
+                      <span>By {fb.user}</span>
+                      <span>{fb.date}</span>
                     </div>
                   </div>
                 ))}
