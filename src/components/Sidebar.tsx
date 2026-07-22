@@ -16,6 +16,7 @@ import {
   Moon,
   LogOut,
   Shield,
+  MessageSquareHeart,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -154,33 +155,29 @@ export function Sidebar({ user }: { user?: { email: string; fullName: string | n
 
       {/* Bottom widget — theme toggle + avatar/settings */}
       <div className="flex flex-col items-center gap-1.5 py-2">
-        {/* Theme toggle */}
+        {/* Contact Us & Reviews button */}
         <div className="relative group flex items-center justify-center">
-          <button
-            onClick={() => setTheme(isDark ? "light" : "dark")}
+          <Link
+            href="/contact"
             className="flex items-center justify-center w-9 h-9 rounded-[10px] transition-all duration-200 flex-shrink-0"
             style={{
-              background: "rgba(255,255,255,.07)",
-              border: "1px solid rgba(255,255,255,.1)",
+              background: pathname === "/contact" ? "rgba(0,196,140,.2)" : "rgba(255,255,255,.07)",
+              border: pathname === "/contact" ? "1px solid var(--green)" : "1px solid rgba(255,255,255,.1)",
               cursor: "pointer",
             }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,196,140,.15)";
-              (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(0,196,140,.3)";
+              (e.currentTarget as HTMLAnchorElement).style.background = "rgba(0,196,140,.15)";
+              (e.currentTarget as HTMLAnchorElement).style.borderColor = "rgba(0,196,140,.3)";
             }}
             onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,.07)";
-              (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,.1)";
+              if (pathname !== "/contact") {
+                (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,.07)";
+                (e.currentTarget as HTMLAnchorElement).style.borderColor = "rgba(255,255,255,.1)";
+              }
             }}
           >
-            {!mounted ? (
-              <Sun size={16} strokeWidth={2} fill="none" style={{ stroke: "var(--sidebar-icon)" }} />
-            ) : isDark ? (
-              <Sun size={16} strokeWidth={2} fill="none" style={{ stroke: "var(--sidebar-icon)" }} />
-            ) : (
-              <Moon size={16} strokeWidth={2} fill="none" style={{ stroke: "var(--sidebar-icon)" }} />
-            )}
-          </button>
+            <MessageSquareHeart size={18} strokeWidth={2} style={{ stroke: pathname === "/contact" ? "var(--green)" : "var(--sidebar-icon)" }} />
+          </Link>
           <span
             className="pointer-events-none invisible opacity-0 scale-95 group-hover:visible group-hover:opacity-100 group-hover:scale-100 absolute left-14 z-[200] whitespace-nowrap rounded-md px-[10px] py-1 text-[11px] font-medium transition-all duration-150 shadow-md origin-left"
             style={{
@@ -190,7 +187,7 @@ export function Sidebar({ user }: { user?: { email: string; fullName: string | n
               boxShadow: "0 4px 12px var(--shadow)",
             }}
           >
-            {!mounted ? "Theme Mode" : isDark ? "Light Mode" : "Dark Mode"}
+            Contact Us &amp; Reviews
           </span>
         </div>
 
