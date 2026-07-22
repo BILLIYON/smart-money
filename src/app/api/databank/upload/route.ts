@@ -2,11 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase-server";
 import Papa from "papaparse";
 
-// Set up the pdfjs fake worker globally to avoid dynamic import errors in Next.js/Turbopack environment
-// @ts-ignore
-import { WorkerMessageHandler } from "@/lib/pdf.worker.mjs";
-// @ts-ignore
-globalThis.pdfjsWorker = { WorkerMessageHandler };
+
 
 // pdf-parse has no named export — use require to avoid ESM issues
 // eslint-disable-next-line @typescript-eslint/no-require-imports
