@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
-const PUBLIC_PATHS = new Set(["/", "/login", "/register", "/chat"]);
+const PUBLIC_PATHS = new Set(["/", "/login", "/register", "/chat", "/contact"]);
 const AUTH_PATHS = new Set(["/login", "/register"]);
 const AUTH_REDIRECT = "/";
 
@@ -23,6 +23,8 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/marketplace/") ||
     pathname.startsWith("/buddies/") ||
     pathname.startsWith("/chat/") ||
+    pathname === "/contact" ||
+    pathname === "/api/contact" ||
     pathname === "/api/studio" ||
     pathname === "/api/hidden-buddies" ||
     pathname === "/api/databank/sources-summary" ||
