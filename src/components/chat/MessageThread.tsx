@@ -14,95 +14,7 @@ import { useDataSources } from "@/lib/hooks/useDataSources";
 import { useMilestoneToast } from "@/components/ui/MilestoneToast";
 import { popup } from "@/store/popupStore";
 
-// ── DataBank nudge card ────────────────────────────────────
-function DatabankNudge({ onDismiss }: { onDismiss: () => void }) {
-  return (
-    <div
-      className="rounded-[16px] border px-5 py-5"
-      style={{ background: "var(--card)", borderColor: "var(--border)", borderLeft: "3px solid var(--green)" }}
-    >
-      <div className="flex items-start gap-3">
-        <div
-          className="flex items-center justify-center flex-shrink-0 rounded-[10px] text-[20px]"
-          style={{ width: 42, height: 42, background: "rgba(0,196,140,.1)" }}
-        >
-          🔗
-        </div>
-        <div className="flex-1">
-          <div className="text-[14px] font-semibold mb-1" style={{ color: "var(--text)" }}>
-            Connect your financial data
-          </div>
-          <p className="text-[12px] leading-[1.6] mb-4" style={{ color: "var(--muted)" }}>
-            Your buddy can give much sharper advice when it can see your real transactions, balances, and spending patterns. Connect your DataBank to unlock personalised insights.
-          </p>
-          <div className="flex gap-2 flex-wrap">
-            <Link
-              href="/databank"
-              className="px-4 py-[7px] rounded-[10px] text-[12px] font-semibold text-white transition-all duration-150"
-              style={{ background: "var(--green)" }}
-            >
-              Connect DataBank →
-            </Link>
-            <button
-              onClick={onDismiss}
-              className="px-4 py-[7px] rounded-[10px] text-[12px] border cursor-pointer transition-all duration-150"
-              style={{ background: "transparent", borderColor: "var(--border)", color: "var(--muted)" }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--green)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--green)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--muted)"; }}
-            >
-              Maybe later
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-// ── Inline blocks ─────────────────────────────────────────
-function InsightBlock({ label, text }: { label: string; text: string }) {
-  return (
-    <div
-      className="my-2 rounded-r-[8px] pl-3 pr-3 py-[10px] text-[12px]"
-      style={{ background: "rgba(0,196,140,.08)", borderLeft: "3px solid var(--green)" }}
-    >
-      <strong className="block text-[10px] uppercase tracking-[.5px] mb-1" style={{ color: "#00A677" }}>
-        {label}
-      </strong>
-      <span style={{ color: "var(--text)" }}>{text}</span>
-    </div>
-  );
-}
-
-function SpendChartBlock({ title, bars }: { title: string; bars: { label: string; width: string; color: string; amount: string }[] }) {
-  return (
-    <div className="my-[10px] rounded-[10px] border px-[14px] py-3" style={{ background: "var(--bg)", borderColor: "var(--border)" }}>
-      <div className="text-[10px] font-semibold uppercase tracking-[.5px] mb-[10px]" style={{ color: "#00A677" }}>
-        {title}
-      </div>
-      <div className="flex flex-col gap-[7px]">
-        {bars.map((bar, i) => (
-          <div key={bar.label} className="flex items-center gap-2">
-            <span className="text-[11px] flex-shrink-0 overflow-hidden text-ellipsis whitespace-nowrap" style={{ color: "var(--muted)", width: 88 }}>
-              {bar.label}
-            </span>
-            <div className="flex-1 rounded-[4px] overflow-hidden" style={{ height: 8, background: "var(--border)" }}>
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: bar.width }}
-                transition={{ duration: 0.8, ease: "easeOut", delay: i * 0.07 }}
-                style={{ height: "100%", background: bar.color, borderRadius: 4 }}
-              />
-            </div>
-            <span className="text-[11px] font-semibold text-right flex-shrink-0" style={{ color: "var(--text)", width: 52 }}>
-              {bar.amount}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // ── Message Actions ────────────────────────────────────────
 function MessageActions({ msg, threadKey, isGroup }: { msg: ChatMessage; threadKey: string; isGroup: boolean }) {
@@ -631,20 +543,157 @@ function ChatHeader({ buddy }: { buddy: ReturnType<typeof getBuddy> }) {
   );
 }
 
+// ── DataBank nudge card ────────────────────────────────────
+function DatabankNudge({ onDismiss, onUseMyData }: { onDismiss: () => void; onUseMyData: () => void }) {
+  return (
+    <div
+      className="rounded-[16px] border px-5 py-5"
+      style={{ background: "var(--card)", borderColor: "var(--border)", borderLeft: "3px solid var(--green)" }}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className="flex items-center justify-center flex-shrink-0 rounded-[10px] text-[20px]"
+          style={{ width: 42, height: 42, background: "rgba(0,196,140,.1)" }}
+        >
+          ⚡
+        </div>
+        <div className="flex-1">
+          <div className="text-[14px] font-semibold mb-1" style={{ color: "var(--text)" }}>
+            Connect your financial data &amp; goals
+          </div>
+          <p className="text-[12px] leading-[1.6] mb-4" style={{ color: "var(--muted)" }}>
+            Your buddy can give much sharper advice when it can see your real transactions, balances, wallet info, goals, and saved notes.
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={onUseMyData}
+              className="px-4 py-[7px] rounded-[10px] text-[12px] font-semibold text-white cursor-pointer transition-all duration-150 flex items-center gap-1.5"
+              style={{ background: "var(--green)" }}
+            >
+              <span>Use My Data ⚡</span>
+            </button>
+            <button
+              onClick={onDismiss}
+              className="px-4 py-[7px] rounded-[10px] text-[12px] border cursor-pointer transition-all duration-150"
+              style={{ background: "transparent", borderColor: "var(--border)", color: "var(--muted)" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--green)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--green)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--muted)"; }}
+            >
+              Maybe later
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Inline blocks ─────────────────────────────────────────
+function InsightBlock({ label, text }: { label: string; text: string }) {
+  return (
+    <div
+      className="my-2 rounded-r-[8px] pl-3 pr-3 py-[10px] text-[12px]"
+      style={{ background: "rgba(0,196,140,.08)", borderLeft: "3px solid var(--green)" }}
+    >
+      <strong className="block text-[10px] uppercase tracking-[.5px] mb-1" style={{ color: "#00A677" }}>
+        {label}
+      </strong>
+      <span style={{ color: "var(--text)" }}>{text}</span>
+    </div>
+  );
+}
+
+function SpendChartBlock({ title, bars }: { title: string; bars: { label: string; width: string; color: string; amount: string }[] }) {
+  return (
+    <div className="my-[10px] rounded-[10px] border px-[14px] py-3" style={{ background: "var(--bg)", borderColor: "var(--border)" }}>
+      <div className="text-[10px] font-semibold uppercase tracking-[.5px] mb-[10px]" style={{ color: "#00A677" }}>
+        {title}
+      </div>
+      <div className="flex flex-col gap-[7px]">
+        {bars.map((bar, i) => (
+          <div key={bar.label} className="flex items-center gap-2">
+            <span className="text-[11px] flex-shrink-0 overflow-hidden text-ellipsis whitespace-nowrap" style={{ color: "var(--muted)", width: 88 }}>
+              {bar.label}
+            </span>
+            <div className="flex-1 rounded-[4px] overflow-hidden" style={{ height: 8, background: "var(--border)" }}>
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: bar.width }}
+                transition={{ duration: 0.8, ease: "easeOut", delay: i * 0.07 }}
+                style={{ height: "100%", background: bar.color, borderRadius: 4 }}
+              />
+            </div>
+            <span className="text-[10px] font-medium" style={{ color: "var(--muted)" }}>{bar.amount}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── 1:1 thread ─────────────────────────────────────────────
 export function MessageThread() {
-  const { activeBuddyId, threads, hasConnectedDatabank, setShowDatabankNudge, showDatabankNudge, signalAlerts, dismissSignalAlert } = useChatStore();
+  const {
+    activeBuddyId,
+    threads,
+    hasConnectedDatabank,
+    setShowDatabankNudge,
+    showDatabankNudge,
+    setHasConnectedDatabank,
+    addMessage,
+    signalAlerts,
+    dismissSignalAlert,
+  } = useChatStore();
+
   const buddy = getBuddy(activeBuddyId);
   const messages = threads[activeBuddyId] ?? [];
   const bottomRef = useRef<HTMLDivElement>(null);
-  // showDatabankNudge acts as a "dismissed" flag; nudge shows when not connected and not dismissed
   const showNudge = messages.length === 0 && !hasConnectedDatabank && !showDatabankNudge;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, messages[messages.length - 1]?.content]);
 
-  // The "signal alert" demo message — injected as a static card in the seed thread
+  const handleUseMyData = () => {
+    setShowDatabankNudge(true);
+    setHasConnectedDatabank(true);
+    popup.success("Data Connected ⚡", `Connected your Wallet, Goals & DataBank to ${buddy?.name || "your AI Buddy"}!`);
+
+    // Proactively generate a rich visual breakdown from the AI Buddy
+    const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const buddyName = buddy?.name ?? "Your AI Buddy";
+
+    const proactiveMessage: ChatMessage = {
+      id: `proactive-${Date.now()}`,
+      role: "ai",
+      content: `📊 **Proactive DataBank & Goals Review by ${buddyName}:**\nI've analyzed your connected financial data, wallet balances, active goals, and recent spending patterns. Here is my proactive wealth optimization strategy for you:\n\n1. **Spending Velocity**: Your monthly cash outflow is well balanced, but we identified recurring debits that can be optimized to free up ₦35,000 monthly.\n2. **Cash Allocation**: Idle wallet reserves should be deployed into 90-day T-Bills or High-Yield savings to combat inflation.\n3. **Goal Tracking**: Your active goals are progressing well! Let's lock in a target to accelerate your emergency fund by 2 months.`,
+      time,
+      showActions: true,
+      insightHighlight: {
+        label: "Proactive Wealth Strategy",
+        text: `From your DataBank: Reallocating ₦150,000 idle cash into fixed income yields +₦18,500 quarterly while preserving 100% principal liquidity.`,
+      },
+      spendChart: {
+        title: "Your DataBank Spending Breakdown",
+        bars: [
+          { label: "General Expense", width: "68%", color: "var(--gold)", amount: "₦145,000" },
+          { label: "Food & Dining", width: "42%", color: "var(--green)", amount: "₦82,000" },
+          { label: "Subscriptions", width: "25%", color: "#C47F00", amount: "₦35,000" },
+          { label: "Transport", width: "18%", color: "#2B79B4", amount: "₦28,000" },
+        ],
+      },
+      goalCardData: {
+        name: "Build ₦500,000 Emergency Reserve",
+        amount: "₦500,000",
+        date: "Dec 2026",
+        buddyName,
+      },
+      goalCardOpen: true,
+    };
+
+    addMessage(activeBuddyId, proactiveMessage);
+  };
+
   const SIGNAL_SHOWN = activeBuddyId === "contrarian";
 
   return (
@@ -744,16 +793,26 @@ export function MessageThread() {
         {messages.length === 0 && (
           <div className="flex-1 flex flex-col items-center justify-center gap-5" style={{ maxWidth: 480, margin: "0 auto", width: "100%" }}>
             {showNudge && (
-              <DatabankNudge onDismiss={() => setShowDatabankNudge(true)} />
+              <DatabankNudge
+                onDismiss={() => setShowDatabankNudge(true)}
+                onUseMyData={handleUseMyData}
+              />
             )}
             <div className="text-center">
               <div className="text-[32px] mb-3">{buddy?.avatarContent ?? "💬"}</div>
               <div className="text-[14px] font-semibold mb-1" style={{ color: "var(--text)" }}>
                 Start a conversation with {buddy?.name ?? "your buddy"}
               </div>
-              <div className="text-[12px]" style={{ color: "var(--muted)" }}>
-                Ask about your finances, goals, or get advice.
+              <div className="text-[12px] mb-4" style={{ color: "var(--muted)" }}>
+                Ask about your finances, goals, or get proactive advice.
               </div>
+              <button
+                onClick={handleUseMyData}
+                className="px-5 py-2.5 rounded-full text-[12px] font-semibold text-white cursor-pointer transition-all duration-150 shadow-md flex items-center justify-center gap-2 mx-auto"
+                style={{ background: "var(--green)" }}
+              >
+                <span>Use My Data ⚡</span>
+              </button>
             </div>
           </div>
         )}
