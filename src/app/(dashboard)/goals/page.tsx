@@ -433,6 +433,31 @@ export default function GoalsPage() {
     );
   }
 
+  // Clear All Goals handler
+  function handleClearAllGoals() {
+    popup.danger(
+      "Clear All Goals",
+      "Are you sure you want to permanently delete all financial goals from the database? This action cannot be undone.",
+      async () => {
+        try {
+          const res = await fetch("/api/goals/list", {
+            method: "DELETE",
+          });
+          if (res.ok) {
+            setGoals([]);
+            popup.success("Goals Cleared", "All goals have been permanently deleted from the database.");
+          } else {
+            popup.error("Error", "Failed to clear goals.");
+          }
+        } catch (err) {
+          console.error(err);
+          popup.error("Error", "An unexpected error occurred while clearing goals.");
+        }
+      },
+      "Clear Everything"
+    );
+  }
+
   // Start Edit handler
   function handleStartEdit(goal: Goal) {
     setEditingGoal(goal);
@@ -559,7 +584,18 @@ export default function GoalsPage() {
               Financial Goals
             </em>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {goals.length > 0 && (
+              <button
+                onClick={handleClearAllGoals}
+                className="px-3.5 py-[9px] rounded-[10px] text-[12px] font-semibold transition-all duration-150 border cursor-pointer"
+                style={{ borderColor: "rgba(220,38,38,0.3)", color: "#DC2626", background: "rgba(220,38,38,0.05)" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(220,38,38,0.15)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(220,38,38,0.05)"; }}
+              >
+                🗑️ Clear All Goals
+              </button>
+            )}
             <button
               onClick={() => {
                 setEditingGoal({ id: "new", title: "", current: 0, target: 0 } as any);
@@ -568,7 +604,7 @@ export default function GoalsPage() {
                 setEditTarget("");
                 setEditDeadline("");
               }}
-              className="px-4 py-[9px] rounded-[10px] text-[12px] font-semibold transition-all duration-150 border"
+              className="px-4 py-[9px] rounded-[10px] text-[12px] font-semibold transition-all duration-150 border cursor-pointer"
               style={{ borderColor: "var(--border)", color: "var(--text)", background: "transparent" }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--navy)"; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
@@ -577,7 +613,7 @@ export default function GoalsPage() {
             </button>
             <button
               onClick={() => router.push("/chat")}
-              className="px-4 py-[9px] rounded-[10px] text-[12px] font-semibold transition-all duration-150"
+              className="px-4 py-[9px] rounded-[10px] text-[12px] font-semibold transition-all duration-150 cursor-pointer"
               style={{ background: "var(--green)", color: "#fff", border: "none" }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green2)"; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green)"; }}

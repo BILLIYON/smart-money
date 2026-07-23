@@ -231,6 +231,37 @@ function FollowUpCard({ threadKey, msgId }: { threadKey: string; msgId: string }
   );
 }
 
+// ── Typing indicator ──────────────────────────────────────
+function TypingIndicator({ buddyName }: { buddyName?: string }) {
+  return (
+    <div className="flex items-center gap-2.5 py-0.5">
+      <div className="flex items-center gap-1.5">
+        <motion.span
+          className="w-[7px] h-[7px] rounded-full inline-block"
+          style={{ background: "var(--green)" }}
+          animate={{ y: [0, -5, 0], opacity: [0.3, 1, 0.3] }}
+          transition={{ duration: 0.8, repeat: Infinity, ease: "easeInOut", delay: 0 }}
+        />
+        <motion.span
+          className="w-[7px] h-[7px] rounded-full inline-block"
+          style={{ background: "var(--green)" }}
+          animate={{ y: [0, -5, 0], opacity: [0.3, 1, 0.3] }}
+          transition={{ duration: 0.8, repeat: Infinity, ease: "easeInOut", delay: 0.2 }}
+        />
+        <motion.span
+          className="w-[7px] h-[7px] rounded-full inline-block"
+          style={{ background: "var(--green)" }}
+          animate={{ y: [0, -5, 0], opacity: [0.3, 1, 0.3] }}
+          transition={{ duration: 0.8, repeat: Infinity, ease: "easeInOut", delay: 0.4 }}
+        />
+      </div>
+      <span className="text-[12px] font-medium animate-pulse" style={{ color: "var(--muted)" }}>
+        {buddyName ? `${buddyName} is analyzing DataBank & typing...` : "Searching DataBank & typing..."}
+      </span>
+    </div>
+  );
+}
+
 // ── Single AI message ─────────────────────────────────────
 function AiMessage({
   msg,
@@ -310,6 +341,8 @@ function AiMessage({
     );
   }
 
+  const isWaiting = msg.streaming && (!msg.content || !msg.content.trim());
+
   return (
     <div className="flex gap-[10px]" style={{ maxWidth: "80%" }}>
       {/* Avatar */}
@@ -343,13 +376,19 @@ function AiMessage({
             color: "var(--text)",
           }}
         >
-          {msg.content.split("\n").map((line, i, arr) => (
-            <span key={i}>{line}{i < arr.length - 1 && <br />}</span>
-          ))}
-          {msg.insightHighlight && <InsightBlock label={msg.insightHighlight.label} text={msg.insightHighlight.text} />}
-          {msg.spendChart && <SpendChartBlock title={msg.spendChart.title} bars={msg.spendChart.bars} />}
-          {msg.streaming && (
-            <span className="inline-block w-[2px] h-[14px] ml-[2px] align-middle animate-pulse" style={{ background: "var(--green)" }} />
+          {isWaiting ? (
+            <TypingIndicator buddyName={buddyLabel ?? (msg.buddyId ? getBuddy(msg.buddyId)?.name : undefined)} />
+          ) : (
+            <>
+              {msg.content.split("\n").map((line, i, arr) => (
+                <span key={i}>{line}{i < arr.length - 1 && <br />}</span>
+              ))}
+              {msg.insightHighlight && <InsightBlock label={msg.insightHighlight.label} text={msg.insightHighlight.text} />}
+              {msg.spendChart && <SpendChartBlock title={msg.spendChart.title} bars={msg.spendChart.bars} />}
+              {msg.streaming && (
+                <span className="inline-block w-[2px] h-[14px] ml-[2px] align-middle animate-pulse" style={{ background: "var(--green)" }} />
+              )}
+            </>
           )}
         </div>
 

@@ -6,8 +6,8 @@ export async function GET() {
   const { supabase, userId, error } = await requireAuth();
   if (error) return error;
 
-  // 1. Fetch user's goals from public.goals
-  let { data: goals, error: dbError } = await supabase
+  // Fetch user's goals from public.goals
+  const { data: goals, error: dbError } = await supabase
     .from("goals")
     .select("*")
     .eq("user_id", userId)
@@ -18,72 +18,7 @@ export async function GET() {
     return NextResponse.json({ error: "Failed to fetch goals" }, { status: 500 });
   }
 
-  // 2. Seed default goals if database is empty
-  if (!goals || goals.length === 0) {
-    // Check if the user has an onboarding goal
-    const { data: userRow } = await supabase
-      .from("users")
-      .select("primary_goal")
-      .eq("id", userId)
-      .single();
-
-    const seedGoals = [];
-
-    // Add onboarding goal if present
-    if (userRow?.primary_goal) {
-      seedGoals.push({
-        user_id: userId,
-        buddy_id: "contrarian", // default buddy
-        title: userRow.primary_goal,
-        target_amount: 100000000, // ₦1,000,000 default
-        current_amount: 0,
-        status: "active",
-      });
-    }
-
-    seedGoals.push(
-      {
-        user_id: userId,
-        buddy_id: "contrarian",
-        title: "Emergency Fund — 6 Months",
-        target_amount: 90000000, // ₦900k in kobo
-        current_amount: 48000000, // ₦480k in kobo
-        target_date: "2026-06-30",
-        status: "active",
-      },
-      {
-        user_id: userId,
-        buddy_id: "architect",
-        title: "Investment Seed Fund",
-        target_amount: 50000000, // ₦500k in kobo
-        current_amount: 22500000, // ₦225k in kobo
-        target_date: "2026-12-31",
-        status: "active",
-      },
-      {
-        user_id: userId,
-        buddy_id: "contrarian",
-        title: "Subscription Audit",
-        target_amount: 3400000, // ₦34k in kobo
-        current_amount: 1200000, // ₦12k in kobo
-        target_date: "2026-03-31",
-        status: "active",
-      }
-    );
-
-    const { data: insertedGoals, error: insertError } = await supabase
-      .from("goals")
-      .insert(seedGoals)
-      .select();
-
-    if (insertError) {
-      console.error("[GET /api/goals/list] Seed insertion error:", insertError);
-    } else {
-      goals = insertedGoals || [];
-    }
-  }
-
-  // 3. Format goals for GoalsPage frontend
+  // Format goals for GoalsPage frontend
   const formattedGoals = (goals || []).map((g) => {
     const buddyId = g.buddy_id;
     // Match buddy details
@@ -126,8 +61,8 @@ export async function GET() {
       buddy: buddy ? buddy.name : "The Contrarian Investor",
       buddyEmoji: buddy ? buddy.avatarContent : "🎯",
       buddyColor: buddy ? buddy.avatarBg : "#132952",
-      current: g.current_amount / 100, // kobo to Naira
-      target: g.target_amount / 100, // kobo to Naira
+      current: (g.current_amount || 0) / 100, // kobo to Naira
+      target: (g.target_amount || 0) / 100, // kobo to Naira
       deadline: deadlineStr,
       barColor: barColor,
       milestoneMessage: g.title.toLowerCase().includes("emergency")
@@ -177,4 +112,21 @@ export async function POST(req: Request) {
     console.error("[POST /api/goals/list] Error:", err);
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
+}
+
+export async function DELETE() {
+  const { supabase, userId, error } = await requireAuth();
+  if (error) return error;
+
+  const { error: dbError } = await supabase
+    .from("goals")
+    .delete()
+    .eq("user_id", userId);
+
+  if (dbError) {
+    console.error("[DELETE /api/goals/list]", dbError);
+    return NextResponse.json({ error: "Failed to clear goals" }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true, message: "All goals cleared from database" });
 }
