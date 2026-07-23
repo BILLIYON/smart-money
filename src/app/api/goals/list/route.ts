@@ -96,15 +96,13 @@ export async function POST(req: Request) {
         current_amount: body.current_amount || 0,
         target_date: body.target_date || null,
         status: body.status || "active",
-        category: body.category || "General",
-        ai_advice: body.ai_advice || "Manually created goal.",
       })
       .select()
       .single();
 
     if (insertError) {
       console.error("[POST /api/goals/list] Insert error:", insertError);
-      return NextResponse.json({ error: "Failed to create goal" }, { status: 500 });
+      return NextResponse.json({ error: insertError.message || "Failed to create goal" }, { status: 500 });
     }
 
     return NextResponse.json(data);

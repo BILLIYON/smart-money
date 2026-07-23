@@ -635,16 +635,53 @@ export default function GoalsPage() {
           💡 Goals set inside a chat are automatically tracked here
         </div>
 
-        {/* KPI stats */}
-        <div
-          className="grid gap-4 mb-7"
-          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}
-        >
-          <StatCard label="Total Saved" value="₦820k" change="+₦145k this month" changeUp />
-          <StatCard label="Active Goals" value="3" change="1 ahead of schedule" changeUp />
-          <StatCard label="Advice Acted On" value="68%" change="+12% vs last month" changeUp />
-          <StatCard label="Next Milestone" value="18d" change="Emergency fund" />
-        </div>
+        {/* Dynamic KPI stats */}
+        {(() => {
+          const totalSavedVal = goals.reduce((acc, g) => acc + (g.current || 0), 0);
+          const activeGoalsCount = goals.length;
+          const avgCompletion = goals.length > 0
+            ? Math.round(goals.reduce((acc, g) => acc + (g.target > 0 ? (g.current / g.target) * 100 : 0), 0) / goals.length)
+            : 0;
+
+          const gsym = "₦";
+          const formatKpiCurrency = (n: number) => {
+            if (n === 0) return `${gsym}0`;
+            if (n >= 1000000) return `${gsym}${(n / 1000000).toFixed(1)}M`;
+            if (n >= 1000) return `${gsym}${(n / 1000).toFixed(0)}k`;
+            return `${gsym}${n.toLocaleString()}`;
+          };
+
+          return (
+            <div
+              className="grid gap-4 mb-7"
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}
+            >
+              <StatCard
+                label="Total Saved"
+                value={formatKpiCurrency(totalSavedVal)}
+                change={totalSavedVal > 0 ? "Across active goals" : "No saved funds yet"}
+                changeUp={totalSavedVal > 0}
+              />
+              <StatCard
+                label="Active Goals"
+                value={String(activeGoalsCount)}
+                change={activeGoalsCount > 0 ? `${activeGoalsCount} goal${activeGoalsCount === 1 ? "" : "s"} in progress` : "0 active goals"}
+                changeUp={activeGoalsCount > 0}
+              />
+              <StatCard
+                label="Avg. Progress"
+                value={`${avgCompletion}%`}
+                change={avgCompletion > 0 ? "Overall target progress" : "Set a goal to track"}
+                changeUp={avgCompletion > 0}
+              />
+              <StatCard
+                label="Next Milestone"
+                value={activeGoalsCount > 0 ? goals[0].deadline : "None"}
+                change={activeGoalsCount > 0 ? goals[0].title : "No upcoming milestones"}
+              />
+            </div>
+          );
+        })()}
 
         {/* Goal list */}
         {loading ? (
