@@ -93,6 +93,94 @@ async function fetchPageMetadata(url: string): Promise<{ title: string; descript
 }
 
 /**
+ * Scrapes raw HTML from any financial website (Nairametrics, BusinessDay, Reuters, etc.)
+ * and uses LLM to convert the article body into clean, structured JSON signal data for AI.
+ */
+export async function scrapeWebpageToJson(url: string): Promise<SignalData> {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const html = await res.text();
+
+    const titleMatch = html.match(/<title>([\s\S]*?)<\/title>/i);
+    const rawTitle = titleMatch ? titleMatch[1].replace(/<[^>]*>/g, "").trim() : "";
+
+    const pRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
+    let paragraphs: string[] = [];
+    let pMatch;
+    while ((pMatch = pRegex.exec(html)) !== null) {
+      const text = pMatch[1].replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+      if (text.length > 40) {
+        paragraphs.push(text);
+      }
+    }
+
+    const scrapedBody = paragraphs.slice(0, 5).join("\n\n");
+    const domain = new URL(url).hostname.replace("www.", "");
+
+    const prompt = `You are a web scraping & JSON extraction engine for Smart Money AI.
+Web Page Domain: ${domain}
+Web Page URL: ${url}
+Scraped Page Title: "${rawTitle}"
+Scraped Article Content:
+"${scrapedBody || rawTitle}"
+
+Extract the key financial signal from this web page and return valid JSON only — no markdown, no explanation outside JSON:
+{
+  "headline": "A concise 1-sentence headline capturing the core financial news",
+  "body": "A 2-3 sentence actionable summary detailing key numbers, interest rates, asset prices, or policy impacts.",
+  "tags": ["Tag1", "Tag2"]
+}`;
+
+    try {
+      let rawJson = "";
+      try {
+        const anthropic = getAnthropicClient();
+        const response = await anthropic.messages.create({
+          model: "claude-3-5-haiku-latest",
+          max_tokens: 300,
+          messages: [{ role: "user", content: prompt }],
+        });
+        rawJson = response.content[0].type === "text" ? response.content[0].text : "";
+      } catch {
+        const geminiClient = getGeminiClient();
+        const model = geminiClient.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const result = await model.generateContent(prompt);
+        rawJson = (await result.response).text();
+      }
+
+      const cleanJson = rawJson.replace(/```json/g, "").replace(/```/g, "").trim();
+      const parsed = JSON.parse(cleanJson);
+
+      return {
+        headline: String(parsed.headline || rawTitle || `Update from ${domain}`),
+        body: String(parsed.body || scrapedBody || `Latest news from ${domain}`),
+        tags: Array.isArray(parsed.tags) ? parsed.tags.map(String) : [domain, "Web Signal"],
+      };
+    } catch {
+      return {
+        headline: rawTitle || `Financial Update from ${domain}`,
+        body: scrapedBody.slice(0, 250) || `Scraped latest updates from ${url}`,
+        tags: [domain, "News"],
+      };
+    }
+  } catch (err) {
+    console.error(`[scrapeWebpageToJson] Failed to scrape ${url}:`, err);
+    return {
+      headline: `Web Source Update`,
+      body: `Could not reach ${url}. Source remains active for automated polling.`,
+      tags: ["Web", "Custom"],
+    };
+  }
+}
+
+/**
  * Simulated Transcription Engine using LLM.
  * Generates realistic transcripts/signals based on scraped page metadata,
  * falling back to high-quality generated Nigerian/global finance transcripts if scraping fails.
