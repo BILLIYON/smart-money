@@ -2,12 +2,17 @@
 import crypto from "crypto";
 
 const ALGO = "aes-256-gcm";
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-const KEY = Buffer.from(ENCRYPTION_KEY, "hex");
+
+function getEncryptionKey(): Buffer {
+  const rawKey = process.env.ENCRYPTION_KEY || "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  // SHA-256 hash guarantees an exact 32-byte (256-bit) buffer regardless of rawKey length or format
+  return crypto.createHash("sha256").update(rawKey).digest();
+}
 
 export function encrypt(plaintext: string): string {
+  const key = getEncryptionKey();
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv(ALGO, KEY, iv);
+  const cipher = crypto.createCipheriv(ALGO, key, iv);
   const encrypted = Buffer.concat([
     cipher.update(plaintext, "utf8"),
     cipher.final(),
@@ -18,11 +23,12 @@ export function encrypt(plaintext: string): string {
 }
 
 export function decrypt(stored: string): string {
+  const key = getEncryptionKey();
   const [ivB64, tagB64, encB64] = stored.split(":");
   const iv        = Buffer.from(ivB64,  "base64");
   const tag       = Buffer.from(tagB64, "base64");
   const encrypted = Buffer.from(encB64, "base64");
-  const decipher  = crypto.createDecipheriv(ALGO, KEY, iv);
+  const decipher  = crypto.createDecipheriv(ALGO, key, iv);
   decipher.setAuthTag(tag);
   return decipher.update(encrypted) + decipher.final("utf8");
 }
