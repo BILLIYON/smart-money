@@ -245,7 +245,7 @@ export function ChatSidebar() {
                         color: activeSessionId === sess.id ? "var(--green2)" : "var(--text)",
                       }}
                     >
-                      <span className="truncate flex-1">💬 {sess.session_name || "Saved Conversation"}</span>
+                      <span className="truncate flex-1 font-medium">💬 {sess.session_name || "Finance Advisory Topic"}</span>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();

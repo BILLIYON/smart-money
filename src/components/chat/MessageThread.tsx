@@ -616,11 +616,25 @@ function ChatHistoryModal({
 // ── Chat header ────────────────────────────────────────────
 function ChatHeader({ buddy }: { buddy?: any }) {
   const { chips, noData } = useDataSources();
-  const { sessions, activeSessionId, enableCrossSessionMemory, loadSessionMessages, deleteSession } = useChatStore();
+  const { sessions, activeSessionId, enableCrossSessionMemory, loadSessionMessages, deleteSession, renameSession } = useChatStore();
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleInput, setTitleInput] = useState("");
 
   const activeSession = sessions.find((s) => s.id === activeSessionId);
-  const topicName = activeSession?.session_name;
+  const displayTitle = activeSession?.session_name || (buddy?.name ? `${buddy.name} Strategy` : "Finance Discussion");
+
+  function handleStartEdit() {
+    setTitleInput(displayTitle);
+    setIsEditingTitle(true);
+  }
+
+  async function handleSaveEdit() {
+    if (activeSessionId && titleInput.trim()) {
+      await renameSession(activeSessionId, titleInput.trim());
+    }
+    setIsEditingTitle(false);
+  }
 
   return (
     <>
@@ -653,10 +667,32 @@ function ChatHeader({ buddy }: { buddy?: any }) {
                 </span>
               )}
             </div>
-            {topicName && (
-              <span className="text-[11px] font-medium px-2 py-[2px] rounded-md truncate max-w-[200px]" style={{ background: "rgba(0,196,140,0.1)", color: "var(--green2)" }}>
-                💬 {topicName}
-              </span>
+
+            {/* Conversation Topic Name Badge */}
+            {isEditingTitle ? (
+              <div className="flex items-center gap-1">
+                <input
+                  type="text"
+                  value={titleInput}
+                  onChange={(e) => setTitleInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSaveEdit()}
+                  className="px-2 py-[2px] text-[11px] rounded bg-black/20 text-white outline-none border border-emerald-500"
+                  autoFocus
+                />
+                <button onClick={handleSaveEdit} className="text-[10px] bg-emerald-500 text-white px-2 py-[2px] rounded font-bold">
+                  Save
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleStartEdit}
+                title="Click to rename conversation topic"
+                className="text-[11px] font-medium px-2 py-[2px] rounded-md truncate max-w-[220px] flex items-center gap-1 transition-all hover:bg-emerald-500/20 cursor-pointer"
+                style={{ background: "rgba(0,196,140,0.12)", color: "var(--green2)", border: "1px solid rgba(0,196,140,0.25)" }}
+              >
+                <span>💬 {displayTitle}</span>
+                <span className="opacity-60 text-[10px]">✏️</span>
+              </button>
             )}
           </div>
           <div className="flex items-center gap-2 text-[11px]" style={{ color: "var(--green)" }}>
