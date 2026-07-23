@@ -327,10 +327,51 @@ export async function GET() {
     };
   });
 
+  // ── Extract real bank accounts ────────────────────────────
+  const bankMap: Record<string, { bankName: string; accountNumber: string; balance: number; source: string; lastUpdated: string }> = {};
+
+  entries.forEach((e) => {
+    const descLower = (e.description || "").toLowerCase();
+    let bankName = "";
+    if (descLower.includes("gtbank") || descLower.includes("gtb") || descLower.includes("guaranty")) bankName = "GTBank";
+    else if (descLower.includes("zenith")) bankName = "Zenith Bank";
+    else if (descLower.includes("kuda")) bankName = "Kuda Bank";
+    else if (descLower.includes("access")) bankName = "Access Bank";
+    else if (descLower.includes("firstbank") || descLower.includes("first bank")) bankName = "First Bank";
+    else if (descLower.includes("uba")) bankName = "UBA";
+    else if (descLower.includes("stanbic")) bankName = "Stanbic IBTC";
+    else if (descLower.includes("opay")) bankName = "OPay";
+    else if (descLower.includes("palmpay")) bankName = "PalmPay";
+    else if (descLower.includes("moniepoint")) bankName = "Moniepoint";
+    else if (e.source === "gmail") bankName = "Gmail Synced Account";
+    else if (e.source === "upload") bankName = "Uploaded Statement Account";
+
+    if (bankName) {
+      if (!bankMap[bankName]) {
+        bankMap[bankName] = {
+          bankName,
+          accountNumber: "•••• Main",
+          balance: 0,
+          source: e.source === "gmail" ? "Gmail Alert" : e.source === "upload" ? "Statement Upload" : "DataBank",
+          lastUpdated: e.entry_date ? new Date(e.entry_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Recent",
+        };
+      }
+      const val = toNairaVal(e.amount);
+      if (e.entry_type === "income" || e.entry_type === "asset") {
+        bankMap[bankName].balance += val;
+      } else if (e.entry_type === "expense") {
+        bankMap[bankName].balance += val;
+      }
+    }
+  });
+
+  const parsedBankAccounts = Object.values(bankMap);
+
   return NextResponse.json({
     currency,
     netWorth,
     savingsBalance,
+    parsedBankAccounts,
     chartData,
     catTrendRows,
     monthlySummary: {

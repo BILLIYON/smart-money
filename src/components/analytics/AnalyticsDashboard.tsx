@@ -100,67 +100,44 @@ function BankBalancesCard({ context }: { context: any }) {
   const [filter, setFilter] = useState<"all" | "gmail">("all");
   const [syncing, setSyncing] = useState(false);
 
-  const defaultBankAccounts = [
-    {
-      id: "gtb",
-      bankName: "GTBank",
-      bankFullName: "Guaranty Trust Bank",
-      accountType: "Savings Account",
-      accountNumber: "•••• 4829",
-      balance: 650000,
-      color: "#FF6600",
-      bgColor: "rgba(255, 102, 0, 0.12)",
-      logo: "🏦",
-      source: "Gmail Alert",
-      lastUpdated: "Today, 09:42 AM",
-    },
-    {
-      id: "zenith",
-      bankName: "Zenith Bank",
-      bankFullName: "Zenith Bank PLC",
-      accountType: "Current Account",
-      accountNumber: "•••• 9102",
-      balance: 420000,
-      color: "#E21B23",
-      bgColor: "rgba(226, 27, 35, 0.12)",
-      logo: "🔴",
-      source: "Gmail Alert",
-      lastUpdated: "Yesterday",
-    },
-    {
-      id: "kuda",
-      bankName: "Kuda Bank",
-      bankFullName: "Kuda Microfinance Bank",
-      accountType: "Spend & Save",
-      accountNumber: "•••• 1104",
-      balance: 185000,
-      color: "#8B5CF6",
-      bgColor: "rgba(139, 92, 246, 0.12)",
-      logo: "🟣",
-      source: "Gmail Alert",
-      lastUpdated: "2 days ago",
-    },
-    {
-      id: "access",
-      bankName: "Access Bank",
-      bankFullName: "Access Bank Nigeria",
-      accountType: "Savings Account",
-      accountNumber: "•••• 3049",
-      balance: 170000,
-      color: "#0284C7",
-      bgColor: "rgba(2, 132, 199, 0.12)",
-      logo: "💎",
-      source: "Gmail Alert",
-      lastUpdated: "3 days ago",
-    },
-  ];
+  const rawAccounts: any[] = context?.parsedBankAccounts ?? [];
+  const realBalance = context?.savingsBalance ? context.savingsBalance / 100 : 0;
 
-  const totalBalanceFromStore = context?.savingsBalance ? context.savingsBalance / 100 : 1425000;
-  const scale = totalBalanceFromStore > 0 ? totalBalanceFromStore / 1425000 : 1;
-  const accounts = defaultBankAccounts.map((acc) => ({
-    ...acc,
-    balance: Math.round(acc.balance * scale),
-  }));
+  let accounts: any[] = [];
+  if (rawAccounts.length > 0) {
+    accounts = rawAccounts.map((acc, i) => {
+      const colors = ["#FF6600", "#E21B23", "#8B5CF6", "#0284C7", "#10B981"];
+      const bgColors = ["rgba(255, 102, 0, 0.12)", "rgba(226, 27, 35, 0.12)", "rgba(139, 92, 246, 0.12)", "rgba(2, 132, 199, 0.12)", "rgba(16, 185, 129, 0.12)"];
+      const logos = ["🏦", "🔴", "🟣", "💎", "💰"];
+      return {
+        id: `acc-${i}`,
+        bankName: acc.bankName,
+        accountType: acc.accountType || "Savings / Wallet Account",
+        accountNumber: acc.accountNumber || "•••• Main",
+        balance: acc.balance,
+        color: colors[i % colors.length],
+        bgColor: bgColors[i % bgColors.length],
+        logo: logos[i % logos.length],
+        source: acc.source || "Gmail Alert",
+        lastUpdated: acc.lastUpdated || "Recent",
+      };
+    });
+  } else if (realBalance > 0) {
+    accounts = [
+      {
+        id: "main-wallet",
+        bankName: "Primary Bank & Wallet Account",
+        accountType: "Connected DataBank Balance",
+        accountNumber: "•••• Main",
+        balance: realBalance,
+        color: "var(--green)",
+        bgColor: "rgba(0, 196, 140, 0.12)",
+        logo: "🏦",
+        source: "DataBank",
+        lastUpdated: "Today",
+      },
+    ];
+  }
 
   const totalLiquid = accounts.reduce((acc, a) => acc + a.balance, 0);
 
@@ -227,56 +204,74 @@ function BankBalancesCard({ context }: { context: any }) {
       </div>
 
       {/* Filter Pills */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        <button
-          onClick={() => setFilter("all")}
-          className="px-3 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer"
-          style={filter === "all" ? { background: "var(--green)", color: "#fff", borderColor: "var(--green)" } : { background: "var(--bg)", color: "var(--muted)", borderColor: "var(--border)" }}
-        >
-          All Accounts ({accounts.length})
-        </button>
-        <button
-          onClick={() => setFilter("gmail")}
-          className="px-3 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer"
-          style={filter === "gmail" ? { background: "var(--green)", color: "#fff", borderColor: "var(--green)" } : { background: "var(--bg)", color: "var(--muted)", borderColor: "var(--border)" }}
-        >
-          Gmail Synced ({accounts.length})
-        </button>
-      </div>
-
-      {/* Grid of Bank Accounts */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}>
-        {filteredAccounts.map((acc) => (
-          <div
-            key={acc.id}
-            className="rounded-[14px] p-4 flex flex-col justify-between transition-all duration-200"
-            style={{ background: "var(--bg)", border: "1px solid var(--border)" }}
+      {accounts.length > 0 && (
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          <button
+            onClick={() => setFilter("all")}
+            className="px-3 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer"
+            style={filter === "all" ? { background: "var(--green)", color: "#fff", borderColor: "var(--green)" } : { background: "var(--bg)", color: "var(--muted)", borderColor: "var(--border)" }}
           >
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-[10px] flex items-center justify-center text-[18px] flex-shrink-0" style={{ background: acc.bgColor, color: acc.color, border: `1px solid ${acc.color}30` }}>
-                  {acc.logo}
-                </div>
-                <div>
-                  <div className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>{acc.bankName}</div>
-                  <div className="text-[10px]" style={{ color: "var(--muted)" }}>{acc.accountType} · {acc.accountNumber}</div>
-                </div>
-              </div>
-            </div>
+            All Accounts ({accounts.length})
+          </button>
+          <button
+            onClick={() => setFilter("gmail")}
+            className="px-3 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer"
+            style={filter === "gmail" ? { background: "var(--green)", color: "#fff", borderColor: "var(--green)" } : { background: "var(--bg)", color: "var(--muted)", borderColor: "var(--border)" }}
+          >
+            Gmail Synced ({accounts.length})
+          </button>
+        </div>
+      )}
 
-            <div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.4px]" style={{ color: "var(--muted)" }}>Account Balance</div>
-              <div className="text-[18px] font-bold mt-0.5" style={{ color: "var(--text)", fontFamily: "var(--font-dm-serif)" }}>
-                ₦{acc.balance.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
+      {/* Grid of Bank Accounts or Empty State */}
+      {accounts.length === 0 ? (
+        <div className="py-8 text-center" style={{ color: "var(--muted)" }}>
+          <div className="text-[28px] mb-2">🏦</div>
+          <div className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>0 Connected Bank Accounts</div>
+          <div className="text-[11px] mt-1 mb-4">Sync your Gmail or upload a bank statement to automatically extract your bank balances!</div>
+          <button
+            onClick={handleSyncGmail}
+            disabled={syncing}
+            className="px-4 py-2 rounded-[10px] text-[12px] font-semibold text-white cursor-pointer transition-all duration-150"
+            style={{ background: "var(--green)" }}
+          >
+            {syncing ? "Syncing..." : "Sync Gmail Bank Alerts ⚡"}
+          </button>
+        </div>
+      ) : (
+        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}>
+          {filteredAccounts.map((acc) => (
+            <div
+              key={acc.id}
+              className="rounded-[14px] p-4 flex flex-col justify-between transition-all duration-200"
+              style={{ background: "var(--bg)", border: "1px solid var(--border)" }}
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-[10px] flex items-center justify-center text-[18px] flex-shrink-0" style={{ background: acc.bgColor, color: acc.color, border: `1px solid ${acc.color}30` }}>
+                    {acc.logo}
+                  </div>
+                  <div>
+                    <div className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>{acc.bankName}</div>
+                    <div className="text-[10px]" style={{ color: "var(--muted)" }}>{acc.accountType} · {acc.accountNumber}</div>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center justify-between mt-2 pt-2 border-t text-[10px]" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
-                <span>Source: {acc.source}</span>
-                <span>{acc.lastUpdated}</span>
+
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.4px]" style={{ color: "var(--muted)" }}>Account Balance</div>
+                <div className="text-[18px] font-bold mt-0.5" style={{ color: "var(--text)", fontFamily: "var(--font-dm-serif)" }}>
+                  ₦{acc.balance.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
+                </div>
+                <div className="flex items-center justify-between mt-2 pt-2 border-t text-[10px]" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
+                  <span>Source: {acc.source}</span>
+                  <span>{acc.lastUpdated}</span>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
