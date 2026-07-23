@@ -747,15 +747,6 @@ export default function AgentPage() {
                       <GhostBtn small danger>Disconnect</GhostBtn>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-                <div className="text-[11px]" style={{ color: "var(--border)" }}>
-                  Access Bank · Zenith · UBA · Stanbic · Cowrywise · Piggyvest
-                </div>
-              </div>
-            </div>
-
             {/* Security strip */}
             <div
               className="flex items-start gap-3 px-4 py-3 rounded-[10px] text-[12px]"
