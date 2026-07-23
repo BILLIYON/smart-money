@@ -601,13 +601,17 @@ export async function extractFinancialDataFromEmail(
     const text = `${subject} ${emailBody}`.replace(/\s+/g, ' ');
     const lowerText = text.toLowerCase();
 
-    // Quick skip if it doesn't look like a transaction
-    if (!/(debit|credit|receipt|payment|transfer|invoice|charge|alert|salary)/.test(lowerText)) {
+    // Quick skip if it doesn't look like a transaction or bank alert
+    if (!/(debit|credit|receipt|payment|transfer|invoice|charge|alert|salary|purchase|pos|opay|kuda|palmpay|moniepoint|zenith|gtbank|access|uba|firstbank|stanbic|flutterwave|paystack|interswitch)/.test(lowerText)) {
       return null;
     }
 
-    // Extract Amount
-    const amountMatch = text.match(/(?:NGN|₦|Amt|Amount)[:\s]*([\d,]+\.?\d*)/i) || text.match(/[$£€]([\d,]+\.?\d*)/i);
+    // Extract Amount (supports ₦, NGN, N, $, £, €, Amt, Amount, Debited, Credited, Paid, Sum, Value)
+    const amountMatch =
+      text.match(/(?:NGN|₦|\bN\b|Amt|Amount|Debited|Credited|Paid|Sum|Value)[:\s]*([\d,]+\.?\d*)/i) ||
+      text.match(/[$£€]([\d,]+\.?\d*)/i) ||
+      text.match(/([\d,]+\.\d{2})/);
+
     if (!amountMatch) return null;
 
     const amountStr = amountMatch[1].replace(/,/g, '');
@@ -616,14 +620,14 @@ export async function extractFinancialDataFromEmail(
 
     // Determine entry type
     let entry_type: "income" | "expense" = "expense";
-    if (/(credit|salary|inflow|received)/.test(lowerText)) {
+    if (/(credit|salary|inflow|received|deposit|credited)/.test(lowerText)) {
       entry_type = "income";
     }
 
-    // Extract Description
+    // Extract Description / Merchant Name
     let description = "Transaction";
-    const descMatch = text.match(/(?:Desc|Description|Remarks|Narration|Merchant)[:\s]+([^,.\n]+)/i);
-    if (descMatch && descMatch[1]) {
+    const descMatch = text.match(/(?:Desc|Description|Remarks|Narration|Merchant|To|From)[:\s]+([^,.\n]+)/i);
+    if (descMatch && descMatch[1] && descMatch[1].trim().length > 2) {
       description = descMatch[1].trim().slice(0, 40);
     } else if (from) {
       description = from.split('<')[0].replace(/"/g, '').trim().slice(0, 40);
@@ -631,12 +635,12 @@ export async function extractFinancialDataFromEmail(
 
     // Guess Category
     let category = entry_type === "income" ? "Income" : "General Expense";
-    if (/(uber|bolt|indrive|transport|flight|uber|ride)/.test(lowerText)) category = "Transport";
-    else if (/(netflix|spotify|apple|amazon prime|subscription|dstv|gotv)/.test(lowerText)) category = "Subscriptions";
-    else if (/(food|restaurant|pizza|kfc|chicken republic|eat|chow)/.test(lowerText)) category = "Food & Dining";
+    if (/(uber|bolt|indrive|transport|flight|ride|ride-hailing)/.test(lowerText)) category = "Transport";
+    else if (/(netflix|spotify|apple|amazon prime|subscription|dstv|gotv|showmax)/.test(lowerText)) category = "Subscriptions";
+    else if (/(food|restaurant|pizza|kfc|chicken republic|eat|chow|sweet sensation)/.test(lowerText)) category = "Food & Dining";
     else if (/(mtn|airtel|glo|9mobile|data|airtime|recharge)/.test(lowerText)) category = "Phone & Data";
     else if (/(salary|payroll|wages)/.test(lowerText)) category = "Salary";
-    else if (/(shoprite|spar|supermarket|mall|store|buy)/.test(lowerText)) category = "Shopping";
+    else if (/(shoprite|spar|supermarket|mall|store|buy|market)/.test(lowerText)) category = "Shopping";
 
     return {
       amount,

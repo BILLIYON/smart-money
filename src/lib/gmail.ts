@@ -117,42 +117,37 @@ function stripHtml(html: string): string {
 
 
 // ── 5. Full sync for one user ─────────────────────────────────
-export async function syncGmailForUser(userId: string) {
+export async function syncGmailForUser(userId: string, force90Days = true) {
   const gmail    = await getGmailClient(userId);
   const supabase = createServiceClient();
 
-  // Get the last sync time so we only fetch new emails
-  const { data: integration } = await supabase
-    .from("user_integrations")
-    .select("last_synced_at")
-    .eq("user_id", userId)
-    .eq("provider", "gmail")
-    .single();
+  // Always backfill full 3 months (90 days) by default so user gets all their transaction history!
+  const ninetyDaysAgo = Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
+  let lastSync = ninetyDaysAgo;
 
-  // Query if the user has any entries stored from gmail
-  const { count } = await supabase
-    .from("databank_entries")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .eq("source", "gmail");
+  if (!force90Days) {
+    const { data: integration } = await supabase
+      .from("user_integrations")
+      .select("last_synced_at")
+      .eq("user_id", userId)
+      .eq("provider", "gmail")
+      .single();
 
-  // Build time filter — only emails since last sync, unless they have 0 entries (then backfill last 90 days)
-  // Gmail uses Unix timestamp in query: after:1704067200
-  const lastSync = (integration?.last_synced_at && count && count > 0)
-    ? Math.floor(new Date(integration.last_synced_at).getTime() / 1000)
-    : Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 90; // last 90 days
+    if (integration?.last_synced_at) {
+      lastSync = Math.floor(new Date(integration.last_synced_at).getTime() / 1000);
+    }
+  }
 
   const afterFilter = `after:${lastSync}`;
 
-  // All queries run in parallel for speed
-  // A broad query to catch any transaction. The AI will filter out noise.
+  // Broad query covering all Nigerian banks & financial keywords across subjects and bodies
   const queries = [
-    `(subject:(receipt OR payment OR transfer OR transaction OR invoice OR debit OR credit OR subscription OR salary OR payroll OR alert)) ${afterFilter}`
+    `after:${lastSync} (subject:(receipt OR payment OR transfer OR transaction OR invoice OR debit OR credit OR subscription OR salary OR payroll OR alert OR notice OR advice OR purchase OR pos OR bank OR opay OR kuda OR palmpay OR moniepoint OR zenith OR gtbank OR access OR uba OR firstbank OR stanbic OR flutterwave OR paystack) OR "debit alert" OR "credit alert" OR "transaction alert" OR "transfer notification" OR "payment received")`
   ];
 
-  // Search all queries in parallel
+  // Search all queries with maxResults=500 to fetch full 3 months of bank emails
   const allIds = (
-    await Promise.all(queries.map((q) => searchEmails(gmail, q, 100)))
+    await Promise.all(queries.map((q) => searchEmails(gmail, q, 500)))
   ).flat();
 
   // Deduplicate message IDs
