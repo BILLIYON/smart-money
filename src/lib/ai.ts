@@ -238,7 +238,12 @@ function resolveModel(buddy: Buddy, override?: "claude" | "gpt4" | "gemini"): "c
 // 1. getBuddySystemPrompt
 // ════════════════════════════════════════════════════════════
 
-export function getBuddySystemPrompt(buddy: Buddy, databankContext: string, currency = "NGN"): string {
+export function getBuddySystemPrompt(
+  buddy: Buddy,
+  databankContext: string,
+  currency = "NGN",
+  crossSessionMemory?: string
+): string {
   return [
     `You are ${buddy.name}, an AI Finance Buddy on Smart Money — an AI-powered personal finance platform.`,
 
@@ -257,6 +262,11 @@ export function getBuddySystemPrompt(buddy: Buddy, databankContext: string, curr
     `- When referencing news or market data, open with: "📰 [Source] · Today:"`,
 
     `\nDataBank — USER'S REAL FINANCIAL DATA:\n${databankContext}`,
+
+    crossSessionMemory
+      ? `\n🧠 REMEMBERED PAST CONVERSATIONS & PREFERENCES (across user's saved chats):\n${crossSessionMemory}\nCRITICAL: Refer to these remembered past conversations naturally when relevant (e.g., recalling past property plans, emergency reserves, debt targets, or preferences disclosed in previous sessions).`
+      : "",
+
     `CRITICAL: Only cite figures that appear above. Do not invent income, expense, or balance numbers. If data is absent, say "I don't see that in your DataBank yet."`,
 
     buddy.disclaimer
@@ -290,14 +300,15 @@ export async function sendMessage(params: {
   messages: Message[];
   databankContext: DatabankContext;
   model?: "claude" | "gpt4" | "gemini";
+  crossSessionMemory?: string;
 }): Promise<ReadableStream<Uint8Array>> {
-  const { buddyId, messages, databankContext, model: modelOverride } = params;
+  const { buddyId, messages, databankContext, model: modelOverride, crossSessionMemory } = params;
 
   const buddy = getBuddy(buddyId);
   if (!buddy) throw new Error(`Unknown buddy: ${buddyId}`);
 
   const contextStr = formatDatabankContext(databankContext);
-  const system = getBuddySystemPrompt(buddy, contextStr, databankContext.currency ?? "NGN");
+  const system = getBuddySystemPrompt(buddy, contextStr, databankContext.currency ?? "NGN", crossSessionMemory);
   const resolvedModel = resolveModel(buddy, modelOverride);
 
   // Define order of fallback prioritizing active keys

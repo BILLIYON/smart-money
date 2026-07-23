@@ -55,13 +55,31 @@ function GroupAvatarStack({ avatars }: { avatars: typeof GROUPS[0]["avatars"] })
 }
 
 export function ChatSidebar() {
-  const { chatMode, setChatMode, activeBuddyId, setActiveBuddyId, initThread, setShowNewGroupModal, threads } = useChatStore();
+  const {
+    chatMode,
+    setChatMode,
+    activeBuddyId,
+    setActiveBuddyId,
+    initThread,
+    setShowNewGroupModal,
+    threads,
+    enableCrossSessionMemory,
+    toggleCrossSessionMemory,
+    sessions,
+    activeSessionId,
+    setActiveSession,
+    createNewSession,
+    deleteSession,
+    loadSessions,
+  } = useChatStore();
+
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    loadSessions();
     const t = setTimeout(() => setReady(true), 100);
     return () => clearTimeout(t);
-  }, []);
+  }, [loadSessions]);
 
   function selectBuddy(id: string) {
     setActiveBuddyId(id);
@@ -101,17 +119,42 @@ export function ChatSidebar() {
         ))}
       </div>
 
+      {/* Cross-Session Memory Toggle Card */}
+      <div
+        className="flex items-center justify-between px-3 py-[9px] mx-2 my-2 rounded-[10px] flex-shrink-0"
+        style={{ background: "var(--bg)", border: "1px solid var(--border)" }}
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-[14px]">🧠</span>
+          <div>
+            <div className="text-[11px] font-semibold" style={{ color: "var(--text)" }}>Cross-Session Memory</div>
+            <div className="text-[9px]" style={{ color: "var(--muted)" }}>Remember past conversations</div>
+          </div>
+        </div>
+        <button
+          onClick={toggleCrossSessionMemory}
+          className="px-[8px] py-[3px] rounded-full text-[10px] font-bold transition-all cursor-pointer"
+          style={{
+            background: enableCrossSessionMemory ? "rgba(0,196,140,0.15)" : "var(--border)",
+            color: enableCrossSessionMemory ? "var(--green2)" : "var(--muted)",
+            border: enableCrossSessionMemory ? "1px solid rgba(0,196,140,0.3)" : "1px solid var(--border)",
+          }}
+        >
+          {enableCrossSessionMemory ? "ON" : "OFF"}
+        </button>
+      </div>
+
       {/* ── 1:1 PANEL ── */}
       {chatMode === "1to1" && (
         <div className="flex flex-col flex-1 overflow-hidden min-h-0">
           {/* Active buddy pinned at top */}
-          <div style={{ padding: "16px", borderBottom: "1px solid var(--border)" }}>
+          <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
             {(() => {
               const buddy = getBuddy(activeBuddyId) ?? getBuddy(BUDDY_LIST[0].id);
               if (!buddy) return null;
               return (
                 <div
-                  className="flex items-center gap-[10px] px-3 py-[10px] rounded-[10px] cursor-pointer"
+                  className="flex items-center gap-[10px] px-3 py-[8px] rounded-[10px] cursor-pointer"
                   style={{
                     background: "var(--bg)",
                     borderLeft: "3px solid var(--green)",
@@ -121,7 +164,7 @@ export function ChatSidebar() {
                   <div
                     className="flex items-center justify-center flex-shrink-0 rounded-[10px] text-[18px] overflow-hidden"
                     style={{
-                      width: 38, height: 38,
+                      width: 34, height: 34,
                       background: buddy.avatarBg,
                       ...(buddy.avatarIsSerif
                         ? { fontFamily: "var(--font-dm-serif)", fontSize: "14px", color: "rgba(255,255,255,.85)" }
@@ -135,7 +178,7 @@ export function ChatSidebar() {
                     )}
                   </div>
                   <div className="flex-1 overflow-hidden">
-                    <div className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>
+                    <div className="text-[12px] font-semibold" style={{ color: "var(--text)" }}>
                       {buddy.name}
                       {buddy.isFanSim && (
                         <span
@@ -152,6 +195,49 @@ export function ChatSidebar() {
               );
             })()}
           </div>
+
+          {/* Saved Topic Conversations */}
+          {sessions.length > 0 && (
+            <div className="px-2 pt-2 pb-1 border-b" style={{ borderColor: "var(--border)" }}>
+              <div className="flex items-center justify-between px-2 mb-1">
+                <span className="text-[10px] font-semibold uppercase tracking-[.5px]" style={{ color: "var(--muted)" }}>
+                  Saved Conversations
+                </span>
+                <button
+                  onClick={() => createNewSession(activeBuddyId)}
+                  className="text-[10px] font-semibold px-[6px] py-[2px] rounded cursor-pointer"
+                  style={{ color: "var(--green)", background: "rgba(0,196,140,0.08)" }}
+                >
+                  + New Chat
+                </button>
+              </div>
+              <div className="max-h-[110px] overflow-y-auto" style={{ scrollbarWidth: "none" }}>
+                {sessions.map((sess) => (
+                  <div
+                    key={sess.id}
+                    onClick={() => setActiveSession(sess.id)}
+                    className={`group flex items-center justify-between px-2 py-[5px] rounded-[6px] cursor-pointer text-[11px] mb-[2px] transition-all`}
+                    style={{
+                      background: activeSessionId === sess.id ? "rgba(0,196,140,0.12)" : "transparent",
+                      color: activeSessionId === sess.id ? "var(--green2)" : "var(--text)",
+                    }}
+                  >
+                    <span className="truncate flex-1">💬 {sess.session_name || "Saved Conversation"}</span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteSession(sess.id);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 text-[10px] hover:text-red-500 ml-1 px-1"
+                      title="Delete chat"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Buddy list */}
           <div className="flex-1 overflow-y-auto p-2 min-h-0" style={{ scrollbarWidth: "none" }}>
@@ -171,7 +257,7 @@ export function ChatSidebar() {
                 <button
                   key={buddy.id}
                   onClick={() => selectBuddy(buddy.id)}
-                  className="w-full flex items-center gap-[10px] px-3 py-[10px] rounded-[10px] mb-[2px] text-left transition-all duration-150"
+                  className="w-full flex items-center gap-[10px] px-3 py-[10px] rounded-[10px] mb-[2px] text-left transition-all duration-150 cursor-pointer"
                   style={{ background: "transparent" }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--bg)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
@@ -179,7 +265,7 @@ export function ChatSidebar() {
                   <div
                     className="flex items-center justify-center flex-shrink-0 rounded-[10px] text-[18px] overflow-hidden"
                     style={{
-                      width: 38, height: 38,
+                      width: 34, height: 34,
                       background: buddy.avatarBg,
                       ...(buddy.avatarIsSerif
                         ? { fontFamily: "var(--font-dm-serif)", fontSize: "14px", color: "rgba(255,255,255,.85)" }
@@ -193,7 +279,7 @@ export function ChatSidebar() {
                     )}
                   </div>
                   <div className="flex-1 overflow-hidden">
-                    <div className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>
+                    <div className="text-[12px] font-semibold" style={{ color: "var(--text)" }}>
                       {buddy.name}
                       {buddy.isFanSim && (
                         <span
@@ -211,13 +297,11 @@ export function ChatSidebar() {
                 </button>
               );
             })}
-            {/* Add buddy — always visible */}
 
-            {/* Add buddy */}
             <Link
               href="/"
               aria-label="Browse finance buddies"
-              className="block mx-[2px] p-[10px] rounded-[10px] text-center text-[12px] border border-dashed transition-all duration-150"
+              className="block mx-[2px] p-[8px] rounded-[10px] text-center text-[11px] border border-dashed transition-all duration-150 mt-2"
               style={{ color: "var(--muted)", borderColor: "var(--border)" }}
               onMouseEnter={(e) => {
                 const el = e.currentTarget as HTMLAnchorElement;

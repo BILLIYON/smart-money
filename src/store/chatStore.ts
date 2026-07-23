@@ -297,11 +297,19 @@ type ChatStore = {
   // follow-up
   dismissFollowUp: (buddyId: string, msgId: string) => void;
 
+  // ── Cross-session memory toggle ─────────────────────────
+  enableCrossSessionMemory: boolean;
+  setEnableCrossSessionMemory: (v: boolean) => void;
+  toggleCrossSessionMemory: () => void;
+
   // ── Session management (persisted sessions from DB) ──────
   sessions: ChatSession[];
   activeSessionId: string | null;
   loadSessions: () => Promise<void>;
   setActiveSession: (sessionId: string) => void;
+  createNewSession: (buddyId: string, title?: string) => Promise<string | null>;
+  renameSession: (sessionId: string, newTitle: string) => Promise<void>;
+  deleteSession: (sessionId: string) => Promise<void>;
 
   /**
    * Sends a message in the active 1-to-1 session, streams the response,
@@ -438,6 +446,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   dismissFollowUp: (buddyId, msgId) =>
     set((s) => ({ threads: { ...s.threads, [buddyId]: patchMsg(s.threads[buddyId] ?? [], msgId, { showFollowUp: false }) } })),
 
+  // ── Cross-session memory toggle ─────────────────────────
+  enableCrossSessionMemory: true,
+  setEnableCrossSessionMemory: (v) => set({ enableCrossSessionMemory: v }),
+  toggleCrossSessionMemory: () => set((s) => ({ enableCrossSessionMemory: !s.enableCrossSessionMemory })),
+
   // ── Session management ───────────────────────────────────
   sessions: [],
   activeSessionId: null,
@@ -454,6 +467,67 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   setActiveSession: (sessionId) => set({ activeSessionId: sessionId }),
+
+  createNewSession: async (buddyId, title) => {
+    try {
+      const res = await fetch("/api/chat/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          buddyIds: [buddyId],
+          sessionName: title ?? null,
+          isGroup: false,
+        }),
+      });
+      if (res.ok) {
+        const newSess = (await res.json()) as ChatSession;
+        set((s) => ({
+          sessions: [newSess, ...s.sessions],
+          activeSessionId: newSess.id,
+          threads: { ...s.threads, [buddyId]: [] },
+        }));
+        return newSess.id;
+      }
+    } catch (e) {
+      console.error("[chatStore] createNewSession:", e);
+    }
+    return null;
+  },
+
+  renameSession: async (sessionId, newTitle) => {
+    try {
+      const res = await fetch("/api/chat/sessions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, sessionName: newTitle }),
+      });
+      if (res.ok) {
+        set((s) => ({
+          sessions: s.sessions.map((sess) => (sess.id === sessionId ? { ...sess, session_name: newTitle } : sess)),
+        }));
+      }
+    } catch (e) {
+      console.error("[chatStore] renameSession:", e);
+    }
+  },
+
+  deleteSession: async (sessionId) => {
+    try {
+      const res = await fetch("/api/chat/sessions", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+      if (res.ok) {
+        set((s) => ({
+          sessions: s.sessions.filter((sess) => sess.id !== sessionId),
+          activeSessionId: s.activeSessionId === sessionId ? null : s.activeSessionId,
+        }));
+      }
+    } catch (e) {
+      console.error("[chatStore] deleteSession:", e);
+    }
+  },
 
   sendMessage: async (content, databankContext = {}) => {
     const s = get();
@@ -488,6 +562,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           buddyId,
           sessionId: get().activeSessionId,
           databankContext,
+          enableCrossSessionMemory: get().enableCrossSessionMemory,
           messages: (get().threads[buddyId] ?? [])
             .filter((m) => !m.streaming && m.role !== "ai" || m.id !== aiMsgId)
             .map((m) => ({ role: m.role === "ai" ? "assistant" : "user", content: m.content })),
@@ -507,6 +582,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
 
       get().finalizeStream(buddyId, aiMsgId);
+      // Reload sessions after stream completes to pick up auto-generated topic titles
+      setTimeout(() => get().loadSessions(), 1500);
     } catch (e) {
       console.error("[chatStore] sendMessage:", e);
       get().updateMessage(buddyId, aiMsgId, {

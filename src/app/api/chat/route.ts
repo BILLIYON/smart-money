@@ -6,18 +6,19 @@ export async function POST(req: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const { buddyId, messages, databankContext, sessionId } = await req.json() as {
+  const { buddyId, messages, databankContext, sessionId, enableCrossSessionMemory = true } = (await req.json()) as {
     buddyId: string;
     messages: Message[];
     databankContext: DatabankContext;
     sessionId?: string;
+    enableCrossSessionMemory?: boolean;
   };
 
   if (!buddyId || !messages?.length) {
     return NextResponse.json({ error: "buddyId and messages required" }, { status: 400 });
   }
 
-  // Persist the user's last message before streaming (only for authenticated users with sessionId)
+  // Persist the user's last message before streaming
   const userMessage = messages[messages.length - 1];
   if (user && sessionId && userMessage?.role === "user") {
     await supabase.from("messages").insert({
@@ -29,12 +30,66 @@ export async function POST(req: Request) {
 
   // Load real databank context on the server side if authenticated
   let realContext = databankContext;
+  let crossSessionMemoryText = "";
+
   if (user) {
     try {
       const { getDatabankContextForUser } = await import("@/lib/databank-context");
       realContext = await getDatabankContextForUser(supabase, user.id);
     } catch (dbErr) {
       console.error("[/api/chat] Failed to fetch real user databank context:", dbErr);
+    }
+
+    // Fetch cross-session memories if enabled
+    if (enableCrossSessionMemory) {
+      try {
+        const { data: otherSessions } = await supabase
+          .from("chat_sessions")
+          .select("id, session_name, created_at, messages(role, content)")
+          .eq("user_id", user.id)
+          .neq("id", sessionId ?? "")
+          .order("last_message_at", { ascending: false })
+          .limit(5);
+
+        if (otherSessions && otherSessions.length > 0) {
+          const memories: string[] = [];
+          otherSessions.forEach((sess: any) => {
+            const topic = sess.session_name || "Past Session";
+            const userMsgs = (sess.messages || [])
+              .filter((m: any) => m.role === "user" && m.content && m.content.length > 10)
+              .map((m: any) => m.content)
+              .slice(0, 2);
+            if (userMsgs.length > 0) {
+              memories.push(`• Conversation Topic "${topic}": User asked/stated "${userMsgs.join(" | ")}"`);
+            }
+          });
+          crossSessionMemoryText = memories.join("\n");
+        }
+      } catch (memErr) {
+        console.warn("[/api/chat] Cross-session memory error:", memErr);
+      }
+    }
+
+    // Trigger auto topic title generation if session has no title yet
+    if (sessionId && userMessage?.role === "user" && messages.length <= 2) {
+      (async () => {
+        try {
+          const { data: sessRow } = await supabase
+            .from("chat_sessions")
+            .select("session_name")
+            .eq("id", sessionId)
+            .single();
+
+          if (sessRow && !sessRow.session_name) {
+            const domainUrl = process.env.NEXT_PUBLIC_APP_URL || "https://smart-money-livid.vercel.app";
+            await fetch(`${domainUrl}/api/chat/title`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sessionId, firstMessage: userMessage.content }),
+            });
+          }
+        } catch { /* background title generation */ }
+      })();
     }
   }
 
@@ -45,6 +100,7 @@ export async function POST(req: Request) {
       buddyId,
       messages,
       databankContext: realContext,
+      crossSessionMemory: crossSessionMemoryText,
     });
   } catch (e) {
     console.error("[/api/chat] sendMessage failed:", e);

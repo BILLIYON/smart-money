@@ -486,17 +486,23 @@ function resolveAvatar(buddyId: string) {
 }
 
 // ── Chat header ────────────────────────────────────────────
-function ChatHeader({ buddy }: { buddy: ReturnType<typeof getBuddy> }) {
+function ChatHeader({ buddy }: { buddy?: any }) {
   const { chips, noData } = useDataSources();
+  const { sessions, activeSessionId, enableCrossSessionMemory } = useChatStore();
+
+  const activeSession = sessions.find((s) => s.id === activeSessionId);
+  const topicName = activeSession?.session_name;
+
   return (
     <div
-      className="flex items-center gap-3 px-5 py-[14px] flex-shrink-0"
+      className="flex items-center gap-3 px-5 py-[12px] flex-shrink-0"
       style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}
     >
       <div
-        className="flex items-center justify-center flex-shrink-0 rounded-[10px]"
+        className="flex items-center justify-center flex-shrink-0 rounded-[10px] text-[18px] overflow-hidden"
         style={{
-          width: 38, height: 38,
+          width: 38,
+          height: 38,
           background: buddy?.avatarBg ?? "var(--navy)",
           fontSize: buddy?.avatarIsSerif ? "14px" : "18px",
           ...(buddy?.avatarIsSerif ? { fontFamily: "var(--font-dm-serif)", color: "rgba(255,255,255,.9)" } : {}),
@@ -504,21 +510,33 @@ function ChatHeader({ buddy }: { buddy: ReturnType<typeof getBuddy> }) {
       >
         {buddy?.avatarContent ?? "🤖"}
       </div>
-      <div className="flex-1">
-        <div className="text-[14px] font-semibold" style={{ color: "var(--text)" }}>
-          {buddy?.name ?? "Finance Buddy"}
-          {buddy?.isFanSim && (
-            <span
-              className="ml-2 text-[8px] px-2 py-[2px] rounded-full border uppercase tracking-[.5px] font-semibold"
-              style={{ background: "rgba(245,166,35,.1)", borderColor: "rgba(245,166,35,.25)", color: "#C47F00" }}
-            >
-              Fan Sim
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <div className="text-[14px] font-semibold truncate" style={{ color: "var(--text)" }}>
+            {buddy?.name ?? "Finance Buddy"}
+            {buddy?.isFanSim && (
+              <span
+                className="ml-2 text-[8px] px-2 py-[2px] rounded-full border uppercase tracking-[.5px] font-semibold"
+                style={{ background: "rgba(245,166,35,.1)", borderColor: "rgba(245,166,35,.25)", color: "#C47F00" }}
+              >
+                Fan Sim
+              </span>
+            )}
+          </div>
+          {topicName && (
+            <span className="text-[11px] font-medium px-2 py-[2px] rounded-md truncate max-w-[200px]" style={{ background: "rgba(0,196,140,0.1)", color: "var(--green2)" }}>
+              💬 {topicName}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1 text-[11px]" style={{ color: "var(--green)" }}>
+        <div className="flex items-center gap-2 text-[11px]" style={{ color: "var(--green)" }}>
           <span className="inline-block w-[6px] h-[6px] rounded-full" style={{ background: "var(--green)" }} />
-          Live · Watching your data
+          <span>Live · Watching your data</span>
+          {enableCrossSessionMemory && (
+            <span className="ml-2 text-[10px] font-medium text-emerald-400 opacity-90" title="Cross-Session AI Memory Enabled">
+              🧠 Memory Active
+            </span>
+          )}
         </div>
       </div>
       <div className="hidden md:flex items-center gap-2">
