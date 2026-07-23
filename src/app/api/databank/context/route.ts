@@ -223,6 +223,14 @@ export async function GET() {
     return abs; // stored in Naira
   }
 
+  // Sort entries chronologically to compute running totals
+  const sortedEntries = [...entries].sort((a, b) => (a.entry_date ?? "").localeCompare(b.entry_date ?? ""));
+
+  let runningIncome = 0;
+  let runningExpense = 0;
+  let runningAssets = 0;
+  let runningDebt = 0;
+
   sortedEntries.forEach((e) => {
     if (!e.entry_date) return;
     const yearMonth = e.entry_date.substring(0, 7);
