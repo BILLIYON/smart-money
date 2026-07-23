@@ -87,6 +87,8 @@ export type ChatMessage = {
   agentCardDone?: boolean;
   agentCardRef?: string;
   showFollowUp?: boolean;
+  followUpDone?: boolean;
+  followUpStartTime?: number;
 };
 
 // ── Seed thread ────────────────────────────────────────────

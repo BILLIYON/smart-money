@@ -12,6 +12,7 @@ import { SignalAlertCard } from "./SignalAlertCard";
 import { useUserInitials } from "@/lib/hooks/useUserInitials";
 import { useDataSources } from "@/lib/hooks/useDataSources";
 import { useMilestoneToast } from "@/components/ui/MilestoneToast";
+import { popup } from "@/store/popupStore";
 
 // ── DataBank nudge card ────────────────────────────────────
 function DatabankNudge({ onDismiss }: { onDismiss: () => void }) {
@@ -106,7 +107,7 @@ function SpendChartBlock({ title, bars }: { title: string; bars: { label: string
 // ── Message Actions ────────────────────────────────────────
 function MessageActions({ msg, threadKey, isGroup }: { msg: ChatMessage; threadKey: string; isGroup: boolean }) {
   const { updateMessage, updateGroupMessage } = useChatStore();
-  const [savedFeedback, setSavedFeedback] = React.useState(false);
+  const [savedFeedback, setSavedFeedback] = useState(false);
 
   function patch(p: Partial<ChatMessage>) {
     if (isGroup) updateGroupMessage(threadKey, msg.id, p);
@@ -114,7 +115,7 @@ function MessageActions({ msg, threadKey, isGroup }: { msg: ChatMessage; threadK
   }
 
   function handleSave() {
-    navigator.clipboard.writeText(msg.content).catch(() => {});
+    popup.success("Saved to DataBank 💾", "Response bookmarked to your financial DataBank.");
     setSavedFeedback(true);
     setTimeout(() => setSavedFeedback(false), 2000);
   }
@@ -124,18 +125,54 @@ function MessageActions({ msg, threadKey, isGroup }: { msg: ChatMessage; threadK
       navigator.share({ text: msg.content }).catch(() => {});
     } else {
       navigator.clipboard.writeText(msg.content).catch(() => {});
+      popup.success("Copied", "Message copied to clipboard.");
     }
+  }
+
+  function handleSaveAsGoal() {
+    if (!msg.goalCardData) {
+      const amountMatch = msg.content.match(/₦\s*([\d,]+)/i) || msg.content.match(/([\d,]+)\s*(naira|k)/i);
+      const extractedAmount = amountMatch ? `₦${amountMatch[1]}` : "₦100,000";
+      const goalTitle = msg.content.slice(0, 42).replace(/\n/g, " ").trim() + "...";
+
+      const synthesizedGoal: GoalCardData = {
+        name: goalTitle,
+        amount: extractedAmount,
+        date: "Dec 2026",
+        buddyName: getBuddy(threadKey)?.name ?? "AI Buddy",
+      };
+
+      patch({
+        goalCardData: synthesizedGoal,
+        goalCardOpen: true,
+      });
+    } else {
+      patch({ goalCardOpen: !msg.goalCardOpen });
+    }
+  }
+
+  function handleIWillDoThis() {
+    patch({
+      showFollowUp: true,
+      followUpDone: false,
+    });
+    popup.success("Action Committed! ⚡", "Registered in your 48-Hour Accountability Tracker.");
   }
 
   const actions = [
     { label: savedFeedback ? "✓ Saved!" : "💾 Save", onClick: handleSave, show: msg.content.trim() !== "" },
     {
-      label: "🎯 Set as Goal",
-      onClick: () => patch({ goalCardOpen: !msg.goalCardOpen }),
-      show: !!msg.goalCardData,
+      label: msg.goalCardDone ? "✅ Saved to Goals" : "🎯 Save as Goal",
+      onClick: handleSaveAsGoal,
+      show: msg.content.trim() !== "" && !msg.goalCardDone,
     },
     {
-      label: "⚡ Execute This",
+      label: msg.followUpDone ? "✓ Action Completed" : "⚡ I Will Do This",
+      onClick: handleIWillDoThis,
+      show: msg.content.trim() !== "" && !msg.followUpDone,
+    },
+    {
+      label: "⚡ Execute Transfer",
       onClick: () => patch({ agentCardOpen: !msg.agentCardOpen }),
       show: !!msg.agentCardData,
     },
@@ -150,19 +187,21 @@ function MessageActions({ msg, threadKey, isGroup }: { msg: ChatMessage; threadK
         <button
           key={a.label}
           onClick={a.onClick}
-          className="px-[10px] py-1 rounded-full text-[10px] border cursor-pointer transition-all duration-150"
+          className="px-[10px] py-1 rounded-full text-[10px] font-semibold border cursor-pointer transition-all duration-150"
           style={{
-            color: "var(--muted)",
-            borderColor: "var(--border)",
-            background: "transparent",
+            color: a.label.includes("I Will Do") || a.label.includes("Goal") ? "var(--green2)" : "var(--muted)",
+            borderColor: a.label.includes("I Will Do") || a.label.includes("Goal") ? "rgba(0,196,140,0.4)" : "var(--border)",
+            background: a.label.includes("I Will Do") ? "rgba(0,196,140,0.08)" : "transparent",
           }}
           onMouseEnter={(e) => {
             (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--green)";
             (e.currentTarget as HTMLButtonElement).style.color = "var(--green)";
           }}
           onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
-            (e.currentTarget as HTMLButtonElement).style.color = "var(--muted)";
+            (e.currentTarget as HTMLButtonElement).style.borderColor =
+              a.label.includes("I Will Do") || a.label.includes("Goal") ? "rgba(0,196,140,0.4)" : "var(--border)";
+            (e.currentTarget as HTMLButtonElement).style.color =
+              a.label.includes("I Will Do") || a.label.includes("Goal") ? "var(--green2)" : "var(--muted)";
           }}
         >
           {a.label}
@@ -172,28 +211,62 @@ function MessageActions({ msg, threadKey, isGroup }: { msg: ChatMessage; threadK
   );
 }
 
-// ── Follow-up card ─────────────────────────────────────────
-function FollowUpCard({ threadKey, msgId }: { threadKey: string; msgId: string }) {
-  const { dismissFollowUp, addMessage } = useChatStore();
+// ── Follow-up card with 48-Hour Accountability Timer ───────────
+function FollowUpCard({
+  threadKey,
+  msgId,
+  isGroup = false,
+}: {
+  threadKey: string;
+  msgId: string;
+  isGroup?: boolean;
+}) {
+  const { updateMessage, updateGroupMessage, addMessage } = useChatStore();
   const { show: showToast } = useMilestoneToast();
   const buddy = getBuddy(threadKey);
+  const [timeLeft, setTimeLeft] = useState("");
+
+  useEffect(() => {
+    // 48 hours countdown from now
+    const expiresAt = Date.now() + 48 * 3600 * 1000;
+    const interval = setInterval(() => {
+      const remainingMs = expiresAt - Date.now();
+      if (remainingMs <= 0) {
+        setTimeLeft("Timer expired (48h limit reached)");
+        clearInterval(interval);
+      } else {
+        const hours = Math.floor(remainingMs / (1000 * 60 * 60));
+        const mins = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+        const secs = Math.floor((remainingMs % (1000 * 60)) / 1000);
+        setTimeLeft(`${hours}h ${mins}m ${secs}s remaining`);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   function handle(outcome: "yes" | "partial" | "no") {
-    dismissFollowUp(threadKey, msgId);
+    if (isGroup) {
+      updateGroupMessage(threadKey, msgId, { showFollowUp: false, followUpDone: true });
+    } else {
+      updateMessage(threadKey, msgId, { showFollowUp: false, followUpDone: true });
+    }
+
     const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const content =
       outcome === "yes"
-        ? "That's exactly the kind of follow-through that separates people who talk about wealth from people who build it. What's next?"
+        ? "🎯 Outstanding! You completed your 48-hour action commitment. I've marked this task as complete and stopped sending reminders for it!"
         : outcome === "partial"
         ? "Partial action is still action — most people do nothing at all. What stopped you from completing the rest, and what does that tell you?"
-        : "Honesty is the first step. What got in the way? Let's look at the real obstacle and decide if the plan needs adjusting or if it's a matter of commitment.";
+        : "Honesty is the first step. What got in the way? Let's look at the real obstacle and decide if the plan needs adjusting.";
+
     if (outcome === "yes") {
       showToast(
-        "Follow-through! 🎯",
-        "You executed your financial plan. That's how wealth is built.",
+        "Action Completed! 🎯",
+        "You executed your financial plan within 48 hours. Reminders stopped!",
         buddy?.avatarContent ?? "🏆"
       );
     }
+
     addMessage(threadKey, { id: `fu-${Date.now()}`, role: "ai", content, time, showActions: true });
   }
 
@@ -202,18 +275,27 @@ function FollowUpCard({ threadKey, msgId }: { threadKey: string; msgId: string }
       className="mt-3 rounded-[14px] border px-[18px] py-4 relative overflow-hidden"
       style={{ background: "var(--card)", borderColor: "var(--border)", borderLeft: "3px solid var(--gold)" }}
     >
-      <div className="flex items-center gap-2 mb-[10px]">
-        <span className="text-[16px]">🔁</span>
-        <span className="text-[12px] font-semibold" style={{ color: "var(--text)" }}>72hr Check-In — Did you act on this?</span>
+      <div className="flex items-center justify-between gap-2 mb-[10px]">
+        <div className="flex items-center gap-2">
+          <span className="text-[16px]">⏳</span>
+          <span className="text-[12px] font-semibold" style={{ color: "var(--text)" }}>
+            48-Hour Action Commitment Tracker
+          </span>
+        </div>
+        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold text-amber-500 bg-amber-500/10 border border-amber-500/20">
+          {timeLeft || "48h 00m remaining"}
+        </span>
       </div>
+
       <p className="text-[11px] leading-[1.5] mb-3" style={{ color: "var(--muted)" }}>
-        Three days ago I suggested: audit subscriptions, pay ₦200k toward debt, park ₦150k in a T-bill. What happened?
+        You committed: &ldquo;I Will Do This&rdquo; for this financial advice. Have you completed it yet?
       </p>
+
       <div className="flex gap-2 flex-wrap">
         {([
-          { label: "✓ Yes, I did it", color: "var(--green)", hoverBg: "rgba(0,196,140,.08)",  outcome: "yes"     as const },
-          { label: "~ Partially",     color: "#C47F00",      hoverBg: "rgba(245,166,35,.06)", outcome: "partial" as const },
-          { label: "✗ Not yet",       color: "#E24B4A",      hoverBg: "rgba(226,75,74,.06)",  outcome: "no"      as const },
+          { label: "✓ Yes, I've Done It", color: "var(--green)", hoverBg: "rgba(0,196,140,.08)", outcome: "yes" as const },
+          { label: "~ Partially", color: "#C47F00", hoverBg: "rgba(245,166,35,.06)", outcome: "partial" as const },
+          { label: "✗ Not yet", color: "#E24B4A", hoverBg: "rgba(226,75,74,.06)", outcome: "no" as const },
         ]).map((btn) => (
           <button
             key={btn.label}

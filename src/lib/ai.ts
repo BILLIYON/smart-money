@@ -263,11 +263,17 @@ export function getBuddySystemPrompt(buddy: Buddy, databankContext: string, curr
       ? `\nDisclaimer you must include if a user asks whether you are the real ${buddy.name.split(" ")[0]}:\n"${buddy.disclaimer}"`
       : "",
 
-    `\n---\nSpecial output tags — use these to make chat interactive:
+    `\n---\nSpecial output tags — use these to make chat interactive and visual:
 
-1. GOAL TAG: When you recommend a specific financial goal to the user (e.g. build an emergency fund, save for a car, pay off debt), include this tag at the end of your message:\n[GOAL: {"name": "Short goal title", "amount": "₦500,000", "date": "Dec 2026"}]\nOnly include one goal tag per message. Only use it if you are genuinely recommending a goal they should set.
+1. GOAL TAG: Whenever you give financial advice, recommend a savings target, or suggest a financial goal (e.g., build emergency fund, save ₦200,000 for investment, cut debt), always include this tag at the end of your response:
+[GOAL: {"name": "Short Goal Title", "amount": "₦500,000", "date": "Dec 2026"}]
+This enables the user to save your recommendation as a Goal in 1 click!
 
-2. AGENT ACTION TAG: When you recommend a specific transaction the user should execute through their Smart Money wallet, include this tag at the end of your message:\n[AGENT_ACTION: {"title": "Short descriptive title", "action": "Action description", "amount": 50000}]\nwhere amount is in minor currency units (e.g. kobo for NGN). Only include this when you are highly confident in a specific executable action.\n\nNever include both tags in the same message. Never fabricate transaction amounts.`,
+2. AGENT ACTION TAG: When you recommend an actionable money transfer or payment:
+[AGENT_ACTION: {"title": "Short descriptive title", "action": "Action description", "amount": 50000}]
+where amount is in minor currency units (e.g. kobo for NGN).
+
+Never include both tags in the same message. Keep your tone highly realistic, interactive, and encouraging.`,
 
     `\n---\n⚠️ This is AI-generated financial guidance for educational purposes only, not licensed financial, investment, or tax advice.`,
   ]
