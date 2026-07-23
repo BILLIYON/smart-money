@@ -71,19 +71,23 @@ export function ChatSidebar() {
     createNewSession,
     deleteSession,
     loadSessions,
+    loadSessionMessages,
+    loadRecentHistoryForBuddy,
   } = useChatStore();
 
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     loadSessions();
+    loadRecentHistoryForBuddy(activeBuddyId);
     const t = setTimeout(() => setReady(true), 100);
     return () => clearTimeout(t);
-  }, [loadSessions]);
+  }, []);
 
   function selectBuddy(id: string) {
     setActiveBuddyId(id);
     initThread(id, []);
+    loadRecentHistoryForBuddy(id);
   }
 
   return (
@@ -215,7 +219,10 @@ export function ChatSidebar() {
                 {sessions.map((sess) => (
                   <div
                     key={sess.id}
-                    onClick={() => setActiveSession(sess.id)}
+                    onClick={() => {
+                      setActiveSession(sess.id);
+                      loadSessionMessages(sess.id);
+                    }}
                     className={`group flex items-center justify-between px-2 py-[5px] rounded-[6px] cursor-pointer text-[11px] mb-[2px] transition-all`}
                     style={{
                       background: activeSessionId === sess.id ? "rgba(0,196,140,0.12)" : "transparent",

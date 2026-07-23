@@ -310,6 +310,8 @@ type ChatStore = {
   createNewSession: (buddyId: string, title?: string) => Promise<string | null>;
   renameSession: (sessionId: string, newTitle: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
+  loadSessionMessages: (sessionId: string) => Promise<void>;
+  loadRecentHistoryForBuddy: (buddyId: string) => Promise<void>;
 
   /**
    * Sends a message in the active 1-to-1 session, streams the response,
@@ -526,6 +528,44 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
     } catch (e) {
       console.error("[chatStore] deleteSession:", e);
+    }
+  },
+
+  loadSessionMessages: async (sessionId) => {
+    try {
+      const res = await fetch(`/api/chat/messages?sessionId=${sessionId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.session && data.messages) {
+        const buddyId = data.session.buddy_ids?.[0] ?? get().activeBuddyId;
+        set((s) => ({
+          activeSessionId: sessionId,
+          activeBuddyId: buddyId,
+          threads: { ...s.threads, [buddyId]: data.messages },
+        }));
+      }
+    } catch (e) {
+      console.error("[chatStore] loadSessionMessages:", e);
+    }
+  },
+
+  loadRecentHistoryForBuddy: async (buddyId) => {
+    try {
+      const res = await fetch(`/api/chat/messages?buddyId=${buddyId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.session && data.messages && data.messages.length > 0) {
+        set((s) => ({
+          activeSessionId: data.session.id,
+          activeBuddyId: buddyId,
+          threads: { ...s.threads, [buddyId]: data.messages },
+        }));
+      } else {
+        const sessId = await get().createNewSession(buddyId);
+        if (sessId) set({ activeSessionId: sessId });
+      }
+    } catch (e) {
+      console.error("[chatStore] loadRecentHistoryForBuddy:", e);
     }
   },
 

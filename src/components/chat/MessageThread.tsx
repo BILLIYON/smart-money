@@ -485,79 +485,234 @@ function resolveAvatar(buddyId: string) {
   return { bg: "var(--navy)", content: "🤖", serif: false, name: "AI" };
 }
 
+// ── Chat History Modal ──────────────────────────────────────
+function ChatHistoryModal({
+  onClose,
+  sessions,
+  activeSessionId,
+  onSelectSession,
+  onDeleteSession,
+}: {
+  onClose: () => void;
+  sessions: any[];
+  activeSessionId: string | null;
+  onSelectSession: (id: string) => void;
+  onDeleteSession: (id: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+
+  const filtered = sessions.filter((s) =>
+    (s.session_name || "Saved Conversation").toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,.65)", backdropFilter: "blur(4px)" }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        className="w-full max-w-[500px] rounded-[18px] p-6 shadow-2xl flex flex-col max-h-[85vh]"
+        style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <span className="text-[20px]">📜</span>
+            <div>
+              <div className="text-[16px] font-bold" style={{ color: "var(--text)" }}>Recent Chat History & Resume</div>
+              <div className="text-[11px]" style={{ color: "var(--muted)" }}>Click any saved topic to resume your conversation</div>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full flex items-center justify-center text-[18px] cursor-pointer"
+            style={{ background: "var(--bg)", color: "var(--muted)" }}
+          >
+            ×
+          </button>
+        </div>
+
+        <input
+          type="text"
+          placeholder="Search past conversations..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full px-4 py-2.5 rounded-[10px] text-[12px] mb-4 outline-none border"
+          style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
+        />
+
+        <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-2 min-h-[220px]" style={{ scrollbarWidth: "thin" }}>
+          {filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center" style={{ color: "var(--muted)" }}>
+              <div className="text-[32px] mb-2">💬</div>
+              <div className="text-[13px] font-semibold">No matching chat history found</div>
+              <div className="text-[11px]">Start a new conversation to save your financial topics.</div>
+            </div>
+          ) : (
+            filtered.map((sess) => {
+              const isActive = sess.id === activeSessionId;
+              const dateStr = sess.last_message_at
+                ? new Date(sess.last_message_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                : "Saved session";
+
+              return (
+                <div
+                  key={sess.id}
+                  onClick={() => onSelectSession(sess.id)}
+                  className="flex items-center justify-between p-3.5 rounded-[12px] border cursor-pointer transition-all hover:scale-[1.01]"
+                  style={{
+                    background: isActive ? "rgba(0,196,140,0.1)" : "var(--bg)",
+                    borderColor: isActive ? "rgba(0,196,140,0.4)" : "var(--border)",
+                  }}
+                >
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <div
+                      className="w-9 h-9 rounded-[10px] flex items-center justify-center text-[16px] flex-shrink-0"
+                      style={{ background: "rgba(0,196,140,0.15)", color: "var(--green2)" }}
+                    >
+                      💬
+                    </div>
+                    <div className="overflow-hidden min-w-0">
+                      <div className="text-[13px] font-semibold truncate" style={{ color: "var(--text)" }}>
+                        {sess.session_name || "Saved Conversation"}
+                      </div>
+                      <div className="text-[10px]" style={{ color: "var(--muted)" }}>
+                        Last active: {dateStr}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span
+                      className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider"
+                      style={{
+                        background: isActive ? "var(--green)" : "rgba(255,255,255,0.06)",
+                        color: isActive ? "#fff" : "var(--green2)",
+                      }}
+                    >
+                      {isActive ? "Active Thread" : "Resume ▶"}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteSession(sess.id);
+                      }}
+                      className="text-[12px] p-1 text-red-400 hover:text-red-500 cursor-pointer"
+                      title="Delete chat"
+                    >
+                      🗑
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Chat header ────────────────────────────────────────────
 function ChatHeader({ buddy }: { buddy?: any }) {
   const { chips, noData } = useDataSources();
-  const { sessions, activeSessionId, enableCrossSessionMemory } = useChatStore();
+  const { sessions, activeSessionId, enableCrossSessionMemory, loadSessionMessages, deleteSession } = useChatStore();
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId);
   const topicName = activeSession?.session_name;
 
   return (
-    <div
-      className="flex items-center gap-3 px-5 py-[12px] flex-shrink-0"
-      style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}
-    >
+    <>
       <div
-        className="flex items-center justify-center flex-shrink-0 rounded-[10px] text-[18px] overflow-hidden"
-        style={{
-          width: 38,
-          height: 38,
-          background: buddy?.avatarBg ?? "var(--navy)",
-          fontSize: buddy?.avatarIsSerif ? "14px" : "18px",
-          ...(buddy?.avatarIsSerif ? { fontFamily: "var(--font-dm-serif)", color: "rgba(255,255,255,.9)" } : {}),
-        }}
+        className="flex items-center gap-3 px-5 py-[12px] flex-shrink-0"
+        style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}
       >
-        {buddy?.avatarContent ?? "🤖"}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <div className="text-[14px] font-semibold truncate" style={{ color: "var(--text)" }}>
-            {buddy?.name ?? "Finance Buddy"}
-            {buddy?.isFanSim && (
-              <span
-                className="ml-2 text-[8px] px-2 py-[2px] rounded-full border uppercase tracking-[.5px] font-semibold"
-                style={{ background: "rgba(245,166,35,.1)", borderColor: "rgba(245,166,35,.25)", color: "#C47F00" }}
-              >
-                Fan Sim
+        <div
+          className="flex items-center justify-center flex-shrink-0 rounded-[10px] text-[18px] overflow-hidden"
+          style={{
+            width: 38,
+            height: 38,
+            background: buddy?.avatarBg ?? "var(--navy)",
+            fontSize: buddy?.avatarIsSerif ? "14px" : "18px",
+            ...(buddy?.avatarIsSerif ? { fontFamily: "var(--font-dm-serif)", color: "rgba(255,255,255,.9)" } : {}),
+          }}
+        >
+          {buddy?.avatarContent ?? "🤖"}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <div className="text-[14px] font-semibold truncate" style={{ color: "var(--text)" }}>
+              {buddy?.name ?? "Finance Buddy"}
+              {buddy?.isFanSim && (
+                <span
+                  className="ml-2 text-[8px] px-2 py-[2px] rounded-full border uppercase tracking-[.5px] font-semibold"
+                  style={{ background: "rgba(245,166,35,.1)", borderColor: "rgba(245,166,35,.25)", color: "#C47F00" }}
+                >
+                  Fan Sim
+                </span>
+              )}
+            </div>
+            {topicName && (
+              <span className="text-[11px] font-medium px-2 py-[2px] rounded-md truncate max-w-[200px]" style={{ background: "rgba(0,196,140,0.1)", color: "var(--green2)" }}>
+                💬 {topicName}
               </span>
             )}
           </div>
-          {topicName && (
-            <span className="text-[11px] font-medium px-2 py-[2px] rounded-md truncate max-w-[200px]" style={{ background: "rgba(0,196,140,0.1)", color: "var(--green2)" }}>
-              💬 {topicName}
-            </span>
-          )}
+          <div className="flex items-center gap-2 text-[11px]" style={{ color: "var(--green)" }}>
+            <span className="inline-block w-[6px] h-[6px] rounded-full" style={{ background: "var(--green)" }} />
+            <span>Live · Watching your data</span>
+            {enableCrossSessionMemory && (
+              <span className="ml-2 text-[10px] font-medium text-emerald-400 opacity-90" title="Cross-Session AI Memory Enabled">
+                🧠 Memory Active
+              </span>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2 text-[11px]" style={{ color: "var(--green)" }}>
-          <span className="inline-block w-[6px] h-[6px] rounded-full" style={{ background: "var(--green)" }} />
-          <span>Live · Watching your data</span>
-          {enableCrossSessionMemory && (
-            <span className="ml-2 text-[10px] font-medium text-emerald-400 opacity-90" title="Cross-Session AI Memory Enabled">
-              🧠 Memory Active
+        <div className="hidden md:flex items-center gap-2">
+          <button
+            onClick={() => setShowHistoryModal(true)}
+            className="px-3 py-1.5 rounded-full text-[11px] font-semibold border flex items-center gap-1.5 cursor-pointer transition-all hover:border-emerald-500"
+            style={{ background: "rgba(0,196,140,0.08)", borderColor: "rgba(0,196,140,0.3)", color: "var(--green2)" }}
+          >
+            <span>📜 Chat History</span>
+            <span className="bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded-full text-[9px] font-bold">
+              {sessions.length}
             </span>
+          </button>
+
+          {chips.map((chip) =>
+            noData ? (
+              <a
+                key={chip}
+                href="/databank"
+                className="px-[10px] py-[4px] rounded-full text-[11px] border"
+                style={{ background: "rgba(245,166,35,.08)", borderColor: "rgba(245,166,35,.3)", color: "#C47F00" }}
+              >
+                {chip}
+              </a>
+            ) : (
+              <span key={chip} className="px-[10px] py-[4px] rounded-full text-[11px] border" style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--muted)" }}>
+                {chip}
+              </span>
+            )
           )}
         </div>
       </div>
-      <div className="hidden md:flex items-center gap-2">
-        {chips.map((chip) =>
-          noData ? (
-            <a
-              key={chip}
-              href="/databank"
-              className="px-[10px] py-[4px] rounded-full text-[11px] border"
-              style={{ background: "rgba(245,166,35,.08)", borderColor: "rgba(245,166,35,.3)", color: "#C47F00" }}
-            >
-              {chip}
-            </a>
-          ) : (
-            <span key={chip} className="px-[10px] py-[4px] rounded-full text-[11px] border" style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--muted)" }}>
-              {chip}
-            </span>
-          )
-        )}
-      </div>
-    </div>
+
+      {showHistoryModal && (
+        <ChatHistoryModal
+          onClose={() => setShowHistoryModal(false)}
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          onSelectSession={(id) => {
+            loadSessionMessages(id);
+            setShowHistoryModal(false);
+          }}
+          onDeleteSession={deleteSession}
+        />
+      )}
+    </>
   );
 }
 
