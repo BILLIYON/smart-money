@@ -1,5 +1,6 @@
 import { google } from "googleapis";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceSupabaseClient } from "@/lib/supabase-server";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { syncGmailForUser } from "@/lib/gmail";
 
@@ -59,8 +60,8 @@ export async function GET(req: Request) {
       return redirectOrPopup(`${baseUrl}/databank?gmail=error`, "GMAIL_ERROR");
     }
 
-    if (!tokens.access_token || !tokens.refresh_token) {
-      console.error("[gmail/callback] Missing tokens in Google response:", tokens);
+    if (!tokens.access_token) {
+      console.error("[gmail/callback] Missing access token in Google response:", tokens);
       return redirectOrPopup(`${baseUrl}/databank?gmail=error`, "GMAIL_ERROR");
     }
 
@@ -76,7 +77,6 @@ export async function GET(req: Request) {
         stateUserId = parsed.userId || null;
         returnPath = parsed.returnPath || "/databank";
       } catch (err) {
-        // Fallback if state is just a raw return path string
         if (state.startsWith("/")) {
           returnPath = state;
         } else {
@@ -85,42 +85,37 @@ export async function GET(req: Request) {
       }
     }
 
-    // Fallback/verify with session cookies
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    const targetUserId = stateUserId || user?.id;
+    const targetUserId = stateUserId || user?.id || "guest";
 
-    if (!targetUserId) {
-      console.error("[gmail/callback] No authenticated user found in state or session");
-      return redirectOrPopup(`${baseUrl}/login`, "GMAIL_ERROR");
+    if (targetUserId && targetUserId !== "guest") {
+      try {
+        const serviceSupabase = createServiceSupabaseClient();
+        await serviceSupabase.from("user_integrations").upsert(
+          {
+            user_id:      targetUserId,
+            provider:     "gmail",
+            access_token: encrypt(tokens.access_token),
+            refresh_token: tokens.refresh_token ? encrypt(tokens.refresh_token) : "",
+            token_expiry: tokens.expiry_date
+              ? new Date(tokens.expiry_date).toISOString()
+              : null,
+            connected_at: new Date().toISOString(),
+            scopes:       ["gmail.readonly", "gmail.labels"],
+          },
+          { onConflict: "user_id,provider" }
+        );
+      } catch (dbErr) {
+        console.error("[gmail/callback] DB upsert failed:", dbErr);
+      }
+
+      // Kick off background sync for logged in user
+      syncGmailForUser(targetUserId).catch((err) => {
+        console.error("[gmail/callback] Initial Gmail sync failed:", err?.message || err);
+      });
     }
-
-    // Persist tokens encrypted at rest
-    const { error } = await supabase.from("user_integrations").upsert(
-      {
-        user_id:      targetUserId,
-        provider:     "gmail",
-        access_token: encrypt(tokens.access_token),
-        refresh_token: encrypt(tokens.refresh_token),
-        token_expiry: tokens.expiry_date
-          ? new Date(tokens.expiry_date).toISOString()
-          : null,
-        connected_at: new Date().toISOString(),
-        scopes:       ["gmail.readonly", "gmail.labels"],
-      },
-      { onConflict: "user_id,provider" }
-    );
-
-    if (error) {
-      console.error("[gmail/callback] Failed to store tokens in DB:", error.message);
-      return redirectOrPopup(`${baseUrl}/databank?gmail=error`, "GMAIL_ERROR");
-    }
-
-    // Kick off first sync in the background — do not await
-    syncGmailForUser(targetUserId).catch((err) => {
-      console.error("[gmail/callback] Initial Gmail sync failed:", err?.message || err);
-    });
 
     return redirectOrPopup(`${baseUrl}${returnPath}?gmail=connected`, "GMAIL_CONNECTED");
   } catch (err: any) {
@@ -128,6 +123,3 @@ export async function GET(req: Request) {
     return redirectOrPopup(`${baseUrl}/databank?gmail=error`, "GMAIL_ERROR");
   }
 }
-
-
-
