@@ -480,12 +480,10 @@ export default function GoalsPage() {
       const current_amount = Math.round(Number(editCurrent || "0") * 100);
 
       const body: any = {
-        title: editTitle,
+        title: editTitle.trim(),
         target_amount,
         current_amount,
-        category: "General",
-        status: "in_progress",
-        ai_advice: "Manually created goal.",
+        status: "active",
       };
 
       if (editDeadline) {
@@ -498,12 +496,14 @@ export default function GoalsPage() {
         body: JSON.stringify(body),
       });
 
+      const data = await res.json().catch(() => ({}));
+
       if (res.ok) {
         setEditingGoal(null); // Close modal
         fetchGoals();
-        popup.success("Goal Created", "Your new financial goal has been created.");
+        popup.success("Goal Created 🎯", "Your new financial goal has been created and saved!");
       } else {
-        popup.error("Error", "Failed to create goal");
+        popup.error("Error", data.error || "Failed to create goal");
       }
     } catch (err) {
       console.error(err);
