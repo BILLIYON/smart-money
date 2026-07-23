@@ -694,60 +694,62 @@ export default function AgentPage() {
               action={<PrimaryBtn small>+ Connect Account</PrimaryBtn>}
             />
 
-            <div className="grid gap-4 mb-5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
-              {loadingConnections ? [0, 1, 2, 3].map((i) => (
-                <div key={i} className="rounded-[12px] p-4 animate-pulse" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-9 h-9 rounded-[10px] flex-shrink-0" style={{ background: "var(--border)" }} />
-                    <div>
-                      <div className="h-3 w-24 rounded mb-2" style={{ background: "var(--border)" }} />
-                      <div className="h-3 w-16 rounded" style={{ background: "var(--border)" }} />
+            {loadingConnections ? (
+              <div className="grid gap-4 mb-5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
+                {[0, 1].map((i) => (
+                  <div key={i} className="rounded-[12px] p-4 animate-pulse" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-9 h-9 rounded-[10px] flex-shrink-0" style={{ background: "var(--border)" }} />
+                      <div>
+                        <div className="h-3 w-24 rounded mb-2" style={{ background: "var(--border)" }} />
+                        <div className="h-3 w-16 rounded" style={{ background: "var(--border)" }} />
+                      </div>
+                    </div>
+                    <div className="h-3 w-full rounded mb-1" style={{ background: "var(--border)" }} />
+                    <div className="h-3 w-4/5 rounded mb-4" style={{ background: "var(--border)" }} />
+                  </div>
+                ))}
+              </div>
+            ) : connections.length === 0 ? (
+              <div className="rounded-[12px] p-8 text-center mb-5" style={{ background: "var(--bg)", border: "1px dashed var(--border)" }}>
+                <div className="text-[28px] mb-2">⚡</div>
+                <div className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>0 Connected Bank or Investment Accounts</div>
+                <div className="text-[11px] mt-1 mb-4" style={{ color: "var(--muted)" }}>Connect your Gmail Bank Alerts or Bank Statement on the DataBank page to enable automated agent execution!</div>
+                <PrimaryBtn onClick={() => router.push("/databank")} small>
+                  Go to DataBank to Connect Account →
+                </PrimaryBtn>
+              </div>
+            ) : (
+              <div className="grid gap-4 mb-5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
+                {connections.map((conn) => (
+                  <div
+                    key={conn.id}
+                    className="rounded-[12px] p-4"
+                    style={{ background: "var(--bg)", border: "1px solid var(--border)" }}
+                  >
+                    <div className="flex items-center gap-3 mb-3">
+                      <div
+                        className="flex items-center justify-center rounded-[10px] text-[18px] flex-shrink-0"
+                        style={{ width: 36, height: 36, background: conn.bg }}
+                      >
+                        {conn.emoji}
+                      </div>
+                      <div>
+                        <div className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>{conn.name}</div>
+                        <div className="text-[11px] font-medium" style={{ color: "var(--green2)" }}>● {conn.status}</div>
+                      </div>
+                    </div>
+                    <div className="text-[11px] mb-4" style={{ color: "var(--muted)", lineHeight: 1.5 }}>
+                      {conn.detail}
+                    </div>
+                    <div className="flex gap-2">
+                      <GhostBtn small>Adjust Limits</GhostBtn>
+                      <GhostBtn small danger>Disconnect</GhostBtn>
                     </div>
                   </div>
-                  <div className="h-3 w-full rounded mb-1" style={{ background: "var(--border)" }} />
-                  <div className="h-3 w-4/5 rounded mb-4" style={{ background: "var(--border)" }} />
-                  <div className="flex gap-2">
-                    <div className="h-7 w-20 rounded-[10px]" style={{ background: "var(--border)" }} />
-                    <div className="h-7 w-20 rounded-[10px]" style={{ background: "var(--border)" }} />
-                  </div>
-                </div>
-              )) : connections.map((conn) => (
-                <div
-                  key={conn.id}
-                  className="rounded-[12px] p-4"
-                  style={{ background: "var(--bg)", border: "1px solid var(--border)" }}
-                >
-                  <div className="flex items-center gap-3 mb-3">
-                    <div
-                      className="flex items-center justify-center rounded-[10px] text-[18px] flex-shrink-0"
-                      style={{ width: 36, height: 36, background: conn.bg }}
-                    >
-                      {conn.emoji}
-                    </div>
-                    <div>
-                      <div className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>{conn.name}</div>
-                      <div className="text-[11px] font-medium" style={{ color: "var(--green2)" }}>● {conn.status}</div>
-                    </div>
-                  </div>
-                  <div className="text-[11px] mb-4" style={{ color: "var(--muted)", lineHeight: 1.5 }}>
-                    {conn.detail}
-                  </div>
-                  <div className="flex gap-2">
-                    <GhostBtn small>Adjust Limits</GhostBtn>
-                    <GhostBtn small danger>Disconnect</GhostBtn>
-                  </div>
-                </div>
-              ))}
-
-              {/* Add another */}
-              <div
-                className="rounded-[12px] p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-150"
-                style={{ background: "var(--bg)", border: "1px dashed var(--border)", minHeight: 130 }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "var(--green)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border)"; }}
-              >
-                <div className="text-[28px] mb-2" style={{ color: "var(--muted)" }}>+</div>
-                <div className="text-[13px] font-medium mb-1" style={{ color: "var(--muted)" }}>Connect Another Account</div>
+                ))}
+              </div>
+            )}
                 <div className="text-[11px]" style={{ color: "var(--border)" }}>
                   Access Bank · Zenith · UBA · Stanbic · Cowrywise · Piggyvest
                 </div>

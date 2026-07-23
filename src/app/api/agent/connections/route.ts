@@ -1,22 +1,49 @@
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/supabase-server";
 
 export async function GET() {
-  return NextResponse.json([
-    {
-      id: "conn-gtbank",
-      emoji: "🏦",
-      bg: "#E8F5E9",
-      name: "GTBank",
-      status: "Connected · Read + Execute",
-      detail: "Acc: ••••4521 · Balance visible · Transfers enabled up to ₦50k/action",
-    },
-    {
-      id: "conn-arm",
-      emoji: "📈",
-      bg: "#E3F2FD",
-      name: "ARM Investment",
-      status: "Connected · Execute enabled",
-      detail: "MMF + Eurobond portfolio visible · Deposits enabled · Balance: ₦380,000",
-    },
-  ]);
+  const { supabase, userId, error } = await requireAuth();
+  if (error || !userId) {
+    return NextResponse.json([]);
+  }
+
+  try {
+    const [integrationsRes, uploadsRes] = await Promise.all([
+      supabase.from("user_integrations").select("provider, last_synced_at").eq("user_id", userId),
+      supabase.from("databank_entries").select("id").eq("user_id", userId).eq("source", "upload").limit(1),
+    ]);
+
+    const integrations = integrationsRes.data ?? [];
+    const hasUploads = (uploadsRes.data ?? []).length > 0;
+
+    const list = [];
+
+    const gmail = integrations.find((i) => i.provider === "gmail");
+    if (gmail) {
+      list.push({
+        id: "conn-gmail",
+        emoji: "✉️",
+        bg: "rgba(0,196,140,0.12)",
+        name: "Gmail Bank Alerts",
+        status: "Auto-Synced · Read Enabled",
+        detail: "Extracting transaction alerts dynamically into DataBank",
+      });
+    }
+
+    if (hasUploads) {
+      list.push({
+        id: "conn-upload",
+        emoji: "📄",
+        bg: "rgba(74,144,217,0.12)",
+        name: "Uploaded Bank Statement",
+        status: "Parsed & Active",
+        detail: "Bank statement transaction records connected to your Agent",
+      });
+    }
+
+    return NextResponse.json(list);
+  } catch (err) {
+    console.error("[api/agent/connections] Error fetching connections:", err);
+    return NextResponse.json([]);
+  }
 }
