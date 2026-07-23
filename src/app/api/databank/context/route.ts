@@ -217,41 +217,39 @@ export async function GET() {
     };
   }
 
-  // Sort entries chronologically to compute running totals
-  const sortedEntries = [...entries].sort((a, b) => (a.entry_date ?? "").localeCompare(b.entry_date ?? ""));
-
-  let runningIncome = 0;
-  let runningExpense = 0;
-  let runningAssets = 0;
-  let runningDebt = 0;
+  function toNairaVal(amt: number): number {
+    const abs = Math.abs(amt);
+    if (abs > 100000) return abs / 100; // stored in kobo
+    return abs; // stored in Naira
+  }
 
   sortedEntries.forEach((e) => {
     if (!e.entry_date) return;
     const yearMonth = e.entry_date.substring(0, 7);
-    const amt = e.amount;
+    const amtNaira = toNairaVal(e.amount);
 
     if (e.entry_type === "income") {
-      runningIncome += amt;
+      runningIncome += amtNaira * 100;
     } else if (e.entry_type === "expense") {
-      runningExpense += Math.abs(amt);
+      runningExpense += amtNaira * 100;
     } else if (e.entry_type === "asset") {
-      runningAssets += amt;
+      runningAssets += amtNaira * 100;
     } else if (e.entry_type === "debt") {
-      runningDebt += Math.abs(amt);
+      runningDebt += amtNaira * 100;
     }
 
     if (monthlyData[yearMonth]) {
       if (e.entry_type === "income") {
-        monthlyData[yearMonth].income += amt / 100000; // convert kobo to thousands of Naira
+        monthlyData[yearMonth].income += amtNaira / 1000;
       } else if (e.entry_type === "expense") {
-        monthlyData[yearMonth].spent += Math.abs(amt) / 100000;
+        monthlyData[yearMonth].spent += amtNaira / 1000;
       }
     }
 
     monthsList.forEach((m) => {
       if (m.key >= yearMonth) {
         const netCash = runningIncome - runningExpense;
-        monthlyData[m.key].networth = (netCash + runningAssets - runningDebt) / 100000;
+        monthlyData[m.key].networth = Math.round((netCash + runningAssets - runningDebt) / 100000);
       }
     });
   });

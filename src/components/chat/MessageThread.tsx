@@ -654,41 +654,77 @@ export function MessageThread() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, messages[messages.length - 1]?.content]);
 
-  const handleUseMyData = () => {
+  const handleUseMyData = async () => {
     setShowDatabankNudge(true);
     setHasConnectedDatabank(true);
-    popup.success("Data Connected ⚡", `Connected your Wallet, Goals & DataBank to ${buddy?.name || "your AI Buddy"}!`);
+    popup.success("Data Connected ⚡", `Connecting your Wallet, Goals & DataBank to ${buddy?.name || "your AI Buddy"}...`);
 
-    // Proactively generate a rich visual breakdown from the AI Buddy
     const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const buddyName = buddy?.name ?? "Your AI Buddy";
+
+    let contextData: any = null;
+    try {
+      const res = await fetch("/api/databank/context");
+      if (res.ok) {
+        contextData = await res.json();
+      }
+    } catch { /* fallback */ }
+
+    const hasEntries = (contextData?.recentTransactions?.length ?? 0) > 0;
+    const hasGoals = (contextData?.activeGoals?.length ?? 0) > 0;
+    const hasCategories = (contextData?.topCategories?.length ?? 0) > 0;
+
+    if (!hasEntries && !hasGoals && !hasCategories) {
+      const emptyMessage: ChatMessage = {
+        id: `proactive-${Date.now()}`,
+        role: "ai",
+        content: `📊 **DataBank Review by ${buddyName}:**\nYou currently have **0 connected bank transactions** and **0 active goals** in your account.\n\nTo unlock personalized spending charts, budget analytics, and automated goal recommendations, click **DataBank** in the sidebar to sync your Gmail account or upload a bank statement!`,
+        time,
+        showActions: true,
+      };
+      addMessage(activeBuddyId, emptyMessage);
+      return;
+    }
+
+    const totalIncomeNaira = Math.round((contextData.monthlySummary?.totalIncome || 0) / 100).toLocaleString();
+    const totalExpensesNaira = Math.round((contextData.monthlySummary?.totalExpenses || 0) / 100).toLocaleString();
+    const savingsRatePct = Math.round((contextData.monthlySummary?.savingsRate || 0) * 100);
+
+    const bars = (contextData.topCategories || []).map((c: any, i: number) => {
+      const amountNaira = Math.round(c.total / 100).toLocaleString();
+      const colors = ["var(--gold)", "var(--green)", "#C47F00", "#2B79B4", "#9B59B6"];
+      return {
+        label: c.category,
+        width: `${Math.max(10, c.percentage)}%`,
+        color: colors[i % colors.length],
+        amount: `₦${amountNaira}`,
+      };
+    });
+
+    const firstGoal = contextData.activeGoals?.[0];
+    const goalCardData = firstGoal ? {
+      name: firstGoal.title,
+      amount: `₦${Math.round(firstGoal.targetAmount / 100).toLocaleString()}`,
+      date: firstGoal.targetDate ? new Date(firstGoal.targetDate).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "Dec 2026",
+      buddyName,
+    } : undefined;
 
     const proactiveMessage: ChatMessage = {
       id: `proactive-${Date.now()}`,
       role: "ai",
-      content: `📊 **Proactive DataBank & Goals Review by ${buddyName}:**\nI've analyzed your connected financial data, wallet balances, active goals, and recent spending patterns. Here is my proactive wealth optimization strategy for you:\n\n1. **Spending Velocity**: Your monthly cash outflow is well balanced, but we identified recurring debits that can be optimized to free up ₦35,000 monthly.\n2. **Cash Allocation**: Idle wallet reserves should be deployed into 90-day T-Bills or High-Yield savings to combat inflation.\n3. **Goal Tracking**: Your active goals are progressing well! Let's lock in a target to accelerate your emergency fund by 2 months.`,
+      content: `📊 **Real-Time DataBank Review by ${buddyName}:**\nBased on your connected transactions and active records:\n• **Monthly Income**: ₦${totalIncomeNaira}\n• **Monthly Outflow**: ₦${totalExpensesNaira}\n• **Savings Rate**: ${savingsRatePct}%\n• **Active Goals**: ${contextData.activeGoals?.length || 0} active target(s)\n\n${contextData.topCategories?.length ? `Your largest spending category is **${contextData.topCategories[0].category}** (${contextData.topCategories[0].percentage}% of outflow).` : ""} Let's optimize your financial plan!`,
       time,
       showActions: true,
       insightHighlight: {
-        label: "Proactive Wealth Strategy",
-        text: `From your DataBank: Reallocating ₦150,000 idle cash into fixed income yields +₦18,500 quarterly while preserving 100% principal liquidity.`,
+        label: "DataBank Strategy Insight",
+        text: `From your DataBank: Your net savings rate is at ${savingsRatePct}%. Maintaining consistent allocations accelerates your goals.`,
       },
-      spendChart: {
-        title: "Your DataBank Spending Breakdown",
-        bars: [
-          { label: "General Expense", width: "68%", color: "var(--gold)", amount: "₦145,000" },
-          { label: "Food & Dining", width: "42%", color: "var(--green)", amount: "₦82,000" },
-          { label: "Subscriptions", width: "25%", color: "#C47F00", amount: "₦35,000" },
-          { label: "Transport", width: "18%", color: "#2B79B4", amount: "₦28,000" },
-        ],
-      },
-      goalCardData: {
-        name: "Build ₦500,000 Emergency Reserve",
-        amount: "₦500,000",
-        date: "Dec 2026",
-        buddyName,
-      },
-      goalCardOpen: true,
+      spendChart: bars.length > 0 ? {
+        title: "Your Connected Spending Breakdown",
+        bars,
+      } : undefined,
+      goalCardData,
+      goalCardOpen: !!goalCardData,
     };
 
     addMessage(activeBuddyId, proactiveMessage);

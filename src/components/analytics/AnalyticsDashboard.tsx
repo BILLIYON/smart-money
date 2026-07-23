@@ -805,44 +805,57 @@ export function AnalyticsDashboard() {
 
           {ivsView === "stacked" && (
             <div>
-              <div className="flex flex-col gap-[10px]">
-                {incomeVsSpendData.map((d) => {
-                  const isCurrent = d.month === "Mar" || d.month === "Jun" || d.month === "Now";
-                  const total = Math.max(0.1, d.income);
-                  const spentPct = Math.round((d.spent / total) * 100);
-                  const savedPct = 100 - spentPct;
-                  return (
-                    <div key={d.month} className="flex items-center gap-3">
-                      <div className="text-right text-[11px] flex-shrink-0 font-semibold" style={{ width: 28, color: isCurrent ? "var(--green)" : "var(--muted)", fontWeight: isCurrent ? 700 : 400 }}>{d.month}</div>
-                      <div
-                        className="flex-1 flex overflow-hidden rounded-[6px]"
-                        style={{
-                          height: 28,
-                          background: "var(--bg)",
-                          outline: isCurrent ? "2px solid rgba(0,196,140,.3)" : "none",
-                          outlineOffset: 1,
-                        }}
-                      >
-                        <div className="flex items-center" style={{ width: `${spentPct}%`, background: "rgba(0,196,140,.2)", paddingLeft: 8 }}>
-                          <span className="text-[10px] font-semibold whitespace-nowrap" style={{ color: "var(--green2)" }}>₦{d.spent}k</span>
+              {incomeVsSpendData.length === 0 || incomeVsSpendData.every((d) => d.income === 0 && d.spent === 0) ? (
+                <div className="py-8 text-center" style={{ color: "var(--muted)" }}>
+                  <div className="text-[24px] mb-2">📊</div>
+                  <div className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>No Transaction History</div>
+                  <div className="text-[11px] mt-1">Sync your Gmail or upload a bank statement on the DataBank page to populate your spending breakdown!</div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {incomeVsSpendData.map((d) => {
+                    const maxVal = Math.max(d.income, d.spent, 1);
+                    const spentPct = Math.min(100, Math.round((d.spent / maxVal) * 100));
+                    const incomePct = Math.min(100, Math.round((d.income / maxVal) * 100));
+
+                    return (
+                      <div key={d.month} className="flex items-center gap-3">
+                        <div className="text-right text-[11px] flex-shrink-0 font-semibold" style={{ width: 32, color: "var(--muted)" }}>
+                          {d.month}
                         </div>
-                        <div className="flex items-center justify-center" style={{ width: `${savedPct}%`, background: "var(--green)", borderRadius: "0 6px 6px 0" }}>
-                          <span className="text-[10px] font-bold text-white whitespace-nowrap">₦{d.saved}k{isCurrent ? " ↑" : ""}</span>
+                        <div className="flex-1 flex flex-col gap-1">
+                          {/* Spending Bar */}
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 rounded-[4px] overflow-hidden" style={{ height: 10, background: "var(--bg)" }}>
+                              <div style={{ width: `${Math.max(d.spent > 0 ? 6 : 0, spentPct)}%`, height: "100%", background: "#E24B4A", borderRadius: 4 }} />
+                            </div>
+                            <span className="text-[10px] font-semibold text-rose-500" style={{ width: 60 }}>
+                              -₦{d.spent >= 1 ? `${d.spent.toFixed(1)}k` : `${Math.round(d.spent * 1000).toLocaleString()}`}
+                            </span>
+                          </div>
+                          {/* Income Bar */}
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 rounded-[4px] overflow-hidden" style={{ height: 10, background: "var(--bg)" }}>
+                              <div style={{ width: `${Math.max(d.income > 0 ? 6 : 0, incomePct)}%`, height: "100%", background: "var(--green)", borderRadius: 4 }} />
+                            </div>
+                            <span className="text-[10px] font-semibold" style={{ color: "var(--green)", width: 60 }}>
+                              +₦{d.income >= 1 ? `${d.income.toFixed(1)}k` : `${Math.round(d.income * 1000).toLocaleString()}`}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                      <div className="text-right text-[11px] font-semibold flex-shrink-0" style={{ width: 40, color: isCurrent ? "var(--green)" : "var(--text)" }}>₦{d.income}k</div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
               <div className="flex gap-4 mt-4">
                 <div className="flex items-center gap-2 text-[11px]" style={{ color: "var(--muted)" }}>
-                  <div style={{ width: 16, height: 10, borderRadius: 3, background: "rgba(0,196,140,.2)" }} />
-                  Spent
+                  <div style={{ width: 16, height: 10, borderRadius: 3, background: "#E24B4A" }} />
+                  Spent Outflow
                 </div>
                 <div className="flex items-center gap-2 text-[11px]" style={{ color: "var(--muted)" }}>
                   <div style={{ width: 16, height: 10, borderRadius: 3, background: "var(--green)" }} />
-                  Saved
+                  Income Inflow
                 </div>
               </div>
             </div>
