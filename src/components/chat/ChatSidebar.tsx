@@ -152,6 +152,76 @@ export function ChatSidebar() {
       {/* ── 1:1 PANEL ── */}
       {chatMode === "1to1" && (
         <div className="flex flex-col flex-1 overflow-hidden min-h-0">
+          {/* Saved Topic Conversations — MOVED TO TOP & RESTRICTED TO ACTIVE BUDDY */}
+          {(() => {
+            const activeBuddySessions = sessions.filter(
+              (sess) => !sess.is_group && (sess.buddy_ids?.includes(activeBuddyId) || !sess.buddy_ids?.length)
+            );
+
+            if (activeBuddySessions.length === 0) return null;
+
+            return (
+              <div className="px-2 pt-2 pb-1 border-b" style={{ borderColor: "var(--border)" }}>
+                <div
+                  className="flex items-center justify-between px-2 mb-1 cursor-pointer select-none"
+                  onClick={() => setSavedExpanded(!savedExpanded)}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-semibold uppercase tracking-[.5px]" style={{ color: "var(--muted)" }}>
+                      Saved Conversations ({activeBuddySessions.length})
+                    </span>
+                    <span
+                      className="text-[9px] font-bold px-1.5 py-[1px] rounded"
+                      style={{ color: "var(--green2)", background: "rgba(0,196,140,0.1)" }}
+                    >
+                      {savedExpanded ? "Hide ▲" : "Show ▼"}
+                    </span>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      createNewSession(activeBuddyId);
+                    }}
+                    className="text-[10px] font-semibold px-[6px] py-[2px] rounded cursor-pointer"
+                    style={{ color: "var(--green)", background: "rgba(0,196,140,0.08)" }}
+                  >
+                    + New Chat
+                  </button>
+                </div>
+                {savedExpanded && (
+                  <div className="max-h-[110px] overflow-y-auto" style={{ scrollbarWidth: "none" }}>
+                    {activeBuddySessions.map((sess) => (
+                      <div
+                        key={sess.id}
+                        onClick={() => {
+                          setActiveSession(sess.id);
+                          loadSessionMessages(sess.id);
+                        }}
+                        className={`group flex items-center justify-between px-2 py-[5px] rounded-[6px] cursor-pointer text-[11px] mb-[2px] transition-all`}
+                        style={{
+                          background: activeSessionId === sess.id ? "rgba(0,196,140,0.12)" : "transparent",
+                          color: activeSessionId === sess.id ? "var(--green2)" : "var(--text)",
+                        }}
+                      >
+                        <span className="truncate flex-1 font-medium">💬 {sess.session_name || "Finance Advisory Topic"}</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteSession(sess.id);
+                          }}
+                          className="opacity-0 group-hover:opacity-100 text-[10px] hover:text-red-500 ml-1 px-1"
+                          title="Delete chat"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Active buddy pinned at top */}
           <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
             {(() => {
@@ -200,68 +270,6 @@ export function ChatSidebar() {
               );
             })()}
           </div>
-
-          {/* Saved Topic Conversations */}
-          {sessions.length > 0 && (
-            <div className="px-2 pt-2 pb-1 border-b" style={{ borderColor: "var(--border)" }}>
-              <div
-                className="flex items-center justify-between px-2 mb-1 cursor-pointer select-none"
-                onClick={() => setSavedExpanded(!savedExpanded)}
-              >
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-semibold uppercase tracking-[.5px]" style={{ color: "var(--muted)" }}>
-                    Saved Conversations ({sessions.length})
-                  </span>
-                  <span
-                    className="text-[9px] font-bold px-1.5 py-[1px] rounded"
-                    style={{ color: "var(--green2)", background: "rgba(0,196,140,0.1)" }}
-                  >
-                    {savedExpanded ? "Hide ▲" : "Show ▼"}
-                  </span>
-                </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    createNewSession(activeBuddyId);
-                  }}
-                  className="text-[10px] font-semibold px-[6px] py-[2px] rounded cursor-pointer"
-                  style={{ color: "var(--green)", background: "rgba(0,196,140,0.08)" }}
-                >
-                  + New Chat
-                </button>
-              </div>
-              {savedExpanded && (
-                <div className="max-h-[110px] overflow-y-auto" style={{ scrollbarWidth: "none" }}>
-                  {sessions.map((sess) => (
-                    <div
-                      key={sess.id}
-                      onClick={() => {
-                        setActiveSession(sess.id);
-                        loadSessionMessages(sess.id);
-                      }}
-                      className={`group flex items-center justify-between px-2 py-[5px] rounded-[6px] cursor-pointer text-[11px] mb-[2px] transition-all`}
-                      style={{
-                        background: activeSessionId === sess.id ? "rgba(0,196,140,0.12)" : "transparent",
-                        color: activeSessionId === sess.id ? "var(--green2)" : "var(--text)",
-                      }}
-                    >
-                      <span className="truncate flex-1 font-medium">💬 {sess.session_name || "Finance Advisory Topic"}</span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteSession(sess.id);
-                        }}
-                        className="opacity-0 group-hover:opacity-100 text-[10px] hover:text-red-500 ml-1 px-1"
-                        title="Delete chat"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Buddy list */}
           <div className="flex-1 overflow-y-auto p-2 min-h-0" style={{ scrollbarWidth: "none" }}>

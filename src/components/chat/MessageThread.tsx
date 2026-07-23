@@ -490,18 +490,27 @@ function ChatHistoryModal({
   onClose,
   sessions,
   activeSessionId,
+  activeBuddyId,
   onSelectSession,
   onDeleteSession,
 }: {
   onClose: () => void;
   sessions: any[];
   activeSessionId: string | null;
+  activeBuddyId: string;
   onSelectSession: (id: string) => void;
   onDeleteSession: (id: string) => void;
 }) {
   const [search, setSearch] = useState("");
+  const [showAllBuddies, setShowAllBuddies] = useState(false);
 
-  const filtered = sessions.filter((s) =>
+  const activeBuddy = getBuddy(activeBuddyId);
+
+  const buddySessions = sessions.filter((s) =>
+    showAllBuddies ? true : (s.buddy_ids?.includes(activeBuddyId) || !s.buddy_ids?.length)
+  );
+
+  const filtered = buddySessions.filter((s) =>
     (s.session_name || "Saved Conversation").toLowerCase().includes(search.toLowerCase())
   );
 
@@ -512,14 +521,16 @@ function ChatHistoryModal({
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="w-full max-w-[500px] rounded-[18px] p-6 shadow-2xl flex flex-col max-h-[85vh]"
+        className="w-full max-w-[520px] rounded-[18px] p-6 shadow-2xl flex flex-col max-h-[85vh]"
         style={{ background: "var(--card)", border: "1px solid var(--border)" }}
       >
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <span className="text-[20px]">📜</span>
             <div>
-              <div className="text-[16px] font-bold" style={{ color: "var(--text)" }}>Recent Chat History & Resume</div>
+              <div className="text-[16px] font-bold" style={{ color: "var(--text)" }}>
+                Chat History for {activeBuddy?.name || "Buddy"}
+              </div>
               <div className="text-[11px]" style={{ color: "var(--muted)" }}>Click any saved topic to resume your conversation</div>
             </div>
           </div>
@@ -532,14 +543,28 @@ function ChatHistoryModal({
           </button>
         </div>
 
-        <input
-          type="text"
-          placeholder="Search past conversations..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full px-4 py-2.5 rounded-[10px] text-[12px] mb-4 outline-none border"
-          style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
-        />
+        {/* Filter Toggle Switch */}
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <input
+            type="text"
+            placeholder="Search past conversations..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1 px-4 py-2 rounded-[10px] text-[12px] outline-none border"
+            style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
+          />
+          <button
+            onClick={() => setShowAllBuddies(!showAllBuddies)}
+            className="text-[11px] font-semibold px-3 py-2 rounded-[10px] border whitespace-nowrap cursor-pointer transition-all"
+            style={{
+              background: showAllBuddies ? "rgba(0,196,140,0.15)" : "var(--bg)",
+              borderColor: showAllBuddies ? "var(--green)" : "var(--border)",
+              color: showAllBuddies ? "var(--green2)" : "var(--muted)",
+            }}
+          >
+            {showAllBuddies ? "🌐 All Buddies" : `👤 ${activeBuddy?.name || "Active Buddy"}`}
+          </button>
+        </div>
 
         <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-2 min-h-[220px]" style={{ scrollbarWidth: "thin" }}>
           {filtered.length === 0 ? (
@@ -616,7 +641,7 @@ function ChatHistoryModal({
 // ── Chat header ────────────────────────────────────────────
 function ChatHeader({ buddy }: { buddy?: any }) {
   const { chips, noData } = useDataSources();
-  const { sessions, activeSessionId, enableCrossSessionMemory, loadSessionMessages, deleteSession, renameSession } = useChatStore();
+  const { sessions, activeSessionId, activeBuddyId, enableCrossSessionMemory, loadSessionMessages, deleteSession, renameSession } = useChatStore();
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState("");
@@ -741,6 +766,7 @@ function ChatHeader({ buddy }: { buddy?: any }) {
           onClose={() => setShowHistoryModal(false)}
           sessions={sessions}
           activeSessionId={activeSessionId}
+          activeBuddyId={activeBuddyId}
           onSelectSession={(id) => {
             loadSessionMessages(id);
             setShowHistoryModal(false);
