@@ -722,79 +722,145 @@ export default function GoalsPage() {
         )}
       </div>
 
-      {/* Edit Modal Overlay */}
+      {/* Edit / Create Modal Overlay */}
       {editingGoal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 overflow-y-auto">
           <div
-            className="w-full max-w-md rounded-[16px] p-6 shadow-2xl transition-all border text-white"
-            style={{ background: "var(--navy2)", borderColor: "rgba(0,196,140,.3)" }}
+            className="w-full max-w-lg rounded-[18px] p-6 shadow-2xl transition-all border text-white max-h-[90vh] flex flex-col"
+            style={{ background: "var(--navy2)", borderColor: "rgba(0,196,140,.35)" }}
           >
-            <h3 className="text-[18px] font-semibold mb-4 flex items-center gap-2">
-              {editingGoal.id === "new" ? "🎯 Create Financial Goal" : "✏️ Edit Financial Goal"}
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[18px] font-bold flex items-center gap-2" style={{ fontFamily: "var(--font-sora)" }}>
+                {editingGoal.id === "new" ? "🎯 Create Financial Goal" : "✏️ Edit Financial Goal"}
+              </h3>
+              <button
+                onClick={() => setEditingGoal(null)}
+                className="w-7 h-7 rounded-full flex items-center justify-center text-[16px] text-gray-400 hover:text-white"
+                style={{ background: "rgba(255,255,255,0.08)" }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Quick Templates (Only for new goal) */}
+            {editingGoal.id === "new" && (
+              <div className="mb-4">
+                <label className="text-[11px] font-semibold uppercase tracking-[0.5px] block mb-2 text-emerald-400">
+                  ⚡ Quick Goal Presets
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { title: "Land Purchase in Epe", current: "500000", target: "5000000", emoji: "🏡" },
+                    { title: "6-Month Emergency Cushion", current: "300000", target: "1200000", emoji: "🛡️" },
+                    { title: "Monthly Dining Budget Cap", current: "45000", target: "150000", emoji: "📊" },
+                    { title: "Stocks & Fund Portfolio", current: "250000", target: "2000000", emoji: "📈" },
+                    { title: "Business Loan Payoff", current: "200000", target: "800000", emoji: "📉" },
+                  ].map((preset, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setEditTitle(preset.title);
+                        setEditCurrent(preset.current);
+                        setEditTarget(preset.target);
+                      }}
+                      className="px-2.5 py-1 rounded-[8px] text-[11px] font-medium border flex items-center gap-1 transition-all hover:border-emerald-400 cursor-pointer"
+                      style={{ background: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.15)", color: "var(--text)" }}
+                    >
+                      <span>{preset.emoji}</span>
+                      <span>{preset.title}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             
-            <div className="flex flex-col gap-4 text-left">
+            <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 text-left" style={{ scrollbarWidth: "thin" }}>
+              {/* Title */}
               <div>
                 <label className="text-[11px] font-semibold uppercase tracking-[0.5px] block mb-1" style={{ color: "var(--muted)" }}>
-                  Goal Title
+                  What do you plan to achieve? *
                 </label>
                 <input
                   type="text"
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
-                  className="w-full px-3 py-2 rounded-[8px] border text-[13px]"
+                  className="w-full px-3.5 py-2.5 rounded-[10px] border text-[13px] outline-none focus:border-emerald-400"
                   style={{ background: "var(--navy)", borderColor: "var(--border)", color: "#fff" }}
-                  placeholder="e.g. Emergency Fund"
+                  placeholder="e.g. Land Purchase in Epe, Emergency Fund, Monthly Cap"
                 />
               </div>
 
+              {/* Amount Grid */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[11px] font-semibold uppercase tracking-[0.5px] block mb-1" style={{ color: "var(--muted)" }}>
-                    Current Saved (₦)
+                    Current Saved / Allocated (₦)
                   </label>
                   <input
                     type="number"
                     value={editCurrent}
                     onChange={(e) => setEditCurrent(e.target.value)}
-                    className="w-full px-3 py-2 rounded-[8px] border text-[13px]"
+                    className="w-full px-3.5 py-2.5 rounded-[10px] border text-[13px] outline-none"
                     style={{ background: "var(--navy)", borderColor: "var(--border)", color: "#fff" }}
                     placeholder="e.g. 150000"
                   />
                 </div>
                 <div>
                   <label className="text-[11px] font-semibold uppercase tracking-[0.5px] block mb-1" style={{ color: "var(--muted)" }}>
-                    Target Amount (₦)
+                    Target Amount (₦) *
                   </label>
                   <input
                     type="number"
                     value={editTarget}
                     onChange={(e) => setEditTarget(e.target.value)}
-                    className="w-full px-3 py-2 rounded-[8px] border text-[13px]"
+                    className="w-full px-3.5 py-2.5 rounded-[10px] border text-[13px] outline-none"
                     style={{ background: "var(--navy)", borderColor: "var(--border)", color: "#fff" }}
-                    placeholder="e.g. 500000"
+                    placeholder="e.g. 5000000"
                   />
                 </div>
               </div>
 
+              {/* Target Duration / Date */}
               <div>
                 <label className="text-[11px] font-semibold uppercase tracking-[0.5px] block mb-1" style={{ color: "var(--muted)" }}>
-                  Target Date (Optional)
+                  Target Completion Deadline
                 </label>
+                <div className="flex gap-2 mb-2">
+                  {[
+                    { label: "3 Months", months: 3 },
+                    { label: "6 Months", months: 6 },
+                    { label: "1 Year", months: 12 },
+                    { label: "2 Years", months: 24 },
+                  ].map((dur, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => {
+                        const d = new Date();
+                        d.setMonth(d.getMonth() + dur.months);
+                        setEditDeadline(d.toISOString().split("T")[0]);
+                      }}
+                      className="px-2.5 py-1 rounded-[6px] text-[10px] font-bold uppercase tracking-wider border cursor-pointer hover:bg-emerald-500/20"
+                      style={{ background: "rgba(0,196,140,0.1)", borderColor: "rgba(0,196,140,0.3)", color: "var(--green2)" }}
+                    >
+                      {dur.label}
+                    </button>
+                  ))}
+                </div>
                 <input
                   type="date"
                   value={editDeadline}
                   onChange={(e) => setEditDeadline(e.target.value)}
-                  className="w-full px-3 py-2 rounded-[8px] border text-[13px]"
+                  className="w-full px-3.5 py-2.5 rounded-[10px] border text-[13px] outline-none"
                   style={{ background: "var(--navy)", borderColor: "var(--border)", color: "#fff" }}
                 />
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 mt-6">
+            <div className="flex justify-end gap-3 mt-6 pt-3 border-t" style={{ borderColor: "rgba(255,255,255,0.1)" }}>
               <button
                 onClick={() => setEditingGoal(null)}
-                className="px-4 py-2 rounded-[8px] text-[12px] font-semibold border transition-colors hover:bg-neutral-800"
+                className="px-4 py-2 rounded-[10px] text-[12px] font-semibold border transition-colors hover:bg-neutral-800 cursor-pointer"
                 style={{ borderColor: "var(--border)", color: "var(--muted)", background: "transparent" }}
               >
                 Cancel
@@ -802,12 +868,12 @@ export default function GoalsPage() {
               <button
                 onClick={handleSaveEdit}
                 disabled={saving}
-                className="px-4 py-2 rounded-[8px] text-[12px] font-semibold transition-colors text-white"
+                className="px-5 py-2 rounded-[10px] text-[12px] font-semibold transition-colors text-white cursor-pointer shadow-lg"
                 style={{ background: "var(--green)" }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green2)"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green)"; }}
               >
-                {saving ? "Saving..." : "Save Changes"}
+                {saving ? "Saving Goal..." : "Save Financial Goal 🎯"}
               </button>
             </div>
           </div>

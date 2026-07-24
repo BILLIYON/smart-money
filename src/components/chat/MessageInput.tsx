@@ -68,6 +68,8 @@ export function MessageInput() {
   const [atOpen, setAtOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [userGoals, setUserGoals] = useState<any[]>([]);
+  const [showGoalPicker, setShowGoalPicker] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -75,7 +77,19 @@ export function MessageInput() {
     supabase.auth.getUser().then(({ data }) => {
       setIsAuthenticated(!!data.user);
     });
+    fetch("/api/goals/list")
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d)) setUserGoals(d);
+      })
+      .catch(() => {});
   }, []);
+
+  function handleSelectGoalRef(goal: any) {
+    const refText = `[Referencing Goal: "${goal.title}" - Target: ₦${goal.target.toLocaleString()}, Saved: ₦${goal.current.toLocaleString()}] `;
+    setInput((prev) => refText + prev);
+    setShowGoalPicker(false);
+  }
 
   const getGuestMessageCount = useCallback(() => {
     if (typeof window === "undefined") return 0;
@@ -317,6 +331,55 @@ export function MessageInput() {
               <span className="text-[12px] font-medium" style={{ color: "var(--text)" }}>{b.name}</span>
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Goal Reference Toolbar */}
+      {userGoals.length > 0 && (
+        <div className="relative mb-1.5 flex items-center justify-between px-1">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowGoalPicker(!showGoalPicker)}
+              className="text-[11px] font-semibold px-2.5 py-1 rounded-full border flex items-center gap-1.5 cursor-pointer transition-all hover:border-emerald-400"
+              style={{ background: "rgba(0,196,140,0.08)", borderColor: "rgba(0,196,140,0.25)", color: "var(--green2)" }}
+            >
+              <span>🎯 Reference Goal</span>
+              <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded-full font-bold">
+                {userGoals.length}
+              </span>
+            </button>
+
+            {showGoalPicker && (
+              <div
+                className="absolute bottom-full left-0 mb-2 w-72 rounded-[14px] p-2 shadow-2xl border z-50 flex flex-col gap-1 max-h-60 overflow-y-auto"
+                style={{ background: "var(--card)", borderColor: "var(--border)" }}
+              >
+                <div className="text-[10px] font-bold uppercase tracking-wider px-2 py-1" style={{ color: "var(--muted)" }}>
+                  Select Goal to Reference in Chat
+                </div>
+                {userGoals.map((g) => (
+                  <button
+                    key={g.id}
+                    onClick={() => handleSelectGoalRef(g)}
+                    className="flex items-center justify-between p-2 rounded-[8px] text-left cursor-pointer hover:bg-emerald-500/10 transition-all border border-transparent hover:border-emerald-500/30"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[12px] font-semibold truncate" style={{ color: "var(--text)" }}>
+                        {g.emoji || "🎯"} {g.title}
+                      </div>
+                      <div className="text-[10px]" style={{ color: "var(--muted)" }}>
+                        Saved: ₦{g.current.toLocaleString()} / ₦{g.target.toLocaleString()}
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
+                      + Select
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
