@@ -303,12 +303,23 @@ export default function StudioPage() {
 
     setPublishing(true);
     try {
-      await fetch("/api/studio", {
+      const res = await fetch("/api/studio", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config),
       });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        popup.alert("Submission Failed", data.error || "Failed to submit buddy for review. Please try again.");
+        return;
+      }
+
       setPublished(true);
+      popup.success("Submitted for Review", "🎉 Your buddy has been submitted successfully and is awaiting admin approval!");
+    } catch (err: any) {
+      popup.alert("Submission Error", err.message || "An error occurred while submitting your buddy.");
     } finally {
       setPublishing(false);
     }

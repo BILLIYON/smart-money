@@ -250,39 +250,39 @@ export type BuddySubmission = {
 
 export async function submitBuddy(config: BuddySubmission, creatorId: string): Promise<string> {
   const db = getClient();
+  const slug = config.buddyName
+    ? config.buddyName.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") + "-" + Date.now().toString(36)
+    : "custom-buddy-" + Date.now().toString(36);
+
+  const priceMonthly = config.price === "free" ? 0 : Number(config.customPrice || config.price || 0);
+
   const { data, error } = await db
     .from("buddies")
     .insert({
+      id: slug,
       name: config.buddyName,
       tag: config.tag,
       description: config.desc,
-      avatar_content: config.avatarContent,
-      avatar_bg: config.avatarBg,
-      avatar_is_serif: config.avatarIsSerif,
-      banner_color: config.bannerColor,
-      categories: config.categories,
-      is_fan_sim: config.isFanSim,
-      disclaimer: config.disclaimer,
-      philosophy: config.philosophy,
-      samples: config.samples,
-      includes: config.includes,
-      price_note: config.priceNote,
-      tone: config.tone,
-      delivery: config.delivery,
-      register: config.register,
-      signature_phrase: config.signaturePhrase,
-      will_not_advise_on: config.willNotAdviseOn,
-      model: config.model,
-      triggers: config.triggers,
-      max_notifs: config.maxNotifs,
-      price: config.price,
-      custom_price: config.customPrice,
+      avatar_content: config.avatarContent || "🤖",
+      avatar_bg: config.avatarBg || "#1A3A6E",
+      avatar_is_serif: config.avatarIsSerif ?? false,
+      banner_color: config.bannerColor || "linear-gradient(135deg,#0B1E3D,#1A3A6E)",
+      category: config.categories || [],
+      is_fan_sim: config.isFanSim ?? false,
+      fan_disclaimer: config.disclaimer || null,
+      philosophy: config.philosophy || null,
+      ai_model: config.model ? config.model.toLowerCase() : "claude",
+      price_monthly: isNaN(priceMonthly) ? 0 : priceMonthly,
       creator_id: creatorId,
       status: "pending",
     })
     .select("id")
     .single();
-  if (error) throw error;
+
+  if (error) {
+    console.error("[submitBuddy] Insert error:", error);
+    throw error;
+  }
   return data.id;
 }
 
@@ -333,29 +333,68 @@ export async function getApprovedCommunityBuddies(): Promise<CommunityBuddyRow[]
   const db = getClient();
   const { data, error } = await db
     .from("buddies")
-    .select(
-      "id, name, tag, description, avatar_content, avatar_bg, avatar_is_serif, banner_color, categories, is_fan_sim, disclaimer, philosophy, samples, includes, price_note, model, price, custom_price"
-    )
+    .select("id, name, tag, description, avatar_content, avatar_bg, avatar_is_serif, banner_color, category, is_fan_sim, fan_disclaimer, philosophy, ai_model, price_monthly")
     .eq("status", "approved")
     .order("created_at", { ascending: false });
-  if (error) throw error;
-  return data ?? [];
+  if (error) {
+    console.error("[getApprovedCommunityBuddies]", error);
+    return [];
+  }
+  return (data ?? []).map((b) => ({
+    id: b.id,
+    name: b.name,
+    tag: b.tag,
+    description: b.description,
+    avatar_content: b.avatar_content,
+    avatar_bg: b.avatar_bg,
+    avatar_is_serif: b.avatar_is_serif,
+    banner_color: b.banner_color,
+    categories: b.category ?? [],
+    is_fan_sim: b.is_fan_sim,
+    disclaimer: b.fan_disclaimer,
+    philosophy: b.philosophy,
+    samples: [],
+    includes: [],
+    price_note: b.price_monthly === 0 ? "Free" : `₦${b.price_monthly.toLocaleString()}/mo`,
+    model: b.ai_model,
+    price: String(b.price_monthly ?? 0),
+    custom_price: String(b.price_monthly ?? 0),
+  }));
 }
 
 export async function getCommunityBuddyById(id: string): Promise<CommunityBuddyRow | null> {
   const db = getClient();
   const { data, error } = await db
     .from("buddies")
-    .select(
-      "id, name, tag, description, avatar_content, avatar_bg, avatar_is_serif, banner_color, categories, is_fan_sim, disclaimer, philosophy, samples, includes, price_note, model, price, custom_price"
-    )
+    .select("id, name, tag, description, avatar_content, avatar_bg, avatar_is_serif, banner_color, category, is_fan_sim, fan_disclaimer, philosophy, ai_model, price_monthly")
     .eq("id", id)
     .single();
+
   if (error) {
     if (error.code === "PGRST116") return null;
-    throw error;
+    console.error("[getCommunityBuddyById]", error);
+    return null;
   }
-  return data;
+  return {
+    id: data.id,
+    name: data.name,
+    tag: data.tag,
+    description: data.description,
+    avatar_content: data.avatar_content,
+    avatar_bg: data.avatar_bg,
+    avatar_is_serif: data.avatar_is_serif,
+    banner_color: data.banner_color,
+    categories: data.category ?? [],
+    is_fan_sim: data.is_fan_sim,
+    disclaimer: data.fan_disclaimer,
+    philosophy: data.philosophy,
+    samples: [],
+    includes: [],
+    price_note: data.price_monthly === 0 ? "Free" : `₦${data.price_monthly.toLocaleString()}/mo`,
+    model: data.ai_model,
+    price: String(data.price_monthly ?? 0),
+    custom_price: String(data.price_monthly ?? 0),
+  };
 }
 
 export async function deleteTestUsers(): Promise<number> {
