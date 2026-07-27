@@ -34,9 +34,9 @@ export async function getGmailClient(userId: string) {
   );
 
   oauth2.setCredentials({
-    access_token:  decrypt(data.access_token),
+    access_token: decrypt(data.access_token),
     refresh_token: decrypt(data.refresh_token),
-    expiry_date:   new Date(data.token_expiry).getTime(),
+    expiry_date: new Date(data.token_expiry).getTime(),
   });
 
   // Auto-refresh: when token expires, oauth2 client refreshes
@@ -82,21 +82,46 @@ export async function getEmailBody(
 
   const headers = res.data.payload?.headers ?? [];
   const subject = headers.find((h) => h.name === "Subject")?.value ?? "";
-  const from    = headers.find((h) => h.name === "From")?.value ?? "";
-  const date    = headers.find((h) => h.name === "Date")?.value ?? "";
+  const from = headers.find((h) => h.name === "From")?.value ?? "";
+  const date = headers.find((h) => h.name === "Date")?.value ?? "";
 
-  // Extract plain text body (handle multipart)
-  function extractText(payload: typeof res.data.payload): string {
-    if (payload?.mimeType === "text/plain" && payload.body?.data) {
-      return Buffer.from(payload.body.data, "base64").toString("utf8");
-    }
-    if (payload?.parts) {
-      return payload.parts.map(extractText).join(" ");
-    }
-    return "";
+  // Extract body text — prefer plain text, fall back to HTML (most bank alerts are HTML-only)
+  function decodePart(data?: string | null): string {
+    if (!data) return "";
+    return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
   }
 
-  const body = extractText(res.data.payload);
+  function extractText(payload: typeof res.data.payload): { plain: string; html: string } {
+    let plain = "";
+    let html = "";
+
+    function walk(part: typeof payload) {
+      if (!part) return;
+      if (part.mimeType === "text/plain" && part.body?.data) {
+        plain += (plain ? " " : "") + decodePart(part.body.data);
+      } else if (part.mimeType === "text/html" && part.body?.data) {
+        html += (html ? " " : "") + decodePart(part.body.data);
+      }
+      if (part.parts) {
+        for (const child of part.parts) walk(child);
+      }
+    }
+
+    walk(payload);
+    // Some messages put body data on the root payload without mimeType parts
+    if (!plain && !html && payload?.body?.data) {
+      const raw = decodePart(payload.body.data);
+      if (payload.mimeType === "text/html" || /<html|<body|<div/i.test(raw)) {
+        html = raw;
+      } else {
+        plain = raw;
+      }
+    }
+    return { plain, html };
+  }
+
+  const { plain, html } = extractText(res.data.payload);
+  const body = plain.trim() ? plain : html;
   return { messageId, subject, from, date, body };
 }
 
@@ -105,11 +130,21 @@ function stripHtml(html: string): string {
   return html
     .replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, " ")
     .replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|tr|li|h[1-6])>/gi, "\n")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
+    .replace(/&naira;|&#8358;|&#x20a6;/gi, "₦")
+    .replace(/&#(\d+);/g, (_, code) => {
+      try {
+        return String.fromCharCode(Number(code));
+      } catch {
+        return " ";
+      }
+    })
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -118,7 +153,7 @@ function stripHtml(html: string): string {
 
 // ── 5. Full sync for one user ─────────────────────────────────
 export async function syncGmailForUser(userId: string, force90Days = true) {
-  const gmail    = await getGmailClient(userId);
+  const gmail = await getGmailClient(userId);
   const supabase = createServiceClient();
 
   // Always backfill full 3 months (90 days) by default so user gets all their transaction history!
@@ -159,7 +194,7 @@ export async function syncGmailForUser(userId: string, force90Days = true) {
   const entries: DataBankEntry[] = [];
 
   for (let i = 0; i < uniqueIds.length; i += BATCH) {
-    const batch  = uniqueIds.slice(i, i + BATCH);
+    const batch = uniqueIds.slice(i, i + BATCH);
     const emails = await Promise.all(batch.map((id) => getEmailBody(gmail, id)));
 
     // Parse emails in parallel via OpenAI
@@ -168,17 +203,35 @@ export async function syncGmailForUser(userId: string, force90Days = true) {
         const cleanBody = stripHtml(email.body);
         const data = await extractFinancialDataFromEmail(cleanBody, email.subject, email.from);
         if (!data) return null;
+
+        // Prefer real email Date header; fall back to today if unparseable
+        let entryDate = new Date().toISOString().split("T")[0];
+        if (email.date) {
+          const parsed = new Date(email.date);
+          if (!Number.isNaN(parsed.getTime())) {
+            entryDate = parsed.toISOString().split("T")[0];
+          }
+        }
+
+        const metadata: Record<string, unknown> = {
+          email_from: email.from,
+          email_subject: email.subject,
+        };
+        if (data.provider) metadata.provider = data.provider;
+        if (data.bank) metadata.bank = data.bank;
+        // Store account balance in kobo (same unit as amount) for consistent conversion later
+        if (typeof data.account_balance === "number" && data.account_balance > 0) {
+          metadata.account_balance = Math.round(data.account_balance * 100);
+        }
+
         return {
           source: "gmail",
           entry_type: data.entry_type,
-          amount: Math.round(data.amount * 100), // convert to cents/kobo
+          amount: Math.round(data.amount * 100), // convert Naira → kobo
           description: data.description,
           category: data.category,
-          entry_date: new Date(email.date).toISOString().split("T")[0],
-          metadata: {
-            email_from: email.from,
-            email_subject: email.subject,
-          },
+          entry_date: entryDate,
+          metadata,
           user_id: userId,
           gmail_message_id: email.messageId,
         } as DataBankEntry;
@@ -198,8 +251,8 @@ export async function syncGmailForUser(userId: string, force90Days = true) {
   // Upsert entries utilizing gmail_message_id unique index
   if (entries.length > 0) {
     const { error: upsertError } = await supabase.from("databank_entries").upsert(entries, {
-      onConflict:       "gmail_message_id",
-      ignoreDuplicates: true,
+      onConflict: "gmail_message_id",
+      ignoreDuplicates: false,
     });
     if (upsertError) {
       console.error("[gmail] Database upsert failed:", upsertError.message);

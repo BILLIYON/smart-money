@@ -21,15 +21,15 @@ export async function GET() {
   const { supabase, userId, error } = await requireAuth();
   if (error) return error;
 
-  const MONTH_START       = monthStart();
+  const MONTH_START = monthStart();
   const PRIOR_MONTH_START = priorMonthStart();
-  const THIRTY_DAYS_AGO   = thirtyDaysAgo();
+  const THIRTY_DAYS_AGO = thirtyDaysAgo();
 
   // ── All queries in parallel ──────────────────────────────
   const [entriesRes, goalsRes, integrationsRes, userRes] = await Promise.all([
     supabase
       .from("databank_entries")
-      .select("entry_type, amount, description, category, entry_date, source")
+      .select("entry_type, amount, description, category, entry_date, source, metadata")
       .eq("user_id", userId)
       .order("entry_date", { ascending: false }),
 
@@ -51,23 +51,23 @@ export async function GET() {
       .single(),
   ]);
 
-  const entries      = entriesRes.data ?? [];
-  const goals        = goalsRes.data ?? [];
+  const entries = entriesRes.data ?? [];
+  const goals = goalsRes.data ?? [];
   const integrations = integrationsRes.data ?? [];
-  const currency     = userRes.data?.currency ?? "NGN";
+  const currency = userRes.data?.currency ?? "NGN";
 
   // ── Helpers ──────────────────────────────────────────────
-  const thisMonth  = entries.filter((e) => e.entry_date >= MONTH_START);
+  const thisMonth = entries.filter((e) => e.entry_date >= MONTH_START);
   const priorMonth = entries.filter((e) => e.entry_date >= PRIOR_MONTH_START && e.entry_date < MONTH_START);
-  const recent30   = entries.filter((e) => e.entry_date >= THIRTY_DAYS_AGO);
+  const recent30 = entries.filter((e) => e.entry_date >= THIRTY_DAYS_AGO);
 
   // ── Monthly summary ──────────────────────────────────────
-  const incomeEntries   = thisMonth.filter((e) => e.entry_type === "income");
-  const expenseEntries  = thisMonth.filter((e) => e.entry_type === "expense");
+  const incomeEntries = thisMonth.filter((e) => e.entry_type === "income");
+  const expenseEntries = thisMonth.filter((e) => e.entry_type === "expense");
 
-  const totalIncome   = incomeEntries.reduce((s, e) => s + e.amount, 0);
+  const totalIncome = incomeEntries.reduce((s, e) => s + e.amount, 0);
   const totalExpenses = Math.abs(expenseEntries.reduce((s, e) => s + e.amount, 0));
-  const savingsRate   = totalIncome > 0
+  const savingsRate = totalIncome > 0
     ? Math.round(((totalIncome - totalExpenses) / totalIncome) * 100) / 100
     : 0;
 
@@ -90,7 +90,7 @@ export async function GET() {
     return map;
   }
 
-  const thisCats  = categoryTotals(thisMonth);
+  const thisCats = categoryTotals(thisMonth);
   const priorCats = categoryTotals(priorMonth);
   const totalSpend = Object.values(thisCats).reduce((s, v) => s + v, 0);
 
@@ -101,9 +101,9 @@ export async function GET() {
       const prior = priorCats[category] ?? 0;
       const trend: "up" | "down" | "stable" =
         prior === 0 ? "stable"
-        : total > prior * 1.05 ? "up"
-        : total < prior * 0.95 ? "down"
-        : "stable";
+          : total > prior * 1.05 ? "up"
+            : total < prior * 0.95 ? "down"
+              : "stable";
       return {
         category,
         total,
@@ -116,29 +116,29 @@ export async function GET() {
   const subscriptions = entries
     .filter((e) => e.entry_type === "subscription")
     .map((e) => ({
-      name:        e.description,
-      amount:      e.amount,
-      frequency:   "monthly" as const,
+      name: e.description,
+      amount: e.amount,
+      frequency: "monthly" as const,
       lastCharged: e.entry_date,
-      source:      (e.source ?? "manual") as "gmail" | "upload" | "manual",
+      source: (e.source ?? "manual") as "gmail" | "upload" | "manual",
     }));
 
   // ── Recent transactions (last 30 days, max 30) ───────────
   const recentTransactions = recent30.slice(0, 30).map((e) => ({
     description: e.description,
-    amount:      e.amount,
-    type:        e.entry_type as "income" | "expense",
-    category:    e.category ?? "Uncategorized",
-    date:        e.entry_date,
-    source:      e.source ?? "manual",
+    amount: e.amount,
+    type: e.entry_type as "income" | "expense",
+    category: e.category ?? "Uncategorized",
+    date: e.entry_date,
+    source: e.source ?? "manual",
   }));
 
   // ── Active goals ─────────────────────────────────────────
   const activeGoals = goals.map((g) => ({
-    title:           g.title,
-    targetAmount:    g.target_amount,
-    currentAmount:   g.current_amount,
-    targetDate:      g.target_date,
+    title: g.title,
+    targetAmount: g.target_amount,
+    currentAmount: g.current_amount,
+    targetDate: g.target_date,
     progressPercent: g.target_amount > 0
       ? Math.round((g.current_amount / g.target_amount) * 100)
       : 0,
@@ -327,45 +327,233 @@ export async function GET() {
     };
   });
 
-  // ── Extract real bank accounts ────────────────────────────
-  const bankMap: Record<string, { bankName: string; accountNumber: string; balance: number; source: string; lastUpdated: string }> = {};
+  // ── Extract real bank accounts from Gmail alert balances ──
+  type BankTxn = {
+    description: string;
+    amount: number; // Naira
+    type: "income" | "expense";
+    category: string;
+    date: string;
+    source: string;
+    /** Balance after this transaction (Naira). From bank alert when available. */
+    balanceAfter: number | null;
+    /** true = balance came from the bank alert email; false = reconstructed */
+    balanceFromAlert: boolean;
+    emailSubject?: string;
+  };
 
+  type BankAcc = {
+    bankName: string;
+    accountNumber: string;
+    balance: number;
+    source: string;
+    lastUpdated: string;
+    hasExplicitBalance: boolean;
+    transactions: BankTxn[];
+  };
+  const bankMap: Record<string, BankAcc> = {};
+
+  function resolveBankName(e: (typeof entries)[number]): string {
+    const meta = (e.metadata ?? {}) as Record<string, unknown>;
+    if (typeof meta.bank === "string" && meta.bank.trim()) return meta.bank.trim();
+
+    const provider = typeof meta.provider === "string" ? meta.provider.toLowerCase() : "";
+    const providerLabels: Record<string, string> = {
+      opay: "OPay",
+      kuda: "Kuda Bank",
+      palmpay: "PalmPay",
+      moniepoint: "Moniepoint",
+      gtbank: "GTBank",
+      zenith: "Zenith Bank",
+      access: "Access Bank",
+      uba: "UBA",
+      firstbank: "First Bank",
+      stanbic: "Stanbic IBTC",
+      fidelity: "Fidelity Bank",
+      union: "Union Bank",
+      wema: "Wema Bank",
+      providus: "Providus Bank",
+      carbon: "Carbon",
+      flutterwave: "Flutterwave",
+      paystack: "Paystack",
+    };
+    if (provider && providerLabels[provider]) return providerLabels[provider];
+
+    const haystack = [
+      e.description,
+      e.category,
+      typeof meta.email_from === "string" ? meta.email_from : "",
+      typeof meta.email_subject === "string" ? meta.email_subject : "",
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    if (/gtbank|gtb|guaranty\s*trust/.test(haystack)) return "GTBank";
+    if (/zenith/.test(haystack)) return "Zenith Bank";
+    if (/kuda/.test(haystack)) return "Kuda Bank";
+    if (/access\s*bank|accessbank/.test(haystack)) return "Access Bank";
+    if (/first\s*bank|firstbank/.test(haystack)) return "First Bank";
+    if (/\buba\b|united\s*bank\s*for\s*africa/.test(haystack)) return "UBA";
+    if (/stanbic/.test(haystack)) return "Stanbic IBTC";
+    if (/\bopay(?:web)?\b/.test(haystack)) return "OPay";
+    if (/palmpay/.test(haystack)) return "PalmPay";
+    if (/moniepoint/.test(haystack)) return "Moniepoint";
+    if (/fidelity/.test(haystack)) return "Fidelity Bank";
+    if (/wema/.test(haystack)) return "Wema Bank";
+    if (e.source === "gmail") return "Gmail Synced Account";
+    if (e.source === "upload") return "Uploaded Statement Account";
+    return "";
+  }
+
+  // Query orders entry_date desc — first explicit balance per bank is newest.
   entries.forEach((e) => {
-    const descLower = (e.description || "").toLowerCase();
-    let bankName = "";
-    if (descLower.includes("gtbank") || descLower.includes("gtb") || descLower.includes("guaranty")) bankName = "GTBank";
-    else if (descLower.includes("zenith")) bankName = "Zenith Bank";
-    else if (descLower.includes("kuda")) bankName = "Kuda Bank";
-    else if (descLower.includes("access")) bankName = "Access Bank";
-    else if (descLower.includes("firstbank") || descLower.includes("first bank")) bankName = "First Bank";
-    else if (descLower.includes("uba")) bankName = "UBA";
-    else if (descLower.includes("stanbic")) bankName = "Stanbic IBTC";
-    else if (descLower.includes("opay")) bankName = "OPay";
-    else if (descLower.includes("palmpay")) bankName = "PalmPay";
-    else if (descLower.includes("moniepoint")) bankName = "Moniepoint";
-    else if (e.source === "gmail") bankName = "Gmail Synced Account";
-    else if (e.source === "upload") bankName = "Uploaded Statement Account";
+    // Only surface cash-flow entries on bank cards (not assets/debts as txns)
+    if (e.entry_type !== "income" && e.entry_type !== "expense" && e.entry_type !== "subscription") {
+      return;
+    }
 
-    if (bankName) {
-      if (!bankMap[bankName]) {
-        bankMap[bankName] = {
-          bankName,
-          accountNumber: "•••• Main",
-          balance: 0,
-          source: e.source === "gmail" ? "Gmail Alert" : e.source === "upload" ? "Statement Upload" : "DataBank",
-          lastUpdated: e.entry_date ? new Date(e.entry_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Recent",
-        };
+    const bankName = resolveBankName(e);
+    if (!bankName) return;
+
+    const meta = (e.metadata ?? {}) as Record<string, unknown>;
+    const metaBalanceRaw = meta.account_balance;
+    const metaBalance =
+      typeof metaBalanceRaw === "number"
+        ? metaBalanceRaw
+        : typeof metaBalanceRaw === "string" && metaBalanceRaw.trim()
+          ? Number(metaBalanceRaw)
+          : null;
+    const hasAlertBalance =
+      metaBalance !== null && !Number.isNaN(metaBalance) && metaBalance > 0;
+
+    if (!bankMap[bankName]) {
+      bankMap[bankName] = {
+        bankName,
+        accountNumber: "•••• Main",
+        balance: 0,
+        source: e.source === "gmail" ? "Gmail Alert" : e.source === "upload" ? "Statement Upload" : "DataBank",
+        lastUpdated: e.entry_date ? new Date(e.entry_date).toISOString() : "",
+        hasExplicitBalance: false,
+        transactions: [],
+      };
+    }
+
+    const acc = bankMap[bankName];
+    const entryTs = e.entry_date ? new Date(e.entry_date).getTime() : 0;
+    const accTs = acc.lastUpdated ? new Date(acc.lastUpdated).getTime() : 0;
+    const amountNaira = toNairaVal(e.amount);
+    const txnType: "income" | "expense" =
+      e.entry_type === "income" ? "income" : "expense";
+
+    acc.transactions.push({
+      description: e.description || "Transaction",
+      amount: amountNaira,
+      type: txnType,
+      category: e.category || "Uncategorized",
+      date: e.entry_date ?? "",
+      source: e.source ?? "manual",
+      balanceAfter: hasAlertBalance ? toNairaVal(metaBalance as number) : null,
+      balanceFromAlert: hasAlertBalance,
+      emailSubject:
+        typeof meta.email_subject === "string" ? meta.email_subject : undefined,
+    });
+
+    if (hasAlertBalance) {
+      if (!acc.hasExplicitBalance || entryTs >= accTs) {
+        acc.balance = toNairaVal(metaBalance as number);
+        acc.hasExplicitBalance = true;
+        if (e.entry_date) acc.lastUpdated = new Date(e.entry_date).toISOString();
       }
-      const val = toNairaVal(e.amount);
-      if (e.entry_type === "income" || e.entry_type === "asset") {
-        bankMap[bankName].balance += val;
-      } else if (e.entry_type === "expense") {
-        bankMap[bankName].balance += val;
+    } else if (!acc.hasExplicitBalance) {
+      if (txnType === "income") acc.balance += amountNaira;
+      else acc.balance -= amountNaira;
+      if (e.entry_date && entryTs >= accTs) {
+        acc.lastUpdated = new Date(e.entry_date).toISOString();
       }
+    } else if (e.entry_date && entryTs > accTs) {
+      acc.lastUpdated = new Date(e.entry_date).toISOString();
     }
   });
 
-  const parsedBankAccounts = Object.values(bankMap);
+  /** Fill gaps in balanceAfter using alert anchors + running cash flow. */
+  function reconstructBalances(txns: BankTxn[], accountBalance: number, hasExplicit: boolean): BankTxn[] {
+    if (txns.length === 0) return txns;
+
+    // Oldest → newest for forward reconstruction
+    const sorted = [...txns].sort((a, b) => {
+      const d = (a.date || "").localeCompare(b.date || "");
+      if (d !== 0) return d;
+      // Stable secondary: income before expense on same day is arbitrary; keep order
+      return 0;
+    });
+
+    // Forward pass: propagate from known alert balances
+    let running: number | null = null;
+    for (const t of sorted) {
+      if (t.balanceFromAlert && t.balanceAfter !== null) {
+        running = t.balanceAfter;
+        continue;
+      }
+      if (running !== null) {
+        running = t.type === "income" ? running + t.amount : running - t.amount;
+        t.balanceAfter = Math.round(running * 100) / 100;
+        t.balanceFromAlert = false;
+      }
+    }
+
+    // If we still have leading gaps (no early anchor), work backwards from
+    // the account's current balance (or the newest known balanceAfter).
+    const newestKnown =
+      [...sorted].reverse().find((t) => t.balanceAfter !== null)?.balanceAfter ??
+      (hasExplicit ? accountBalance : null);
+
+    if (newestKnown !== null) {
+      let back = newestKnown;
+      for (let i = sorted.length - 1; i >= 0; i--) {
+        const t = sorted[i];
+        if (t.balanceAfter !== null) {
+          back = t.balanceAfter;
+          continue;
+        }
+        // balance after this txn is unknown; we know balance after a later txn.
+        // Working backwards: undoing this txn from the next known balance is wrong
+        // here — we need balance AFTER this txn = balance BEFORE the next one.
+        // If next known is at index > i, back already holds balance after a later txn.
+        // Before that later chain, after THIS txn:
+        // We set balanceAfter for this txn by undoing subsequent txns... simpler:
+        // balance before txn i+1 equals balance after txn i.
+        // When moving back across txn i+1 that we already processed:
+        // Actually when balanceAfter is null and we're going newest→oldest:
+        // After setting from a known point, undoing the CURRENT txn gives prior balance,
+        // which is balanceAfter of the previous (older) txn.
+        t.balanceAfter = Math.round(back * 100) / 100;
+        t.balanceFromAlert = false;
+        // Undo this transaction to get balance before it (= after previous)
+        back = t.type === "income" ? back - t.amount : back + t.amount;
+      }
+    } else {
+      // Pure reconstruction from zero starting point
+      let r = 0;
+      for (const t of sorted) {
+        r = t.type === "income" ? r + t.amount : r - t.amount;
+        if (t.balanceAfter === null) {
+          t.balanceAfter = Math.round(r * 100) / 100;
+          t.balanceFromAlert = false;
+        } else {
+          r = t.balanceAfter;
+        }
+      }
+    }
+
+    // Return newest first for the UI
+    return sorted.reverse();
+  }
+
+  const parsedBankAccounts = Object.values(bankMap).map(({ hasExplicitBalance, transactions, ...rest }) => ({
+    ...rest,
+    transactionCount: transactions.length,
+    transactions: reconstructBalances(transactions, rest.balance, hasExplicitBalance),
+  }));
 
   return NextResponse.json({
     currency,
