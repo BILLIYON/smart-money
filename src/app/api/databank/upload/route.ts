@@ -1,12 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase-server";
 import Papa from "papaparse";
-
-
-
-// pdf-parse has no named export — use require to avoid ESM issues
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { PDFParse } = require("pdf-parse");
+import zlib from "zlib";
 
 type RawRow = Record<string, string>;
 
@@ -17,11 +12,63 @@ type ParsedTransaction = {
   category: string;
 };
 
+/**
+ * Pure JS PDF Text Extraction.
+ * Decodes PDF streams using zlib decompresion & Tj/TJ text operators.
+ * Has ZERO external npm file dependencies and never crashes on Vercel Serverless.
+ */
+function extractTextFromPdfBuffer(buffer: Buffer): string {
+  let fullText = "";
+  const content = buffer.toString("binary");
+
+  const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = streamRegex.exec(content)) !== null) {
+    const rawStream = match[1];
+    let decodedText = "";
+
+    try {
+      const streamBuf = Buffer.from(rawStream, "binary");
+      const decompressed = zlib.inflateSync(streamBuf);
+      decodedText = decompressed.toString("utf-8");
+    } catch {
+      decodedText = rawStream;
+    }
+
+    const tjRegex = /\(([^)]+)\)\s*Tj/g;
+    let tjMatch: RegExpExecArray | null;
+    while ((tjMatch = tjRegex.exec(decodedText)) !== null) {
+      fullText += tjMatch[1] + " ";
+    }
+
+    const arrayTjRegex = /\[\s*((?:\((?:[^)]+)\)|[\d\s-]+)+)\s*\]\s*TJ/gi;
+    let arrayMatch: RegExpExecArray | null;
+    while ((arrayMatch = arrayTjRegex.exec(decodedText)) !== null) {
+      const inner = arrayMatch[1];
+      const strMatches = [...inner.matchAll(/\(([^)]+)\)/g)];
+      const lineStr = strMatches.map((m) => m[1]).join("");
+      fullText += lineStr + "\n";
+    }
+  }
+
+  if (!fullText.trim()) {
+    const rawMatches = [...content.matchAll(/\(([^)]+)\)/g)];
+    fullText = rawMatches.map((m) => m[1]).join(" ");
+  }
+
+  return fullText
+    .replace(/\\([()])/g, "$1")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "")
+    .replace(/\\t/g, " ");
+}
+
 function guessCategory(description: string): string {
   const d = description.toLowerCase();
   if (d.includes("netflix") || d.includes("spotify") || d.includes("dstv")) return "subscriptions";
   if (d.includes("uber") || d.includes("bolt") || d.includes("transport")) return "transport";
-  if (d.includes("shoprite") || d.includes("supermarket") || d.includes("market")) return "food";
+  if (d.includes("shoprite") || d.includes("supermarket") || d.includes("market") || d.includes("food")) return "food";
   if (d.includes("salary") || d.includes("payroll") || d.includes("credit alert")) return "income";
   if (d.includes("transfer") || d.includes("trf")) return "transfer";
   if (d.includes("airtime") || d.includes("data")) return "utilities";
@@ -29,11 +76,9 @@ function guessCategory(description: string): string {
 }
 
 function parseAmount(raw: string): number {
-  // Strip commas, currency symbols, spaces
   const cleaned = raw.replace(/[₦,\s]/g, "");
   const num = parseFloat(cleaned);
   if (isNaN(num)) return 0;
-  // Convert naira → kobo
   return Math.round(num * 100);
 }
 
@@ -42,27 +87,19 @@ function safeParseDate(dateStr: string | null | undefined): string {
   const cleaned = dateStr.trim();
   if (!cleaned) return new Date().toISOString().split("T")[0];
 
-  // Try parsing DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY first
   const parts = cleaned.split(/[/\-.]/);
   if (parts.length === 3) {
     let day = 0, month = 0, year = 0;
-    
-    // Check if it's YYYY-MM-DD
     if (parts[0].length === 4) {
       year = parseInt(parts[0], 10);
       month = parseInt(parts[1], 10) - 1;
       day = parseInt(parts[2], 10);
     } else {
-      // DD/MM/YYYY or MM/DD/YYYY
-      // In Nigerian bank statements, it is almost always DD/MM/YYYY or DD/MM/YY
       day = parseInt(parts[0], 10);
       month = parseInt(parts[1], 10) - 1;
       year = parseInt(parts[2], 10);
-      if (year < 100) {
-        year += 2000;
-      }
+      if (year < 100) year += 2000;
     }
-    
     const d = new Date(year, month, day);
     if (!isNaN(d.getTime())) {
       try {
@@ -76,8 +113,7 @@ function safeParseDate(dateStr: string | null | undefined): string {
     }
   }
 
-  // Fallback to standard Date parsing as a last resort
-  let d = new Date(cleaned);
+  const d = new Date(cleaned);
   if (!isNaN(d.getTime())) {
     try {
       return d.toISOString().split("T")[0];
@@ -86,7 +122,6 @@ function safeParseDate(dateStr: string | null | undefined): string {
     }
   }
 
-  // Fallback to today
   return new Date().toISOString().split("T")[0];
 }
 
@@ -95,7 +130,6 @@ function parseCsv(text: string): ParsedTransaction[] {
   const { data } = Papa.parse<RawRow>(text, { header: true, skipEmptyLines: true });
   return data
     .map((row) => {
-      // Normalize row keys to lowercase and trim
       const normalizedRow: Record<string, string> = {};
       for (const key of Object.keys(row)) {
         normalizedRow[key.toLowerCase().trim()] = row[key] ?? "";
@@ -148,7 +182,7 @@ function parseCsv(text: string): ParsedTransaction[] {
 
 export const maxDuration = 60;
 
-/** Extract text from PDF and apply simple line-by-line heuristics */
+/** Extract text from PDF and apply line-by-line bank heuristics */
 function parsePdfText(text: string): ParsedTransaction[] {
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
   const transactions: ParsedTransaction[] = [];
@@ -207,22 +241,18 @@ export async function POST(req: Request) {
     let transactions: ParsedTransaction[] = [];
 
     if (fileName.endsWith(".pdf")) {
-      let pdfText = "";
-      try {
-        const uint8 = new Uint8Array(buffer);
-        const parser = new PDFParse(uint8);
-        const parsed = await parser.getText();
-        pdfText = parsed.text || "";
-      } catch (pdfErr: any) {
-        console.warn("[/api/databank/upload] PDFParse class instance failed, attempting fallback:", pdfErr?.message);
+      // Multi-tier text extraction
+      let pdfText = extractTextFromPdfBuffer(buffer);
+
+      if (!pdfText.trim()) {
         try {
-          const legacyPdf = require("pdf-parse");
-          if (typeof legacyPdf === "function") {
-            const data = await legacyPdf(buffer);
-            pdfText = data.text || "";
-          }
-        } catch (fallbackErr: any) {
-          console.error("[/api/databank/upload] Fallback PDF parse error:", fallbackErr?.message);
+          const { PDFParse } = require("pdf-parse");
+          const uint8 = new Uint8Array(buffer);
+          const parser = new PDFParse(uint8);
+          const parsed = await parser.getText();
+          pdfText = parsed.text || "";
+        } catch (pdfErr: any) {
+          console.warn("[/api/databank/upload] Fallback PDFParse class failed:", pdfErr?.message);
         }
       }
 
