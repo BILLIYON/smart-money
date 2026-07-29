@@ -227,16 +227,84 @@ ${pdfText.slice(0, 20000)}`;
   return [];
 }
 
-/** Extract text from PDF and apply line-by-line bank heuristics */
+function processChunk(chunkStr: string): ParsedTransaction | null {
+  const datePattern = /(\b\d{1,2}[/-](?:\d{1,2}|[A-Za-z]{3})[/-]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b)/i;
+  const amountPattern = /(?:₦\s*)?([+-]?(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2})/g;
+
+  const dateMatch = chunkStr.match(datePattern);
+  const amounts = [...chunkStr.matchAll(amountPattern)];
+
+  if (!dateMatch || amounts.length === 0) return null;
+
+  const rawDate = dateMatch[1];
+  const parsedDate = safeParseDate(rawDate);
+
+  const amountIndex = amounts.length >= 2 ? amounts.length - 2 : 0;
+  let amountKobo = parseAmount(amounts[amountIndex][1]);
+
+  const isDebit = /DR|debit|withdrawal|outward/i.test(chunkStr) || amounts[amountIndex][1].startsWith("-");
+  const isCredit = /CR|credit|deposit|inward/i.test(chunkStr);
+
+  if (isDebit && amountKobo > 0) amountKobo = -amountKobo;
+  if (isCredit && amountKobo < 0) amountKobo = Math.abs(amountKobo);
+
+  const description = chunkStr
+    .replace(datePattern, "")
+    .replace(amountPattern, "")
+    .replace(/CR|DR|credit|debit|Date:|Amount:|Narration:|Balance:/gi, "")
+    .replace(/[|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+
+  return {
+    description: description || "Bank Statement Transaction",
+    amount: amountKobo,
+    date: parsedDate,
+    category: guessCategory(description),
+  };
+}
+
+/** Extract text from PDF and apply multi-pass date-block bank statement parsing */
 function parsePdfText(text: string): ParsedTransaction[] {
-  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  const datePattern = /(\b\d{1,2}[/-](?:\d{1,2}|[A-Za-z]{3})[/-]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b)/gi;
+  const lines = text.split(/[\r\n]+/).map((l) => l.trim()).filter(Boolean);
   const transactions: ParsedTransaction[] = [];
 
-  const datePattern = /(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4})/i;
-  const amountPattern = /(?:₦\s*)?([+-]?[\d,]+\.\d{2})/g;
+  let currentChunk: string[] = [];
 
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const hasDate = datePattern.test(line);
+    datePattern.lastIndex = 0;
+
+    if (hasDate && currentChunk.length > 0) {
+      const chunkTx = processChunk(currentChunk.join(" "));
+      if (chunkTx) transactions.push(chunkTx);
+      currentChunk = [line];
+    } else {
+      currentChunk.push(line);
+    }
+  }
+
+  if (currentChunk.length > 0) {
+    const chunkTx = processChunk(currentChunk.join(" "));
+    if (chunkTx) transactions.push(chunkTx);
+  }
+
+  if (transactions.length > 0) {
+    const uniqueMap = new Map();
+    for (const t of transactions) {
+      const key = `${t.date}_${t.amount}_${t.description.slice(0, 20)}`;
+      if (!uniqueMap.has(key)) uniqueMap.set(key, t);
+    }
+    return Array.from(uniqueMap.values());
+  }
+
+  // Pass 2: Line-by-line fallback
+  const amountPattern = /(?:₦\s*)?([+-]?(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2})/g;
   for (const line of lines) {
-    const dateMatch = line.match(datePattern);
+    const dateMatch = line.match(/(\b\d{1,2}[/-](?:\d{1,2}|[A-Za-z]{3})[/-]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b)/i);
     const amounts = [...line.matchAll(amountPattern)];
     if (!dateMatch || !amounts.length) continue;
 
@@ -244,7 +312,7 @@ function parsePdfText(text: string): ParsedTransaction[] {
     const parsedDate = safeParseDate(rawDate);
 
     const description = line
-      .replace(datePattern, "")
+      .replace(/(\b\d{1,2}[/-](?:\d{1,2}|[A-Za-z]{3})[/-]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b)/gi, "")
       .replace(amountPattern, "")
       .replace(/CR|DR|credit|debit/gi, "")
       .replace(/[|]/g, " ")
