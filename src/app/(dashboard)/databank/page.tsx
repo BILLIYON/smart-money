@@ -911,28 +911,37 @@ export default function DataBankPage() {
             {/* 2-col card grid */}
             <div className="grid gap-5 mb-5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))" }}>
 
-              {/* Bank Statements */}
+              {/* Option 1: Bank Statements (PDF or CSV) */}
               <div className="rounded-[16px] p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2 text-[14px] font-semibold" style={{ color: "var(--text)" }}>
                     <svg viewBox="0 0 24 24" style={{ width: 18, height: 18, stroke: "var(--green)", fill: "none", strokeWidth: 2 }}>
                       <rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" />
                     </svg>
-                    Bank Statements
+                    Option 1: Bank Statement Upload (PDF / CSV)
                   </div>
                   <span className="text-[11px] font-semibold px-2 py-[3px] rounded-full" style={{ background: "rgba(0,196,140,.1)", color: "var(--green2)" }}>
-                    {loadingFiles ? "Loading..." : `${uploadedFiles.length} connected`}
+                    {loadingFiles ? "Loading..." : `${uploadedFiles.length} uploaded`}
                   </span>
                 </div>
+
+                <div className="text-[11px] mb-3 leading-relaxed" style={{ color: "var(--muted)" }}>
+                  Upload official bank statements from <strong>GTBank, Access, Zenith, UBA, Kuda, Moniepoint, OPay, FirstBank, Stanbic</strong>, etc.
+                </div>
+
                 <div className="flex flex-col gap-[6px] mb-4">
                   {loadingFiles ? (
                     <div className="text-[12px] text-center py-2" style={{ color: "var(--muted)" }}>Loading statements...</div>
                   ) : uploadedFiles.length === 0 ? (
-                    <div className="text-[12px] text-center py-4" style={{ color: "var(--muted)" }}>No statements uploaded yet</div>
+                    <div className="text-[12px] text-center py-3 rounded-[8px] border border-dashed" style={{ color: "var(--muted)", borderColor: "var(--border)" }}>
+                      No statements uploaded yet
+                    </div>
                   ) : (
                     uploadedFiles.map((item) => (
                       <div key={item.label} className="flex items-center gap-[10px] px-3 py-[10px] rounded-[10px]" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
-                        <div className="flex items-center justify-center rounded-[8px] text-[14px]" style={{ width: 32, height: 32, background: "#E8F5E9", flexShrink: 0 }}>📄</div>
+                        <div className="flex items-center justify-center rounded-[8px] text-[14px]" style={{ width: 32, height: 32, background: "#E8F5E9", flexShrink: 0 }}>
+                          {item.label.toLowerCase().endsWith(".pdf") ? "📄" : "📊"}
+                        </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-[12px] font-medium truncate" style={{ color: "var(--text)" }}>{item.label}</div>
                           <div className="text-[11px]" style={{ color: "var(--muted)" }}>{item.meta}</div>
@@ -950,6 +959,7 @@ export default function DataBankPage() {
                     ))
                   )}
                 </div>
+
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -957,6 +967,27 @@ export default function DataBankPage() {
                   accept=".csv,.pdf"
                   style={{ display: "none" }}
                 />
+
+                {/* Direct Action Upload Buttons */}
+                <div className="flex gap-2 mb-3">
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="flex-1 py-2 rounded-[8px] text-[11px] font-semibold flex items-center justify-center gap-1.5 border transition-all cursor-pointer hover:bg-emerald-500/10"
+                    style={{ borderColor: "rgba(0,196,140,0.3)", color: "var(--green2)", background: "rgba(0,196,140,0.05)" }}
+                  >
+                    <span>📄 Upload PDF Statement</span>
+                  </button>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="flex-1 py-2 rounded-[8px] text-[11px] font-semibold flex items-center justify-center gap-1.5 border transition-all cursor-pointer hover:bg-blue-500/10"
+                    style={{ borderColor: "rgba(74,144,217,0.3)", color: "#4A90D9", background: "rgba(74,144,217,0.05)" }}
+                  >
+                    <span>📊 Upload CSV File</span>
+                  </button>
+                </div>
+
                 <div
                   onClick={() => fileInputRef.current?.click()}
                   onDragOver={(e) => { e.preventDefault(); }}
@@ -976,16 +1007,16 @@ export default function DataBankPage() {
                       }
                     }
                   }}
-                  className="flex flex-col items-center justify-center gap-1 py-5 rounded-[12px] border-2 border-dashed cursor-pointer transition-all duration-150"
+                  className="flex flex-col items-center justify-center gap-1 py-4 rounded-[12px] border-2 border-dashed cursor-pointer transition-all duration-150"
                   style={{ borderColor: "var(--border)", opacity: uploading ? 0.6 : 1 }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "var(--green)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border)"; }}
                 >
                   <div className="text-[20px]">📂</div>
                   <div className="text-[12px] font-medium" style={{ color: "var(--muted)" }}>
-                    {uploading ? "Ingesting file..." : "Drop statement here / Click to upload"}
+                    {uploading ? "Ingesting & AI Parsing PDF..." : "Drag & Drop Bank Statement PDF or CSV"}
                   </div>
-                  <div className="text-[11px]" style={{ color: "var(--border)" }}>PDF or CSV · Any bank</div>
+                  <div className="text-[11px]" style={{ color: "var(--border)" }}>Auto-extracts dates, narrations & amounts</div>
                 </div>
               </div>
 
@@ -1002,7 +1033,7 @@ export default function DataBankPage() {
                       <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
                       <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
                     </svg>
-                    Manual Entry
+                    Option 2: Manual Transaction Entry
                   </div>
                   <span className="text-[11px] font-semibold px-2 py-[3px] rounded-full" style={{ background: "rgba(74,144,217,.1)", color: "#4A90D9" }}>Add Manually</span>
                 </div>

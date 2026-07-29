@@ -180,7 +180,52 @@ function parseCsv(text: string): ParsedTransaction[] {
     .filter((t) => t.description && t.amount !== 0);
 }
 
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
 export const maxDuration = 60;
+
+/** AI Fallback Parser using Gemini 1.5 Flash for complex PDF bank statements */
+async function parsePdfWithAI(pdfText: string): Promise<ParsedTransaction[]> {
+  try {
+    const key = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
+    if (!key) return [];
+
+    const genAI = new GoogleGenerativeAI(key);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const prompt = `Extract all transaction entries from this bank statement text into a JSON array.
+Return JSON with this exact array structure:
+[
+  {
+    "description": "narration or details",
+    "amount": number_in_kobo (positive for credit/income, negative for debit/expense, e.g. 5000000 for ₦50,000 credit, -1500000 for ₦15,000 debit),
+    "date": "YYYY-MM-DD",
+    "category": "income" | "transport" | "food" | "subscriptions" | "transfer" | "utilities" | "other"
+  }
+]
+Do not return any markdown formatting outside the JSON array.
+
+Bank Statement Text:
+${pdfText.slice(0, 20000)}`;
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (Array.isArray(parsed)) {
+        return parsed.map((item) => ({
+          description: String(item.description || "Bank Transaction").slice(0, 120),
+          amount: Math.round(Number(item.amount) || 0),
+          date: safeParseDate(item.date),
+          category: String(item.category || guessCategory(item.description || "")),
+        })).filter((t) => t.amount !== 0);
+      }
+    }
+  } catch (err) {
+    console.warn("[/api/databank/upload] AI extraction fallback warning:", err);
+  }
+  return [];
+}
 
 /** Extract text from PDF and apply line-by-line bank heuristics */
 function parsePdfText(text: string): ParsedTransaction[] {
@@ -202,6 +247,7 @@ function parsePdfText(text: string): ParsedTransaction[] {
       .replace(datePattern, "")
       .replace(amountPattern, "")
       .replace(/CR|DR|credit|debit/gi, "")
+      .replace(/[|]/g, " ")
       .trim()
       .slice(0, 120);
 
@@ -258,6 +304,11 @@ export async function POST(req: Request) {
 
       if (pdfText) {
         transactions = parsePdfText(pdfText);
+        // If local regex parser found 0 transactions, trigger AI Bank Statement Parser
+        if (!transactions.length) {
+          console.log("[/api/databank/upload] Regex parsing yielded 0 rows. Triggering AI PDF Statement Parser...");
+          transactions = await parsePdfWithAI(pdfText);
+        }
       }
     } else if (fileName.endsWith(".csv")) {
       const text = buffer.toString("utf-8");
