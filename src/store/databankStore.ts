@@ -100,7 +100,7 @@ type DatabankStore = {
   loadContext: () => Promise<void>;
 
   /** Uploads a PDF or CSV bank statement. */
-  uploadStatement: (file: File) => Promise<UploadResult>;
+  uploadStatement: (file: File, aiEngine?: string) => Promise<UploadResult>;
 
   /** Adds a single manual entry and refreshes context. */
   addManualEntry: (entry: ManualEntry) => Promise<void>;
