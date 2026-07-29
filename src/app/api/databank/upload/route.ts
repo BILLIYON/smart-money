@@ -146,14 +146,15 @@ function parseCsv(text: string): ParsedTransaction[] {
     .filter((t) => t.description && t.amount !== 0);
 }
 
+export const maxDuration = 60;
+
 /** Extract text from PDF and apply simple line-by-line heuristics */
 function parsePdfText(text: string): ParsedTransaction[] {
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
   const transactions: ParsedTransaction[] = [];
 
-  // Very simplified: look for lines that contain a date pattern and a numeric amount
-  const datePattern = /(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})/;
-  const amountPattern = /([\d,]+\.\d{2})/g;
+  const datePattern = /(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4})/i;
+  const amountPattern = /(?:₦\s*)?([+-]?[\d,]+\.\d{2})/g;
 
   for (const line of lines) {
     const dateMatch = line.match(datePattern);
@@ -163,14 +164,24 @@ function parsePdfText(text: string): ParsedTransaction[] {
     const rawDate = dateMatch[1];
     const parsedDate = safeParseDate(rawDate);
 
-    const description = line.replace(datePattern, "").replace(amountPattern, "").trim().slice(0, 100);
+    const description = line
+      .replace(datePattern, "")
+      .replace(amountPattern, "")
+      .replace(/CR|DR|credit|debit/gi, "")
+      .trim()
+      .slice(0, 120);
+
     const amountIndex = amounts.length >= 2 ? amounts.length - 2 : 0;
-    const amountKobo = parseAmount(amounts[amountIndex][1]);
-    const isDebit = /DR|debit/i.test(line);
+    let amountKobo = parseAmount(amounts[amountIndex][1]);
+    const isDebit = /DR|debit|withdrawal|outward/i.test(line) || amounts[amountIndex][1].startsWith("-");
+    const isCredit = /CR|credit|deposit|inward/i.test(line);
+
+    if (isDebit && amountKobo > 0) amountKobo = -amountKobo;
+    if (isCredit && amountKobo < 0) amountKobo = Math.abs(amountKobo);
 
     transactions.push({
-      description: description || "PDF transaction",
-      amount: isDebit ? -Math.abs(amountKobo) : amountKobo,
+      description: description || "Bank Statement Transaction",
+      amount: amountKobo,
       date: parsedDate,
       category: guessCategory(description),
     });
@@ -180,73 +191,94 @@ function parsePdfText(text: string): ParsedTransaction[] {
 }
 
 export async function POST(req: Request) {
-  const { supabase, userId, error } = await requireAuth();
-  if (error) return error;
-
-  const formData = await req.formData();
-  const file = formData.get("file") as File | null;
-  if (!file) {
-    return NextResponse.json({ error: "No file provided" }, { status: 400 });
-  }
-
-  const fileName = file.name.toLowerCase();
-  const buffer = Buffer.from(await file.arrayBuffer());
-
-  let transactions: ParsedTransaction[] = [];
-
   try {
+    const { supabase, userId, error } = await requireAuth();
+    if (error) return error;
+
+    const formData = await req.formData();
+    const file = formData.get("file") as File | null;
+    if (!file) {
+      return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    }
+
+    const fileName = file.name.toLowerCase();
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    let transactions: ParsedTransaction[] = [];
+
     if (fileName.endsWith(".pdf")) {
-      const parser = new PDFParse({ data: buffer });
-      const parsed = await parser.getText();
-      transactions = parsePdfText(parsed.text);
+      let pdfText = "";
+      try {
+        const uint8 = new Uint8Array(buffer);
+        const parser = new PDFParse(uint8);
+        const parsed = await parser.getText();
+        pdfText = parsed.text || "";
+      } catch (pdfErr: any) {
+        console.warn("[/api/databank/upload] PDFParse class instance failed, attempting fallback:", pdfErr?.message);
+        try {
+          const legacyPdf = require("pdf-parse");
+          if (typeof legacyPdf === "function") {
+            const data = await legacyPdf(buffer);
+            pdfText = data.text || "";
+          }
+        } catch (fallbackErr: any) {
+          console.error("[/api/databank/upload] Fallback PDF parse error:", fallbackErr?.message);
+        }
+      }
+
+      if (pdfText) {
+        transactions = parsePdfText(pdfText);
+      }
     } else if (fileName.endsWith(".csv")) {
       const text = buffer.toString("utf-8");
       transactions = parseCsv(text);
     } else {
       return NextResponse.json(
-        { error: "Unsupported file type. Upload a PDF or CSV." },
+        { error: "Unsupported file type. Please upload a PDF or CSV bank statement." },
         { status: 400 }
       );
     }
-  } catch (e: any) {
-    console.error("[/api/databank/upload] parse error:", e);
-    console.error(`Error details: ${e.message}\nStack: ${e.stack}`);
-    return NextResponse.json({ error: "Failed to parse file" }, { status: 422 });
-  }
 
-  if (!transactions.length) {
+    if (!transactions.length) {
+      return NextResponse.json(
+        { error: "No structured transactions could be extracted from this statement. Please check the file format or upload a CSV version." },
+        { status: 422 }
+      );
+    }
+
+    // Insert all parsed transactions
+    const rows = transactions.map((t) => ({
+      user_id: userId,
+      source: "upload",
+      entry_type: t.amount > 0 ? "income" : "expense",
+      amount: t.amount,
+      description: t.description,
+      category: t.category,
+      entry_date: t.date,
+      metadata: { fileName: file.name },
+    }));
+
+    const { error: dbError } = await supabase.from("databank_entries").insert(rows);
+    if (dbError) {
+      console.error("[/api/databank/upload] DB insert error:", dbError);
+      return NextResponse.json({ error: "Failed to save bank statement transactions to database." }, { status: 500 });
+    }
+
+    const totalIncome = transactions.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
+    const totalExpenses = transactions.filter((t) => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0);
+
+    return NextResponse.json({
+      ok: true,
+      parsed: transactions.length,
+      totalIncome,
+      totalExpenses,
+      categories: [...new Set(transactions.map((t) => t.category))],
+    });
+  } catch (err: any) {
+    console.error("[/api/databank/upload] Unexpected exception:", err);
     return NextResponse.json(
-      { error: "No transactions found in file. Check the format." },
-      { status: 422 }
+      { error: err.message || "An unexpected error occurred while processing the statement." },
+      { status: 500 }
     );
   }
-
-  // Insert all parsed transactions
-  const rows = transactions.map((t) => ({
-    user_id: userId,
-    source: "upload",
-    entry_type: t.amount > 0 ? "income" : "expense",
-    amount: t.amount,
-    description: t.description,
-    category: t.category,
-    entry_date: t.date,
-    metadata: { fileName: file.name },
-  }));
-
-  const { error: dbError } = await supabase.from("databank_entries").insert(rows);
-  if (dbError) {
-    console.error("[/api/databank/upload] DB insert:", dbError);
-    return NextResponse.json({ error: "Failed to save transactions" }, { status: 500 });
-  }
-
-  const totalIncome = transactions.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
-  const totalExpenses = transactions.filter((t) => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0);
-
-  return NextResponse.json({
-    ok: true,
-    parsed: transactions.length,
-    totalIncome,
-    totalExpenses,
-    categories: [...new Set(transactions.map((t) => t.category))],
-  });
 }

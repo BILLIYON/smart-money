@@ -137,7 +137,16 @@ export const useDatabankStore = create<DatabankStore>((set, get) => ({
     form.append("file", file);
 
     const res = await fetch("/api/databank/upload", { method: "POST", body: form });
-    const json = await res.json();
+    const text = await res.text();
+    let json: any = {};
+
+    try {
+      json = JSON.parse(text);
+    } catch {
+      const msg = `Server returned an unreadable response (${res.status} ${res.statusText}). File size may exceed limits or format is unreadable.`;
+      set({ uploadError: msg });
+      throw new Error(msg);
+    }
 
     if (!res.ok) {
       const msg = json.error ?? "Upload failed";
