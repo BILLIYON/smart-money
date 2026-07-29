@@ -187,22 +187,51 @@ import OpenAI from "openai";
 
 export const maxDuration = 60;
 
-/** AI Fallback Parser supporting Groq (Llama 3.3 70B / 3.1 8B), Claude 3.5 Sonnet, Gemini & OpenAI */
-async function parsePdfWithAI(pdfText: string, preferredEngine?: string): Promise<ParsedTransaction[]> {
-  const prompt = `Extract all transaction entries from this bank statement text into a JSON array.
-Return JSON with this exact array structure:
+/** AI Fallback Parser supporting Groq (Llama 3.3 70B / 3.1 8B), Claude 3.5 Sonnet, Gemini 2.0 Flash & OpenAI */
+async function parsePdfWithAI(pdfText: string, preferredEngine?: string, rawBuffer?: Buffer): Promise<ParsedTransaction[]> {
+  const hasText = pdfText && pdfText.trim().length > 50;
+
+  const prompt = hasText
+    ? `Extract ALL bank transaction entries from this bank statement text. Return ONLY a valid JSON array, no other text:
 [
   {
-    "description": "narration or details",
-    "amount": number_in_kobo (positive for credit/income, negative for debit/expense, e.g. 5000000 for ₦50,000 credit, -1500000 for ₦15,000 debit),
+    "description": "narration/details of transaction",
+    "amount": number_in_kobo (POSITIVE for credits/income, NEGATIVE for debits/expenses. E.g. ₦50,000 credit = 5000000, ₦15,000 debit = -1500000),
     "date": "YYYY-MM-DD",
     "category": "income" | "transport" | "food" | "subscriptions" | "transfer" | "utilities" | "other"
   }
 ]
-Do not return any commentary or markdown formatting outside the JSON array.
-
 Bank Statement Text:
-${pdfText.slice(0, 25000)}`;
+${pdfText.slice(0, 25000)}`
+    : `This is a base64-encoded Nigerian bank statement PDF. Decode and extract ALL transaction entries.
+Return ONLY a valid JSON array:
+[
+  {
+    "description": "narration/details",
+    "amount": number_in_kobo (POSITIVE for credits, NEGATIVE for debits),
+    "date": "YYYY-MM-DD",
+    "category": "income" | "transport" | "food" | "subscriptions" | "transfer" | "utilities" | "other"
+  }
+]
+PDF base64:
+${rawBuffer ? rawBuffer.toString("base64").slice(0, 20000) : "[no data]"}`;
+
+  const parseAIResponse = (text: string): ParsedTransaction[] => {
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) return [];
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((item) => ({
+          description: String(item.description || "Bank Transaction").slice(0, 120),
+          amount: Math.round(Number(item.amount) || 0),
+          date: safeParseDate(item.date),
+          category: String(item.category || guessCategory(item.description || "")),
+        })).filter((t) => t.amount !== 0);
+      }
+    } catch { /* invalid JSON */ }
+    return [];
+  };
 
   // Strategy 1: Groq API (Llama 3.3 70B Versatile or Llama 3.1 8B Instant)
   try {
@@ -210,25 +239,15 @@ ${pdfText.slice(0, 25000)}`;
     if (groqKey) {
       const groq = new Groq({ apiKey: groqKey });
       const modelName = preferredEngine === "groq-8b" ? "llama-3.1-8b-instant" : "llama-3.3-70b-versatile";
-
       const response = await groq.chat.completions.create({
         model: modelName,
         messages: [{ role: "user", content: prompt }],
         max_tokens: 4096,
       });
-
-      const text = response.choices[0]?.message?.content || "";
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((item) => ({
-            description: String(item.description || "Bank Transaction").slice(0, 120),
-            amount: Math.round(Number(item.amount) || 0),
-            date: safeParseDate(item.date),
-            category: String(item.category || guessCategory(item.description || "")),
-          })).filter((t) => t.amount !== 0);
-        }
+      const results = parseAIResponse(response.choices[0]?.message?.content || "");
+      if (results.length > 0) {
+        console.log(`[/api/databank/upload] Groq (${modelName}) extracted ${results.length} transactions`);
+        return results;
       }
     }
   } catch (err) {
@@ -236,81 +255,125 @@ ${pdfText.slice(0, 25000)}`;
   }
 
   // Strategy 2: Anthropic Claude 3.5 Sonnet API
+  // If PDF text is available, send as text. If not, send the PDF as base64 via vision.
   try {
     const claudeKey = process.env.ANTHROPIC_API_KEY;
     if (claudeKey) {
       const anthropic = new Anthropic({ apiKey: claudeKey });
+      let messageContent: Anthropic.MessageParam["content"];
+
+      if (hasText) {
+        messageContent = prompt;
+      } else if (rawBuffer) {
+        // Use Claude's document API with base64 PDF
+        messageContent = [
+          {
+            type: "document" as const,
+            source: {
+              type: "base64" as const,
+              media_type: "application/pdf" as const,
+              data: rawBuffer.toString("base64"),
+            },
+          },
+          {
+            type: "text" as const,
+            text: `Extract ALL bank transaction entries from this Nigerian bank statement PDF. Return ONLY a valid JSON array:
+[
+  {
+    "description": "narration/details",
+    "amount": number_in_kobo (POSITIVE for credits, NEGATIVE for debits),
+    "date": "YYYY-MM-DD",
+    "category": "income" | "transport" | "food" | "subscriptions" | "transfer" | "utilities" | "other"
+  }
+]`,
+          },
+        ];
+      } else {
+        messageContent = prompt;
+      }
+
       const response = await anthropic.messages.create({
         model: "claude-3-5-sonnet-20241022",
         max_tokens: 4096,
-        messages: [{ role: "user", content: prompt }],
+        messages: [{ role: "user", content: messageContent }],
       });
-
       const responseText = response.content[0]?.type === "text" ? response.content[0].text : "";
-      const jsonMatch = responseText.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((item) => ({
-            description: String(item.description || "Bank Transaction").slice(0, 120),
-            amount: Math.round(Number(item.amount) || 0),
-            date: safeParseDate(item.date),
-            category: String(item.category || guessCategory(item.description || "")),
-          })).filter((t) => t.amount !== 0);
-        }
+      const results = parseAIResponse(responseText);
+      if (results.length > 0) {
+        console.log(`[/api/databank/upload] Claude extracted ${results.length} transactions`);
+        return results;
       }
     }
   } catch (err) {
     console.warn("[/api/databank/upload] Claude API extraction warning:", err);
   }
 
-  // Strategy 3: Google Gemini API Fallback
+  // Strategy 3: Google Gemini 2.0 Flash (with File API for PDFs)
   try {
     const geminiKey = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
     if (geminiKey) {
       const genAI = new GoogleGenerativeAI(geminiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      const result = await model.generateContent(prompt);
+      // Use gemini-2.0-flash (gemini-1.5-flash is deprecated/404)
+      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+
+      let geminiContent: Parameters<typeof model.generateContent>[0];
+
+      if (!hasText && rawBuffer) {
+        // Use inline PDF data with Gemini's multimodal support
+        geminiContent = {
+          contents: [{
+            role: "user",
+            parts: [
+              {
+                inlineData: {
+                  mimeType: "application/pdf",
+                  data: rawBuffer.toString("base64"),
+                },
+              },
+              {
+                text: `Extract ALL bank transaction entries from this Nigerian bank statement PDF. Return ONLY a valid JSON array:
+[
+  {
+    "description": "narration/details",
+    "amount": number_in_kobo (POSITIVE for credits, NEGATIVE for debits),
+    "date": "YYYY-MM-DD",
+    "category": "income" | "transport" | "food" | "subscriptions" | "transfer" | "utilities" | "other"
+  }
+]`,
+              },
+            ],
+          }],
+        };
+      } else {
+        geminiContent = prompt;
+      }
+
+      const result = await model.generateContent(geminiContent);
       const text = result.response.text();
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (Array.isArray(parsed)) {
-          return parsed.map((item) => ({
-            description: String(item.description || "Bank Transaction").slice(0, 120),
-            amount: Math.round(Number(item.amount) || 0),
-            date: safeParseDate(item.date),
-            category: String(item.category || guessCategory(item.description || "")),
-          })).filter((t) => t.amount !== 0);
-        }
+      const results = parseAIResponse(text);
+      if (results.length > 0) {
+        console.log(`[/api/databank/upload] Gemini extracted ${results.length} transactions`);
+        return results;
       }
     }
   } catch (err) {
     console.warn("[/api/databank/upload] Gemini API extraction fallback warning:", err);
   }
 
-  // Strategy 4: OpenAI API Fallback
+  // Strategy 4: OpenAI API Fallback (text only — skip if quota error likely)
   try {
     const openaiKey = process.env.OPENAI_API_KEY;
-    if (openaiKey) {
+    if (openaiKey && hasText) {
       const client = new OpenAI({ apiKey: openaiKey });
       const response = await client.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
         max_tokens: 4096,
       });
-      const text = response.choices[0]?.message?.content || "";
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((item) => ({
-            description: String(item.description || "Bank Transaction").slice(0, 120),
-            amount: Math.round(Number(item.amount) || 0),
-            date: safeParseDate(item.date),
-            category: String(item.category || guessCategory(item.description || "")),
-          })).filter((t) => t.amount !== 0);
-        }
+      const results = parseAIResponse(response.choices[0]?.message?.content || "");
+      if (results.length > 0) {
+        console.log(`[/api/databank/upload] OpenAI extracted ${results.length} transactions`);
+        return results;
       }
     }
   } catch (err) {
@@ -462,32 +525,35 @@ export async function POST(req: Request) {
     let transactions: ParsedTransaction[] = [];
 
     if (fileName.endsWith(".pdf")) {
-      // Multi-tier text extraction
-      let pdfText = extractTextFromPdfBuffer(buffer);
+      // Tier 1: Try pdf-parse (most reliable for text-based PDFs)
+      let pdfText = "";
+      try {
+        const pdfParse = require("pdf-parse");
+        const data = await pdfParse(buffer);
+        pdfText = data.text || "";
+        console.log(`[/api/databank/upload] pdf-parse extracted ${pdfText.length} chars`);
+      } catch (pdfErr: any) {
+        console.warn("[/api/databank/upload] pdf-parse failed:", pdfErr?.message);
+      }
 
+      // Tier 2: Fallback to our custom zlib extractor
       if (!pdfText.trim()) {
-        try {
-          const { PDFParse } = require("pdf-parse");
-          const uint8 = new Uint8Array(buffer);
-          const parser = new PDFParse(uint8);
-          const parsed = await parser.getText();
-          pdfText = parsed.text || "";
-        } catch (pdfErr: any) {
-          console.warn("[/api/databank/upload] Fallback PDFParse class failed:", pdfErr?.message);
-        }
+        pdfText = extractTextFromPdfBuffer(buffer);
+        console.log(`[/api/databank/upload] Custom extractor got ${pdfText.length} chars`);
       }
 
-      if (pdfText) {
+      // Tier 3: Try local regex parsing on extracted text
+      if (pdfText.trim()) {
         transactions = parsePdfText(pdfText);
+        console.log(`[/api/databank/upload] Regex parser found ${transactions.length} transactions`);
       }
 
-      // ALWAYS try AI if local parsing yielded 0 transactions — even if pdfText is empty.
-      // Some PDFs use encoded fonts / compressed streams that our extractor can't read,
-      // but Claude/Gemini can still parse them using multimodal or raw binary context.
+      // Tier 4 (AI): Always fire AI if regex found 0 results.
+      // Pass raw buffer as base64 so Gemini File API / Claude can read the actual PDF bytes.
       if (!transactions.length) {
         const preferredEngine = (formData.get("aiEngine") as string) || "claude";
         console.log(`[/api/databank/upload] Triggering AI PDF Parser (${preferredEngine}). pdfText length: ${pdfText.length}`);
-        transactions = await parsePdfWithAI(pdfText || `[PDF binary — ${file.name} — ${buffer.length} bytes]`, preferredEngine);
+        transactions = await parsePdfWithAI(pdfText, preferredEngine, buffer);
       }
     } else if (fileName.endsWith(".csv")) {
       const text = buffer.toString("utf-8");
