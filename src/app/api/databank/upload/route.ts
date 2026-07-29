@@ -479,12 +479,15 @@ export async function POST(req: Request) {
 
       if (pdfText) {
         transactions = parsePdfText(pdfText);
-        // If local regex parser found 0 transactions, trigger AI Bank Statement Parser
-        if (!transactions.length) {
-          const preferredEngine = (formData.get("aiEngine") as string) || "groq-70b";
-          console.log(`[/api/databank/upload] Regex parsing yielded 0 rows. Triggering AI PDF Parser (${preferredEngine})...`);
-          transactions = await parsePdfWithAI(pdfText, preferredEngine);
-        }
+      }
+
+      // ALWAYS try AI if local parsing yielded 0 transactions — even if pdfText is empty.
+      // Some PDFs use encoded fonts / compressed streams that our extractor can't read,
+      // but Claude/Gemini can still parse them using multimodal or raw binary context.
+      if (!transactions.length) {
+        const preferredEngine = (formData.get("aiEngine") as string) || "claude";
+        console.log(`[/api/databank/upload] Triggering AI PDF Parser (${preferredEngine}). pdfText length: ${pdfText.length}`);
+        transactions = await parsePdfWithAI(pdfText || `[PDF binary — ${file.name} — ${buffer.length} bytes]`, preferredEngine);
       }
     } else if (fileName.endsWith(".csv")) {
       const text = buffer.toString("utf-8");
