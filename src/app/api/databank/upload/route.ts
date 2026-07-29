@@ -183,10 +183,11 @@ function parseCsv(text: string): ParsedTransaction[] {
 import Groq from "groq-sdk";
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import OpenAI from "openai";
 
 export const maxDuration = 60;
 
-/** AI Fallback Parser supporting Groq (Llama 3.3 70B / 3.1 8B), Claude 3.5 Sonnet & Gemini */
+/** AI Fallback Parser supporting Groq (Llama 3.3 70B / 3.1 8B), Claude 3.5 Sonnet, Gemini & OpenAI */
 async function parsePdfWithAI(pdfText: string, preferredEngine?: string): Promise<ParsedTransaction[]> {
   const prompt = `Extract all transaction entries from this bank statement text into a JSON array.
 Return JSON with this exact array structure:
@@ -288,33 +289,67 @@ ${pdfText.slice(0, 25000)}`;
     console.warn("[/api/databank/upload] Gemini API extraction fallback warning:", err);
   }
 
+  // Strategy 4: OpenAI API Fallback
+  try {
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (openaiKey) {
+      const client = new OpenAI({ apiKey: openaiKey });
+      const response = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 4096,
+      });
+      const text = response.choices[0]?.message?.content || "";
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((item) => ({
+            description: String(item.description || "Bank Transaction").slice(0, 120),
+            amount: Math.round(Number(item.amount) || 0),
+            date: safeParseDate(item.date),
+            category: String(item.category || guessCategory(item.description || "")),
+          })).filter((t) => t.amount !== 0);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[/api/databank/upload] OpenAI API extraction fallback warning:", err);
+  }
+
   return [];
 }
 
 function processChunk(chunkStr: string): ParsedTransaction | null {
-  const datePattern = /(\b\d{1,2}[/-](?:\d{1,2}|[A-Za-z]{3})[/-]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b)/i;
-  const amountPattern = /(?:₦\s*)?([+-]?(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2})/g;
+  const dateRegex = /(\b\d{1,2}[/-](?:\d{1,2}|[A-Za-z]{3,9})[/-]\d{2,4}\b|\b\d{4}[/-]\d{1,2}[/-]\d{1,2}\b|\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4}\b)/i;
+  const amountRegex = /(?:₦\s*)?([+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)/g;
 
-  const dateMatch = chunkStr.match(datePattern);
-  const amounts = [...chunkStr.matchAll(amountPattern)];
+  const dateMatch = chunkStr.match(dateRegex);
+  if (!dateMatch) return null;
 
-  if (!dateMatch || amounts.length === 0) return null;
+  // Remove date string from chunk text BEFORE matching amounts to avoid matching date digits as amounts
+  const textWithoutDate = chunkStr.replace(dateRegex, " ");
+  const matches = [...textWithoutDate.matchAll(amountRegex)];
 
-  const rawDate = dateMatch[1];
-  const parsedDate = safeParseDate(rawDate);
+  const validAmounts = matches.filter((m) => {
+    const val = parseFloat(m[1].replace(/,/g, ""));
+    return !isNaN(val) && Math.abs(val) > 0;
+  });
 
-  const amountIndex = amounts.length >= 2 ? amounts.length - 2 : 0;
-  let amountKobo = parseAmount(amounts[amountIndex][1]);
+  if (validAmounts.length === 0) return null;
 
-  const isDebit = /DR|debit|withdrawal|outward/i.test(chunkStr) || amounts[amountIndex][1].startsWith("-");
+  const targetMatch = validAmounts.length >= 2 ? validAmounts[validAmounts.length - 2] : validAmounts[0];
+  const rawAmount = targetMatch[1];
+  let amountKobo = parseAmount(rawAmount);
+
+  const isDebit = /DR|debit|withdrawal|outward/i.test(chunkStr) || rawAmount.startsWith("-");
   const isCredit = /CR|credit|deposit|inward/i.test(chunkStr);
 
   if (isDebit && amountKobo > 0) amountKobo = -amountKobo;
   if (isCredit && amountKobo < 0) amountKobo = Math.abs(amountKobo);
 
-  const description = chunkStr
-    .replace(datePattern, "")
-    .replace(amountPattern, "")
+  const description = textWithoutDate
+    .replace(amountRegex, "")
     .replace(/CR|DR|credit|debit|Date:|Amount:|Narration:|Balance:/gi, "")
     .replace(/[|]/g, " ")
     .replace(/\s+/g, " ")
@@ -322,16 +357,16 @@ function processChunk(chunkStr: string): ParsedTransaction | null {
     .slice(0, 120);
 
   return {
-    description: description || "Bank Statement Transaction",
+    description: description || "Bank Statement Entry",
     amount: amountKobo,
-    date: parsedDate,
+    date: safeParseDate(dateMatch[0]),
     category: guessCategory(description),
   };
 }
 
 /** Extract text from PDF and apply multi-pass date-block bank statement parsing */
 function parsePdfText(text: string): ParsedTransaction[] {
-  const datePattern = /(\b\d{1,2}[/-](?:\d{1,2}|[A-Za-z]{3})[/-]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b)/gi;
+  const dateRegex = /(\b\d{1,2}[/-](?:\d{1,2}|[A-Za-z]{3,9})[/-]\d{2,4}\b|\b\d{4}[/-]\d{1,2}[/-]\d{1,2}\b|\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4}\b)/gi;
   const lines = text.split(/[\r\n]+/).map((l) => l.trim()).filter(Boolean);
   const transactions: ParsedTransaction[] = [];
 
@@ -339,8 +374,8 @@ function parsePdfText(text: string): ParsedTransaction[] {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const hasDate = datePattern.test(line);
-    datePattern.lastIndex = 0;
+    dateRegex.lastIndex = 0;
+    const hasDate = dateRegex.test(line);
 
     if (hasDate && currentChunk.length > 0) {
       const chunkTx = processChunk(currentChunk.join(" "));
@@ -366,30 +401,38 @@ function parsePdfText(text: string): ParsedTransaction[] {
   }
 
   // Pass 2: Line-by-line fallback
-  const amountPattern = /(?:₦\s*)?([+-]?(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2})/g;
+  const amountRegex = /(?:₦\s*)?([+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)/g;
   for (const line of lines) {
-    const dateMatch = line.match(/(\b\d{1,2}[/-](?:\d{1,2}|[A-Za-z]{3})[/-]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b)/i);
-    const amounts = [...line.matchAll(amountPattern)];
-    if (!dateMatch || !amounts.length) continue;
+    dateRegex.lastIndex = 0;
+    const dateMatch = dateRegex.exec(line);
+    if (!dateMatch) continue;
 
-    const rawDate = dateMatch[1];
+    const lineWithoutDate = line.replace(dateRegex, " ");
+    const matches = [...lineWithoutDate.matchAll(amountRegex)];
+    const validAmounts = matches.filter((m) => {
+      const val = parseFloat(m[1].replace(/,/g, ""));
+      return !isNaN(val) && Math.abs(val) > 0;
+    });
+    if (!validAmounts.length) continue;
+
+    const rawDate = dateMatch[0];
     const parsedDate = safeParseDate(rawDate);
 
-    const description = line
-      .replace(/(\b\d{1,2}[/-](?:\d{1,2}|[A-Za-z]{3})[/-]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b)/gi, "")
-      .replace(amountPattern, "")
-      .replace(/CR|DR|credit|debit/gi, "")
-      .replace(/[|]/g, " ")
-      .trim()
-      .slice(0, 120);
+    const rawAmount = validAmounts[validAmounts.length >= 2 ? validAmounts.length - 2 : 0][1];
+    let amountKobo = parseAmount(rawAmount);
 
-    const amountIndex = amounts.length >= 2 ? amounts.length - 2 : 0;
-    let amountKobo = parseAmount(amounts[amountIndex][1]);
-    const isDebit = /DR|debit|withdrawal|outward/i.test(line) || amounts[amountIndex][1].startsWith("-");
+    const isDebit = /DR|debit|withdrawal|outward/i.test(line) || rawAmount.startsWith("-");
     const isCredit = /CR|credit|deposit|inward/i.test(line);
 
     if (isDebit && amountKobo > 0) amountKobo = -amountKobo;
     if (isCredit && amountKobo < 0) amountKobo = Math.abs(amountKobo);
+
+    const description = lineWithoutDate
+      .replace(amountRegex, "")
+      .replace(/CR|DR|credit|debit/gi, "")
+      .replace(/[|]/g, " ")
+      .trim()
+      .slice(0, 120);
 
     transactions.push({
       description: description || "Bank Statement Transaction",
