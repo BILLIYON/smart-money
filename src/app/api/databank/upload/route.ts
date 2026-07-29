@@ -180,19 +180,19 @@ function parseCsv(text: string): ParsedTransaction[] {
     .filter((t) => t.description && t.amount !== 0);
 }
 
+import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export const maxDuration = 60;
 
-/** AI Fallback Parser using Gemini 1.5 Flash for complex PDF bank statements */
+/** AI Fallback Parser using Anthropic Claude API (with Gemini fallback) for complex PDF bank statements */
 async function parsePdfWithAI(pdfText: string): Promise<ParsedTransaction[]> {
+  // Strategy 1: Anthropic Claude API (Primary)
   try {
-    const key = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
-    if (!key) return [];
-
-    const genAI = new GoogleGenerativeAI(key);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const prompt = `Extract all transaction entries from this bank statement text into a JSON array.
+    const claudeKey = process.env.ANTHROPIC_API_KEY;
+    if (claudeKey) {
+      const anthropic = new Anthropic({ apiKey: claudeKey });
+      const prompt = `Extract all transaction entries from this bank statement text into a JSON array.
 Return JSON with this exact array structure:
 [
   {
@@ -202,28 +202,73 @@ Return JSON with this exact array structure:
     "category": "income" | "transport" | "food" | "subscriptions" | "transfer" | "utilities" | "other"
   }
 ]
-Do not return any markdown formatting outside the JSON array.
+Do not return any commentary or markdown formatting outside the JSON array.
 
 Bank Statement Text:
-${pdfText.slice(0, 20000)}`;
+${pdfText.slice(0, 25000)}`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (Array.isArray(parsed)) {
-        return parsed.map((item) => ({
-          description: String(item.description || "Bank Transaction").slice(0, 120),
-          amount: Math.round(Number(item.amount) || 0),
-          date: safeParseDate(item.date),
-          category: String(item.category || guessCategory(item.description || "")),
-        })).filter((t) => t.amount !== 0);
+      const response = await anthropic.messages.create({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 4096,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      const responseText = response.content[0]?.type === "text" ? response.content[0].text : "";
+      const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((item) => ({
+            description: String(item.description || "Bank Transaction").slice(0, 120),
+            amount: Math.round(Number(item.amount) || 0),
+            date: safeParseDate(item.date),
+            category: String(item.category || guessCategory(item.description || "")),
+          })).filter((t) => t.amount !== 0);
+        }
       }
     }
   } catch (err) {
-    console.warn("[/api/databank/upload] AI extraction fallback warning:", err);
+    console.warn("[/api/databank/upload] Claude API extraction warning:", err);
   }
+
+  // Strategy 2: Gemini API Fallback
+  try {
+    const geminiKey = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
+    if (geminiKey) {
+      const genAI = new GoogleGenerativeAI(geminiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const prompt = `Extract all transaction entries from this bank statement text into a JSON array.
+Return JSON with this exact array structure:
+[
+  {
+    "description": "narration or details",
+    "amount": number_in_kobo (positive for credit/income, negative for debit/expense, e.g. 5000000 for ₦50,000 credit, -1500000 for ₦15,000 debit),
+    "date": "YYYY-MM-DD",
+    "category": "income" | "transport" | "food" | "subscriptions" | "transfer" | "utilities" | "other"
+  }
+]
+Bank Statement Text:
+${pdfText.slice(0, 20000)}`;
+
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (Array.isArray(parsed)) {
+          return parsed.map((item) => ({
+            description: String(item.description || "Bank Transaction").slice(0, 120),
+            amount: Math.round(Number(item.amount) || 0),
+            date: safeParseDate(item.date),
+            category: String(item.category || guessCategory(item.description || "")),
+          })).filter((t) => t.amount !== 0);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[/api/databank/upload] Gemini API extraction fallback warning:", err);
+  }
+
   return [];
 }
 
