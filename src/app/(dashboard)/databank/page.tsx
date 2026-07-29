@@ -619,13 +619,15 @@ export default function DataBankPage() {
     await useDatabankStore.getState().loadContext();
   };
 
+  const [selectedAiEngine, setSelectedAiEngine] = useState<string>("groq-70b");
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setUploading(true);
     try {
-      await uploadStatement(file);
+      await uploadStatement(file, selectedAiEngine);
       await fetchUploadedFiles();
       popup.success("Statement Uploaded", `Successfully uploaded & parsed ${file.name}`);
     } catch (err: any) {
@@ -967,6 +969,24 @@ export default function DataBankPage() {
                   accept=".csv,.pdf"
                   style={{ display: "none" }}
                 />
+
+                {/* AI Engine Selection */}
+                <div className="mb-3 p-2.5 rounded-[10px] border flex items-center justify-between gap-2" style={{ background: "var(--bg)", borderColor: "var(--border)" }}>
+                  <div className="text-[11px] font-semibold flex items-center gap-1.5" style={{ color: "var(--text)" }}>
+                    <span className="text-emerald-400">⚡ AI Statement Engine:</span>
+                  </div>
+                  <select
+                    value={selectedAiEngine}
+                    onChange={(e) => setSelectedAiEngine(e.target.value)}
+                    className="px-2.5 py-1 rounded-[6px] text-[11px] font-semibold outline-none cursor-pointer border"
+                    style={{ background: "var(--card)", borderColor: "rgba(0,196,140,0.3)", color: "var(--green2)" }}
+                  >
+                    <option value="groq-70b">⚡ Groq Llama 3.3 70B (Fast Reasoning)</option>
+                    <option value="groq-8b">🚀 Groq Llama 3.1 8B (Sub-100ms Instant)</option>
+                    <option value="claude">🧠 Anthropic Claude 3.5 Sonnet</option>
+                    <option value="gemini">🔮 Google Gemini 1.5 Flash</option>
+                  </select>
+                </div>
 
                 {/* Direct Action Upload Buttons */}
                 <div className="flex gap-2 mb-3">

@@ -131,10 +131,11 @@ export const useDatabankStore = create<DatabankStore>((set, get) => ({
     }
   },
 
-  uploadStatement: async (file: File): Promise<UploadResult> => {
+  uploadStatement: async (file: File, aiEngine?: string): Promise<UploadResult> => {
     set({ uploadError: null });
     const form = new FormData();
     form.append("file", file);
+    if (aiEngine) form.append("aiEngine", aiEngine);
 
     const res = await fetch("/api/databank/upload", { method: "POST", body: form });
     const text = await res.text();

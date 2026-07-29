@@ -194,6 +194,8 @@ function ProfileTab() {
   const [primaryGoal, setPrimaryGoal] = useState("Build emergency fund");
   const [riskTolerance, setRiskTolerance] = useState("Moderate (balanced growth)");
 
+  const [aiEngine, setAiEngine] = useState("groq-70b");
+
   useEffect(() => {
     loadProfile().then(() => setLoading(false));
   }, [loadProfile]);
@@ -472,6 +474,49 @@ function ProfileTab() {
               <option value="KES">Kenyan Shilling (KSh)</option>
               <option value="ZAR">South African Rand (R)</option>
             </select>
+          </div>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: "var(--green2)",
+                textTransform: "uppercase",
+                letterSpacing: ".5px",
+                marginBottom: 6,
+              }}
+            >
+              ⚡ AI Intelligence & DataBank Engine
+            </div>
+            <select
+              value={aiEngine}
+              onChange={(e) => {
+                setAiEngine(e.target.value);
+                popup.success("AI Engine Selected", `Switched primary AI provider to ${e.target.selectedOptions[0].text}`);
+              }}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                border: "1px solid rgba(0,196,140,0.35)",
+                borderRadius: 8,
+                fontFamily: "inherit",
+                fontSize: 13,
+                color: "var(--text)",
+                background: "var(--card)",
+                outline: "none",
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              <option value="groq-70b">⚡ Groq Llama 3.3 70B Versatile (Fast Agentic Reasoning)</option>
+              <option value="groq-8b">🚀 Groq Llama 3.1 8B Instant (Sub-100ms Speed)</option>
+              <option value="claude">🧠 Anthropic Claude 3.5 Sonnet (Deep Document Analysis)</option>
+              <option value="gemini">🔮 Google Gemini 1.5 Flash (Multimodal Processing)</option>
+              <option value="gpt4o">🤖 OpenAI GPT-4o Mini (Standard GPT Model)</option>
+            </select>
+            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+              Select which AI Provider powers your DataBank PDF statement parsing, agentic actions, and finance council.
+            </div>
           </div>
           <div>
             <div
