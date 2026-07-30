@@ -218,10 +218,9 @@ export async function GET() {
   }
 
   function toNairaVal(amt: number): number {
-    const abs = Math.abs(amt);
-    if (abs > 100000) return abs / 100; // stored in kobo
-    return abs; // stored in Naira
+    return Math.abs(amt) / 100;
   }
+
 
   // Sort entries chronologically to compute running totals
   const sortedEntries = [...entries].sort((a, b) => (a.entry_date ?? "").localeCompare(b.entry_date ?? ""));

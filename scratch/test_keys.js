@@ -68,7 +68,7 @@ async function testGoogleAI() {
   console.log("\n--- Testing Google AI Key ---");
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     const result = await model.generateContent("Say hello in one sentence.");
     const response = await result.response;
     console.log("Google AI success:", response.text());
@@ -77,10 +77,33 @@ async function testGoogleAI() {
   }
 }
 
+async function testGroq() {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    console.error("Missing GROQ_API_KEY");
+    return;
+  }
+  console.log("\n--- Testing Groq Key ---");
+  try {
+    const Groq = require("groq-sdk");
+    const groq = new Groq({ apiKey });
+    const response = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      max_tokens: 100,
+      messages: [{ role: "user", content: "Say hello in one sentence." }],
+    });
+    console.log("Groq success:", response.choices[0].message.content);
+  } catch (err) {
+    console.error("Groq failed:", err.message || err);
+  }
+}
+
 async function runAll() {
   await testAnthropic();
   await testOpenAI();
   await testGoogleAI();
+  await testGroq();
 }
 
 runAll();
+

@@ -6,14 +6,6 @@ const serviceKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
 const supabase = createClient(url, serviceKey);
 
 async function main() {
-  console.log("Fetching users...");
-  const { data: users, error: uErr } = await supabase.from("users").select("id, email, onboarding_complete");
-  if (uErr) {
-    console.error(uErr);
-    return;
-  }
-  console.log("Users:", users);
-
   console.log("Fetching databank_entries...");
   const { data: entries, error: eErr } = await supabase.from("databank_entries").select("*");
   if (eErr) {
@@ -21,7 +13,13 @@ async function main() {
     return;
   }
   console.log("Total entries in database:", entries.length);
-  console.log("Sample entries:", entries.slice(0, 10));
+  
+  const smallEntries = entries.filter(e => Math.abs(e.amount) < 10000);
+  console.log("Small entries (< 10000):", smallEntries);
+
+  const amounts = entries.map(e => e.amount);
+  console.log("Min amount:", Math.min(...amounts));
+  console.log("Max amount:", Math.max(...amounts));
 }
 
 main().catch(console.error);
