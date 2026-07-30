@@ -191,43 +191,61 @@ export const maxDuration = 60;
 async function parsePdfWithAI(pdfText: string, preferredEngine?: string, rawBuffer?: Buffer): Promise<ParsedTransaction[]> {
   const hasText = pdfText && pdfText.trim().length > 50;
 
-  const prompt = hasText
-    ? `Extract ALL bank transaction entries from this bank statement text. Return ONLY a valid JSON array, no other text:
+  // NOTE: We ask for amounts in NAIRA (not kobo) because LLMs reliably return
+  // naira values. We then multiply by 100 ourselves to convert to kobo for DB storage.
+  const textPrompt = `Extract ALL bank transaction entries from this bank statement. Return ONLY a valid JSON array with no extra text:
 [
   {
-    "description": "narration/details of transaction",
-    "amount": number_in_kobo (POSITIVE for credits/income, NEGATIVE for debits/expenses. E.g. ₦50,000 credit = 5000000, ₦15,000 debit = -1500000),
+    "description": "narration or details of transaction",
+    "amount_naira": number (POSITIVE for credits/deposits/income, NEGATIVE for debits/withdrawals/expenses. Use the actual naira value from the statement e.g. 50000 for ₦50,000 credit, -15000 for ₦15,000 debit),
     "date": "YYYY-MM-DD",
     "category": "income" | "transport" | "food" | "subscriptions" | "transfer" | "utilities" | "other"
   }
 ]
+IMPORTANT: Every entry in the statement must appear. Do NOT skip any transaction.
 Bank Statement Text:
-${pdfText.slice(0, 25000)}`
-    : `This is a base64-encoded Nigerian bank statement PDF. Decode and extract ALL transaction entries.
-Return ONLY a valid JSON array:
+${pdfText.slice(0, 25000)}`;
+
+  const pdfPrompt = `Extract ALL bank transaction entries from this Nigerian bank statement PDF. Return ONLY a valid JSON array:
 [
   {
-    "description": "narration/details",
-    "amount": number_in_kobo (POSITIVE for credits, NEGATIVE for debits),
+    "description": "narration or details",
+    "amount_naira": number (POSITIVE for credits/deposits, NEGATIVE for debits/withdrawals. Use actual naira value e.g. 50000 for ₦50,000),
     "date": "YYYY-MM-DD",
     "category": "income" | "transport" | "food" | "subscriptions" | "transfer" | "utilities" | "other"
   }
 ]
-PDF base64:
-${rawBuffer ? rawBuffer.toString("base64").slice(0, 20000) : "[no data]"}`;
+IMPORTANT: Extract every single transaction row visible in the statement.`;
 
+  const prompt = hasText ? textPrompt : pdfPrompt;
+
+  // Parse AI JSON response — amounts come back in naira, we convert to kobo (*100)
   const parseAIResponse = (text: string): ParsedTransaction[] => {
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (!jsonMatch) return [];
     try {
       const parsed = JSON.parse(jsonMatch[0]);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map((item) => ({
-          description: String(item.description || "Bank Transaction").slice(0, 120),
-          amount: Math.round(Number(item.amount) || 0),
-          date: safeParseDate(item.date),
-          category: String(item.category || guessCategory(item.description || "")),
-        })).filter((t) => t.amount !== 0);
+        return parsed.map((item) => {
+          // Support both amount_naira (new) and amount (legacy kobo fallback)
+          let amountKobo: number;
+          if (item.amount_naira !== undefined) {
+            // AI returned naira — convert to kobo
+            amountKobo = Math.round(Number(item.amount_naira) * 100);
+          } else {
+            // Legacy: AI returned raw amount — detect if it looks like naira or kobo
+            const raw = Math.round(Number(item.amount) || 0);
+            // If the absolute value is small (< 50000) it's likely naira, not kobo
+            // ₦500 naira = 50000 kobo. If raw < 50000, assume naira and convert.
+            amountKobo = Math.abs(raw) < 50000 ? raw * 100 : raw;
+          }
+          return {
+            description: String(item.description || "Bank Transaction").slice(0, 120),
+            amount: amountKobo,
+            date: safeParseDate(item.date),
+            category: String(item.category || guessCategory(item.description || "")),
+          };
+        }).filter((t) => t.amount !== 0);
       }
     } catch { /* invalid JSON */ }
     return [];
@@ -277,15 +295,7 @@ ${rawBuffer ? rawBuffer.toString("base64").slice(0, 20000) : "[no data]"}`;
           },
           {
             type: "text" as const,
-            text: `Extract ALL bank transaction entries from this Nigerian bank statement PDF. Return ONLY a valid JSON array:
-[
-  {
-    "description": "narration/details",
-    "amount": number_in_kobo (POSITIVE for credits, NEGATIVE for debits),
-    "date": "YYYY-MM-DD",
-    "category": "income" | "transport" | "food" | "subscriptions" | "transfer" | "utilities" | "other"
-  }
-]`,
+            text: pdfPrompt,
           },
         ];
       } else {
@@ -331,15 +341,7 @@ ${rawBuffer ? rawBuffer.toString("base64").slice(0, 20000) : "[no data]"}`;
                 },
               },
               {
-                text: `Extract ALL bank transaction entries from this Nigerian bank statement PDF. Return ONLY a valid JSON array:
-[
-  {
-    "description": "narration/details",
-    "amount": number_in_kobo (POSITIVE for credits, NEGATIVE for debits),
-    "date": "YYYY-MM-DD",
-    "category": "income" | "transport" | "food" | "subscriptions" | "transfer" | "utilities" | "other"
-  }
-]`,
+                text: pdfPrompt,
               },
             ],
           }],
