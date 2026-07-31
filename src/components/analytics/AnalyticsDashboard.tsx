@@ -146,15 +146,50 @@ function BankBalancesCard({ context }: { context: any }) {
     return true;
   });
 
+  const [syncProgress, setSyncProgress] = useState<number | null>(null);
+
   const handleSyncGmail = async () => {
     setSyncing(true);
+    setSyncProgress(0);
     try {
-      await fetch("/api/databank/gmail/sync", { method: "POST" });
+      const res = await fetch("/api/databank/gmail/sync", { method: "POST" });
+      if (!res.body) {
+        throw new Error("No response stream");
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const parsed = JSON.parse(line);
+            if (parsed.error) {
+              throw new Error(parsed.error);
+            }
+            if (typeof parsed.progress === "number") {
+              setSyncProgress(parsed.progress);
+            }
+          } catch (e) {
+            console.error("Failed to parse progress line:", e);
+          }
+        }
+      }
       await useDatabankStore.getState().loadContext();
     } catch (e) {
       console.error(e);
     } finally {
       setSyncing(false);
+      setSyncProgress(null);
     }
   };
 
@@ -182,7 +217,7 @@ function BankBalancesCard({ context }: { context: any }) {
             className="px-3 py-1 rounded-[8px] text-[11px] font-semibold border transition-all duration-150 cursor-pointer"
             style={{ background: "var(--navy)", borderColor: "var(--border)", color: "#fff" }}
           >
-            {syncing ? "Syncing..." : "🔄 Sync Gmail Alerts"}
+            {syncing ? (syncProgress !== null ? `Syncing (${syncProgress}%)…` : "Syncing…") : "🔄 Sync Gmail Alerts"}
           </button>
         </div>
       </div>

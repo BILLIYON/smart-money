@@ -61,18 +61,55 @@ function GmailCard() {
     }
   }, [searchParams, loadStatus]);
 
+  const [syncProgress, setSyncProgress] = useState<number | null>(null);
+
   async function handleSyncNow() {
     setSyncing(true);
     setSyncMsg(null);
+    setSyncProgress(0);
     try {
       const res = await fetch("/api/databank/gmail/sync", { method: "POST" });
-      const data = await res.json();
-      setSyncMsg(`Synced ${data.synced ?? 0} new transactions`);
+      if (!res.body) {
+        throw new Error("No response stream");
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const parsed = JSON.parse(line);
+            if (parsed.error) {
+              throw new Error(parsed.error);
+            }
+            if (typeof parsed.progress === "number") {
+              setSyncProgress(parsed.progress);
+            }
+            if (parsed.synced !== undefined) {
+              setSyncMsg(`Synced ${parsed.synced} new transactions`);
+            }
+          } catch (e) {
+            console.error("Failed to parse progress line:", e);
+          }
+        }
+      }
       await loadStatus();
-    } catch {
-      setSyncMsg("Sync failed. Try again.");
+      await useDatabankStore.getState().loadContext();
+    } catch (err: any) {
+      setSyncMsg(err.message || "Sync failed. Try again.");
     } finally {
       setSyncing(false);
+      setSyncProgress(null);
       setTimeout(() => setSyncMsg(null), 4000);
     }
   }
@@ -256,7 +293,7 @@ function GmailCard() {
           onMouseEnter={(e) => { if (!syncing) (e.currentTarget as HTMLButtonElement).style.background = "var(--green2)"; }}
           onMouseLeave={(e) => { if (!syncing) (e.currentTarget as HTMLButtonElement).style.background = "var(--green)"; }}
         >
-          {syncing ? "Syncing…" : "Sync Now"}
+          {syncing ? (syncProgress !== null ? `Syncing (${syncProgress}%)…` : "Syncing…") : "Sync Now"}
         </button>
         <button
           onClick={() => setConfirmDisconnect(true)}

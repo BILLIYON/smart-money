@@ -152,7 +152,11 @@ function stripHtml(html: string): string {
 
 
 // ── 5. Full sync for one user ─────────────────────────────────
-export async function syncGmailForUser(userId: string, force90Days = true) {
+export async function syncGmailForUser(
+  userId: string,
+  force90Days = true,
+  onProgress?: (progress: number, syncedCount: number) => void
+) {
   const gmail = await getGmailClient(userId);
   const supabase = createServiceClient();
 
@@ -188,10 +192,23 @@ export async function syncGmailForUser(userId: string, force90Days = true) {
   // Deduplicate message IDs
   const uniqueIds = [...new Set(allIds)];
 
+  if (uniqueIds.length === 0) {
+    onProgress?.(100, 0);
+    // Update last sync time
+    await supabase
+      .from("user_integrations")
+      .update({ last_synced_at: new Date().toISOString() })
+      .eq("user_id", userId)
+      .eq("provider", "gmail");
+    return { synced: 0 };
+  }
+
   // Fetch and parse each email
   // Batch to avoid Gmail API rate limits (250 quota units/user/second)
   const BATCH = 10;
   const entries: DataBankEntry[] = [];
+
+  onProgress?.(0, 0);
 
   for (let i = 0; i < uniqueIds.length; i += BATCH) {
     const batch = uniqueIds.slice(i, i + BATCH);
@@ -242,6 +259,9 @@ export async function syncGmailForUser(userId: string, force90Days = true) {
       if (entry) entries.push(entry);
     }
 
+    const progressPct = Math.min(99, Math.round(((i + batch.length) / uniqueIds.length) * 100));
+    onProgress?.(progressPct, entries.length);
+
     // Small delay between batches to respect rate limits
     if (i + BATCH < uniqueIds.length) {
       await new Promise((r) => setTimeout(r, 100));
@@ -266,6 +286,8 @@ export async function syncGmailForUser(userId: string, force90Days = true) {
     .update({ last_synced_at: new Date().toISOString() })
     .eq("user_id", userId)
     .eq("provider", "gmail");
+
+  onProgress?.(100, entries.length);
 
   return { synced: entries.length };
 }
