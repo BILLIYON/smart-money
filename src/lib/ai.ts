@@ -290,7 +290,19 @@ This enables the user to save your recommendation as a Goal in 1 click!
 [AGENT_ACTION: {"title": "Short descriptive title", "action": "Action description", "amount": 50000}]
 where amount is in minor currency units (e.g. kobo for NGN).
 
-Never include both tags in the same message. Keep your tone highly realistic, interactive, and encouraging.`,
+3. DATABANK WRITE TAG: When the user explicitly asks you to add, log, record, or save financial data to their DataBank — such as expenses, income, a list of transactions, or a financial goal — emit this tag EXACTLY ONCE at the END of your reply:
+[DATABANK_WRITE: {"entries": [{"description": "Netflix", "amount": 4500, "entry_type": "expense", "category": "subscriptions", "date": "2026-07-31"}], "goal": {"title": "Emergency Fund", "target_amount": 500000, "target_date": "2027-01-01"}}]
+
+DATABANK_WRITE rules:
+- ONLY emit when user EXPLICITLY says "add to my databank", "log this", "save this", "record this expense", "add these expenses", etc.
+- amounts are in MAJOR units (₦4500 → 4500, NOT 450000).
+- entry_type must be: "expense", "income", "subscription", "asset", or "debt".
+- Both "entries" array and "goal" object are optional — only include what was asked.
+- If user gives a list of expenses/transactions, map each item into the entries array.
+- Always confirm in your human-readable reply exactly what you are adding.
+- Do NOT emit this tag if the user did NOT ask for a DataBank write action.
+
+Never include both GOAL and DATABANK_WRITE tags in the same message. Keep your tone highly realistic, interactive, and encouraging.`,
 
     `\n---\n⚠️ This is AI-generated financial guidance for educational purposes only, not licensed financial, investment, or tax advice.`,
   ]

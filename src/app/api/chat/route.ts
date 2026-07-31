@@ -159,6 +159,74 @@ export async function POST(req: Request) {
           finalContent = fullText.replace(/\[AGENT_ACTION:\s*\{[\s\S]*?\}\s*\]/g, '').trim();
         }
 
+        // Extract and process [DATABANK_WRITE: {...}] tags
+        const writeRegex = /\[DATABANK_WRITE:\s*(\{[\s\S]*?\})\s*\]/g;
+        let writeMatch;
+        let hadDatabankWrite = false;
+
+        while ((writeMatch = writeRegex.exec(fullText)) !== null) {
+          try {
+            const payload = JSON.parse(writeMatch[1]);
+            const domainUrl = process.env.NEXT_PUBLIC_APP_URL || "https://smartmoney.technology";
+
+            // Fire off the agent-write call server-side using the same auth session cookies
+            const writeResp = await fetch(`${domainUrl}/api/databank/agent-write`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                // Forward auth by calling supabase insert directly from context we already have
+              },
+              body: JSON.stringify({
+                entries: payload.entries ?? [],
+                goal: payload.goal ?? null,
+                buddy_id: buddyId,
+                _user_id: user.id, // used below for direct supabase fallback
+              }),
+            });
+
+            if (!writeResp.ok) {
+              // Fallback: write directly via supabase since we already have the client
+              const p = payload as { entries?: any[]; goal?: any };
+
+              if (p.entries && Array.isArray(p.entries)) {
+                for (const e of p.entries) {
+                  if (!e.description || !e.amount) continue;
+                  await supabase.from("databank_entries").insert({
+                    user_id: user.id,
+                    source: "manual",
+                    entry_type: e.entry_type ?? "expense",
+                    amount: Math.round(Math.abs(e.amount) * 100),
+                    description: e.description.trim(),
+                    category: e.category ?? "other",
+                    entry_date: e.date ?? new Date().toISOString().split("T")[0],
+                  });
+                }
+              }
+
+              if (p.goal && p.goal.title && p.goal.target_amount) {
+                await supabase.from("goals").insert({
+                  user_id: user.id,
+                  buddy_id: buddyId ?? null,
+                  title: p.goal.title.trim(),
+                  target_amount: Math.round(Math.abs(p.goal.target_amount) * 100),
+                  current_amount: Math.round(Math.abs(p.goal.current_amount ?? 0) * 100),
+                  target_date: p.goal.target_date ?? null,
+                  status: "active",
+                });
+              }
+            }
+
+            hadDatabankWrite = true;
+          } catch (e) {
+            console.error("[/api/chat] Failed to parse DATABANK_WRITE JSON:", e);
+          }
+        }
+
+        if (hadDatabankWrite) {
+          // Strip the write blocks from the stored message — the UI renders a card separately
+          finalContent = finalContent.replace(/\[DATABANK_WRITE:\s*\{[\s\S]*?\}\s*\]/g, '').trim();
+        }
+
         await supabase.from("messages").insert({
           session_id: sessionId,
           role: "assistant",

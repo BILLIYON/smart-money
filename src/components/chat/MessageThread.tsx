@@ -8,6 +8,7 @@ import { useChatStore, GROUPS, type ChatMessage, type GoalCardData } from "@/sto
 import { getBuddy } from "@/lib/buddies";
 import { InChatGoalCard } from "./InChatGoalCard";
 import { InChatAgentCard } from "./InChatAgentCard";
+import { InChatDatabankWriteCard } from "./InChatDatabankWriteCard";
 import { SignalAlertCard } from "./SignalAlertCard";
 import { useUserInitials } from "@/lib/hooks/useUserInitials";
 import { useDataSources } from "@/lib/hooks/useDataSources";
@@ -425,6 +426,15 @@ function AiMessage({
             onExecute={() => {}}
             onDecline={() => {}}
             onDiscuss={() => {}}
+          />
+        )}
+
+        {/* Databank Write card */}
+        {msg.databankWriteData && (
+          <InChatDatabankWriteCard
+            data={msg.databankWriteData}
+            done={!!msg.databankWriteDone}
+            onDismiss={() => patch({ databankWriteData: undefined })}
           />
         )}
 

@@ -47,6 +47,22 @@ function extractGoalData(content: string, buddyName: string) {
   return { finalContent, goalCardData };
 }
 
+function extractDatabankWriteData(content: string) {
+  let databankWriteData;
+  let finalContent = content;
+  const writeRegex = /\[DATABANK_WRITE:\s*(\{[\s\S]*?\})\s*\]/;
+  const match = writeRegex.exec(content);
+  if (match) {
+    try {
+      databankWriteData = JSON.parse(match[1]);
+      finalContent = content.replace(writeRegex, "").trim();
+    } catch (e) {
+      console.error("Failed to parse databankWriteData", e);
+    }
+  }
+  return { finalContent, databankWriteData };
+}
+
 
 export type InsightHighlight = { label: string; text: string };
 export type SpendBar = { label: string; width: string; color: string; amount: string };
@@ -64,6 +80,23 @@ export type AgentCardData = {
   fee: string;
   benefit: string;
   benefitColor?: string;
+};
+
+export type DatabankWriteEntry = {
+  description: string;
+  amount: number;
+  entry_type: "expense" | "income" | "subscription" | "asset" | "debt";
+  category?: string;
+  date?: string;
+};
+
+export type DatabankWriteCardData = {
+  entries?: DatabankWriteEntry[];
+  goal?: {
+    title: string;
+    target_amount: number;
+    target_date?: string;
+  };
 };
 
 export type ChatMessage = {
@@ -89,6 +122,9 @@ export type ChatMessage = {
   showFollowUp?: boolean;
   followUpDone?: boolean;
   followUpStartTime?: number;
+  // agentic databank write card
+  databankWriteData?: DatabankWriteCardData;
+  databankWriteDone?: boolean;
 };
 
 // ── Seed thread ────────────────────────────────────────────
@@ -377,14 +413,23 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const thread = s.threads[buddyId] ?? [];
       const msg = thread.find((m) => m.id === msgId);
       const rawContent = msg?.content ?? "";
-      // first extract agent action, then goal from whatever remains
+      // first extract agent action, then goal, then databank writes
       const { finalContent: afterAgent, agentCardData } = extractAgentAction(rawContent);
       const buddyName = buddyId; // will be overridden by the buddy's display name in the UI
-      const { finalContent, goalCardData } = extractGoalData(afterAgent, buddyName);
+      const { finalContent: afterGoal, goalCardData } = extractGoalData(afterAgent, buddyName);
+      const { finalContent, databankWriteData } = extractDatabankWriteData(afterGoal);
       return {
         threads: {
           ...s.threads,
-          [buddyId]: patchMsg(thread, msgId, { streaming: false, showActions: true, content: finalContent, agentCardData, goalCardData }),
+          [buddyId]: patchMsg(thread, msgId, {
+            streaming: false,
+            showActions: true,
+            content: finalContent,
+            agentCardData,
+            goalCardData,
+            databankWriteData,
+            databankWriteDone: !!databankWriteData,
+          }),
         },
       };
     }),
@@ -422,11 +467,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const rawContent = msg?.content ?? "";
       const { finalContent: afterAgent, agentCardData } = extractAgentAction(rawContent);
       const buddyName = msg?.buddyId ?? groupId;
-      const { finalContent, goalCardData } = extractGoalData(afterAgent, buddyName);
+      const { finalContent: afterGoal, goalCardData } = extractGoalData(afterAgent, buddyName);
+      const { finalContent, databankWriteData } = extractDatabankWriteData(afterGoal);
       return {
         groupThreads: {
           ...s.groupThreads,
-          [groupId]: patchMsg(thread, msgId, { streaming: false, showActions: true, content: finalContent, agentCardData, goalCardData }),
+          [groupId]: patchMsg(thread, msgId, {
+            streaming: false,
+            showActions: true,
+            content: finalContent,
+            agentCardData,
+            goalCardData,
+            databankWriteData,
+            databankWriteDone: !!databankWriteData,
+          }),
         },
       };
     }),
