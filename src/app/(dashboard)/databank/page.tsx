@@ -35,10 +35,22 @@ function GmailCard() {
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
 
+  // Settings State
+  const [showSettings, setShowSettings] = useState(false);
+  const [syncMode, setSyncMode] = useState<"lightweight" | "deep">("lightweight");
+  const [presetFilter, setPresetFilter] = useState<string>("all");
+  const [customQuery, setCustomQuery] = useState("");
+  const [savingSettings, setSavingSettings] = useState(false);
+
   const loadStatus = useCallback(async () => {
     const res = await fetch("/api/databank/gmail/status");
     const data = await res.json();
     setStatus(data);
+    if (data.metadata) {
+      setSyncMode(data.metadata.sync_mode || "lightweight");
+      setPresetFilter(data.metadata.preset_filter || "all");
+      setCustomQuery(data.metadata.custom_query || "");
+    }
     return data as GmailStatus;
   }, []);
 
@@ -62,6 +74,32 @@ function GmailCard() {
   }, [searchParams, loadStatus]);
 
   const [syncProgress, setSyncProgress] = useState<number | null>(null);
+
+  async function handleSaveSettings() {
+    setSavingSettings(true);
+    try {
+      const res = await fetch("/api/databank/gmail/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sync_mode: syncMode,
+          preset_filter: presetFilter,
+          custom_query: customQuery,
+        }),
+      });
+      if (res.ok) {
+        popup.success("Settings Saved", "Gmail sync settings updated successfully!");
+        setShowSettings(false);
+        await loadStatus();
+      } else {
+        popup.error("Failed to Save", "Could not save your settings.");
+      }
+    } catch {
+      popup.error("Error", "Failed to communicate with settings server.");
+    } finally {
+      setSavingSettings(false);
+    }
+  }
 
   async function handleSyncNow() {
     setSyncing(true);
@@ -261,7 +299,7 @@ function GmailCard() {
       </div>
 
       {/* Permission toggles (display only) */}
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-wrap gap-2 mb-3">
         {permLabels.map((label) => (
           <div
             key={label}
@@ -272,6 +310,101 @@ function GmailCard() {
           </div>
         ))}
       </div>
+
+      {/* Sync settings toggle link */}
+      <div className="mb-4">
+        <button
+          onClick={() => setShowSettings(!showSettings)}
+          className="flex items-center gap-1 text-[12px] font-semibold transition-colors bg-transparent border-none cursor-pointer p-0"
+          style={{ color: "var(--green2)" }}
+        >
+          <span>{showSettings ? "▼ Hide Sync Settings" : "⚙ Customize Sync Parameters & Filters"}</span>
+        </button>
+      </div>
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="flex flex-col gap-3 p-3 mb-4 rounded-[12px] text-[12px]" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
+          {/* Sync Mode */}
+          <div>
+            <label className="font-semibold block mb-1" style={{ color: "var(--text)" }}>Scraping Mode</label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSyncMode("lightweight")}
+                className="flex-1 py-[6px] rounded-[6px] border text-[11px] font-medium transition-all cursor-pointer"
+                style={{
+                  background: syncMode === "lightweight" ? "rgba(0,196,140,0.12)" : "transparent",
+                  color: syncMode === "lightweight" ? "var(--green2)" : "var(--muted)",
+                  borderColor: syncMode === "lightweight" ? "var(--green)" : "var(--border)",
+                }}
+              >
+                ⚡ Lightweight (Fast, saves tokens)
+              </button>
+              <button
+                onClick={() => setSyncMode("deep")}
+                className="flex-1 py-[6px] rounded-[6px] border text-[11px] font-medium transition-all cursor-pointer"
+                style={{
+                  background: syncMode === "deep" ? "rgba(234,67,53,0.1)" : "transparent",
+                  color: syncMode === "deep" ? "#EA4335" : "var(--muted)",
+                  borderColor: syncMode === "deep" ? "#EA4335" : "var(--border)",
+                }}
+              >
+                🔍 Deep AI Search (Llama Only)
+              </button>
+            </div>
+            <p className="text-[10px] mt-1" style={{ color: "var(--muted)", lineHeight: 1.4 }}>
+              {syncMode === "lightweight"
+                ? "Recommended. Next.js extracts candidates programmatically, and Groq Llama cleans data."
+                : "Passes entire email body straight to Llama-3.3-70B model. More comprehensive but uses more tokens."}
+            </p>
+          </div>
+
+          {/* Preset Filters */}
+          <div>
+            <label className="font-semibold block mb-1" style={{ color: "var(--text)" }}>Alert Presets</label>
+            <select
+              value={presetFilter}
+              onChange={(e) => setPresetFilter(e.target.value)}
+              className="w-full p-[8px] rounded-[8px] border text-[12px] outline-none"
+              style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)" }}
+            >
+              <option value="all">Default Broad Scan (All Bank Alerts)</option>
+              <option value="opay">OPay alerts only</option>
+              <option value="uba">UBA bank alerts only</option>
+              <option value="debits_credits">Debits & Credits only</option>
+              <option value="custom">Custom Search parameters...</option>
+            </select>
+          </div>
+
+          {/* Custom Query Input */}
+          {presetFilter === "custom" && (
+            <div>
+              <label className="font-semibold block mb-1" style={{ color: "var(--text)" }}>Custom Search query</label>
+              <input
+                type="text"
+                value={customQuery}
+                onChange={(e) => setCustomQuery(e.target.value)}
+                placeholder="e.g. OPay OR Zenith OR exclude:payment"
+                className="w-full p-[8px] rounded-[8px] border text-[12px] outline-none"
+                style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)" }}
+              />
+              <p className="text-[10px] mt-1" style={{ color: "var(--muted)" }}>
+                Supports standard Gmail search terms (e.g. `OPay`, `UBA`, `subject:alert`).
+              </p>
+            </div>
+          )}
+
+          {/* Save Button */}
+          <button
+            onClick={handleSaveSettings}
+            disabled={savingSettings}
+            className="w-full py-[8px] rounded-[8px] font-semibold text-white transition-colors duration-150 border-none cursor-pointer"
+            style={{ background: "var(--green)", opacity: savingSettings ? 0.7 : 1 }}
+          >
+            {savingSettings ? "Saving Settings..." : "Save Preferences"}
+          </button>
+        </div>
+      )}
 
       {/* Sync toast */}
       {syncMsg && (

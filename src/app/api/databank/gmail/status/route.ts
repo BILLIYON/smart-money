@@ -10,7 +10,7 @@ export async function GET() {
 
   const { data: integration } = await supabase
     .from("user_integrations")
-    .select("connected_at, last_synced_at")
+    .select("connected_at, last_synced_at, metadata")
     .eq("user_id", user.id)
     .eq("provider", "gmail")
     .single();
@@ -30,6 +30,7 @@ export async function GET() {
     connectedAt: integration.connected_at,
     lastSyncedAt: integration.last_synced_at,
     entryCount: count ?? 0,
+    metadata: integration.metadata,
   });
 }
 

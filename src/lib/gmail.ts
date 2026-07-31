@@ -160,28 +160,42 @@ export async function syncGmailForUser(
   const gmail = await getGmailClient(userId);
   const supabase = createServiceClient();
 
+  // Load last synced date and metadata preferences
+  const { data: integration } = await supabase
+    .from("user_integrations")
+    .select("last_synced_at, metadata")
+    .eq("user_id", userId)
+    .eq("provider", "gmail")
+    .single();
+
   // Always backfill full 3 months (90 days) by default so user gets all their transaction history!
   const ninetyDaysAgo = Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
   let lastSync = ninetyDaysAgo;
 
-  if (!force90Days) {
-    const { data: integration } = await supabase
-      .from("user_integrations")
-      .select("last_synced_at")
-      .eq("user_id", userId)
-      .eq("provider", "gmail")
-      .single();
-
-    if (integration?.last_synced_at) {
-      lastSync = Math.floor(new Date(integration.last_synced_at).getTime() / 1000);
-    }
+  if (!force90Days && integration?.last_synced_at) {
+    lastSync = Math.floor(new Date(integration.last_synced_at).getTime() / 1000);
   }
 
-  const afterFilter = `after:${lastSync}`;
+  const metadata = integration?.metadata as any || {};
+  const syncMode = (metadata.sync_mode as "lightweight" | "deep") || "lightweight";
+  const presetFilter = metadata.preset_filter || "all";
+  const customQuery = metadata.custom_query || "";
 
-  // Broad query covering all Nigerian banks & financial keywords across subjects and bodies
+  // ── Construct Gmail search query dynamically ──
+  let queryTerms = `subject:(receipt OR payment OR transfer OR transaction OR alert OR notice OR advice OR purchase OR pos OR bank OR opay OR kuda OR palmpay OR moniepoint OR zenith OR gtbank OR access OR uba OR firstbank OR stanbic OR flutterwave OR paystack) OR "debit alert" OR "credit alert" OR "transaction alert" OR "transfer notification" OR "payment received"`;
+
+  if (presetFilter === "opay") {
+    queryTerms = `opay (subject:(receipt OR payment OR transfer OR alert OR transaction OR debit OR credit) OR "opay alert")`;
+  } else if (presetFilter === "uba") {
+    queryTerms = `uba (subject:(receipt OR payment OR transfer OR alert OR transaction OR debit OR credit) OR "uba alert")`;
+  } else if (presetFilter === "debits_credits") {
+    queryTerms = `"debit alert" OR "credit alert" OR "transaction alert"`;
+  } else if (presetFilter === "custom" && customQuery.trim()) {
+    queryTerms = customQuery.trim();
+  }
+
   const queries = [
-    `after:${lastSync} (subject:(receipt OR payment OR transfer OR transaction OR invoice OR debit OR credit OR subscription OR salary OR payroll OR alert OR notice OR advice OR purchase OR pos OR bank OR opay OR kuda OR palmpay OR moniepoint OR zenith OR gtbank OR access OR uba OR firstbank OR stanbic OR flutterwave OR paystack) OR "debit alert" OR "credit alert" OR "transaction alert" OR "transfer notification" OR "payment received")`
+    `after:${lastSync} (${queryTerms})`
   ];
 
   // Search all queries with maxResults=500 to fetch full 3 months of bank emails
@@ -214,11 +228,11 @@ export async function syncGmailForUser(
     const batch = uniqueIds.slice(i, i + BATCH);
     const emails = await Promise.all(batch.map((id) => getEmailBody(gmail, id)));
 
-    // Parse emails in parallel via OpenAI
+    // Parse emails in parallel via Groq Llama with Claude fallback
     const extractedData = await Promise.all(
       emails.map(async (email) => {
         const cleanBody = stripHtml(email.body);
-        const data = await extractFinancialDataFromEmail(cleanBody, email.subject, email.from);
+        const data = await extractFinancialDataFromEmail(cleanBody, email.subject, email.from, syncMode);
         if (!data) return null;
 
         // Prefer real email Date header; fall back to today if unparseable

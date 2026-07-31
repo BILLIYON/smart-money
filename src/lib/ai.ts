@@ -629,8 +629,69 @@ Respond with valid JSON only — no markdown, no explanation outside the JSON:
 export async function extractFinancialDataFromEmail(
   emailBody: string,
   subject: string,
-  from: string
+  from: string,
+  syncMode: "lightweight" | "deep" = "lightweight"
 ) {
+  // ── 1. LIGHTWEIGHT SEARCH MODE (Next.js regex extraction + Llama cleaning/verification) ──
+  if (syncMode === "lightweight") {
+    try {
+      // First programmatically extract data using fast local regex parser (0 tokens, ultra-fast)
+      const data = parseFinancialEmailData(emailBody, subject, from);
+      if (!data) {
+        // If local parser doesn't find any financial indicators, skip it (no AI cost)
+        return null;
+      }
+
+      // Use Llama to verify, clean and categorize the parsed details
+      const prompt = `You are a financial verification agent for Smart Money. Verify and clean this programmatically extracted bank alert details.
+Alert Details:
+- Bank: ${data.bank || data.provider || "Unknown"}
+- Type: ${data.entry_type} (income/expense)
+- Amount: ₦${data.amount}
+- Category: ${data.category || "other"}
+- Narration: ${data.description}
+
+Email subject: ${subject}
+Email body snippet:
+${emailBody.slice(0, 1000)}
+
+Verify that this is a real bank transaction alert and not a summary, advertisement, or duplicate notification.
+Clean and output the transaction into a valid JSON object matching this structure (do not return any markdown or commentary outside the JSON):
+{
+  "is_transaction": true,
+  "amount_naira": <number representing the transaction value in Naira, e.g. 50000 for ₦50,000>,
+  "description": "<clean descriptive narration>",
+  "entry_type": "income" | "expense",
+  "category": "income" | "transport" | "food" | "subscriptions" | "transfer" | "utilities" | "other",
+  "bank": "<the bank or provider name e.g. Kuda, OPay, GTBank, Zenith, Access, etc.>",
+  "account_balance": <number representing the available account balance in Naira after this transaction, or null if not mentioned>
+}
+If it is not a real transaction, return:
+{ "is_transaction": false }`;
+
+      const raw = await askAI(prompt, "claude-3-5-haiku-latest");
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed.is_transaction && typeof parsed.amount_naira === "number") {
+          console.log(`[Gmail Lightweight Sync] Cleaned transaction: ₦${parsed.amount_naira} (${parsed.description})`);
+          return {
+            amount: parsed.amount_naira,
+            description: String(parsed.description || data.description || "Gmail Transaction").slice(0, 120),
+            entry_type: parsed.entry_type === "income" ? ("income" as const) : ("expense" as const),
+            category: String(parsed.category || data.category || "other"),
+            bank: parsed.bank ? String(parsed.bank) : data.bank,
+            provider: parsed.bank ? String(parsed.bank) : data.provider,
+            account_balance: typeof parsed.account_balance === "number" ? parsed.account_balance : data.account_balance,
+          };
+        }
+      }
+    } catch (err) {
+      console.warn("[extractFinancialDataFromEmail] Lightweight sync cleaning error:", err);
+    }
+  }
+
+  // ── 2. DEEP AI SEARCH MODE (Direct full body AI scraping) ──
   const prompt = `You are a financial email parser for Smart Money. Analyze this email details and body.
 Subject: ${subject}
 From: ${from}
@@ -658,7 +719,7 @@ If it IS a transaction alert, extract the details into a valid JSON object match
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
       if (parsed.is_transaction && typeof parsed.amount_naira === "number") {
-        console.log(`[Gmail AI Sync] Extracted transaction: ₦${parsed.amount_naira} (${parsed.description})`);
+        console.log(`[Gmail Deep AI Sync] Extracted transaction: ₦${parsed.amount_naira} (${parsed.description})`);
         return {
           amount: parsed.amount_naira,
           description: String(parsed.description || "Gmail Transaction").slice(0, 120),
@@ -671,7 +732,7 @@ If it IS a transaction alert, extract the details into a valid JSON object match
       }
     }
   } catch (err) {
-    console.error("[extractFinancialDataFromEmail] AI extraction failed:", err);
+    console.error("[extractFinancialDataFromEmail] Deep AI extraction failed:", err);
   }
 
   // Fallback to local regex/heuristics parser
