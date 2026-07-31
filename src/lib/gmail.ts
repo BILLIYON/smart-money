@@ -180,6 +180,7 @@ export async function syncGmailForUser(
   const syncMode = (metadata.sync_mode as "lightweight" | "deep") || "lightweight";
   const presetFilter = metadata.preset_filter || "all";
   const customQuery = metadata.custom_query || "";
+  const aiPrompt = metadata.ai_prompt || "";
 
   // ── Construct Gmail search query dynamically ──
   let queryTerms = `subject:(receipt OR payment OR transfer OR transaction OR alert OR notice OR advice OR purchase OR pos OR bank OR opay OR kuda OR palmpay OR moniepoint OR zenith OR gtbank OR access OR uba OR firstbank OR stanbic OR flutterwave OR paystack) OR "debit alert" OR "credit alert" OR "transaction alert" OR "transfer notification" OR "payment received"`;
@@ -232,7 +233,7 @@ export async function syncGmailForUser(
     const extractedData = await Promise.all(
       emails.map(async (email) => {
         const cleanBody = stripHtml(email.body);
-        const data = await extractFinancialDataFromEmail(cleanBody, email.subject, email.from, syncMode);
+        const data = await extractFinancialDataFromEmail(cleanBody, email.subject, email.from, syncMode, aiPrompt);
         if (!data) return null;
 
         // Prefer real email Date header; fall back to today if unparseable

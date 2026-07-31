@@ -9,7 +9,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { sync_mode, preset_filter, custom_query } = await req.json();
+    const { sync_mode, preset_filter, custom_query, ai_prompt } = await req.json();
 
     // Fetch existing metadata to merge
     const { data: integration, error: fetchErr } = await supabase
@@ -28,6 +28,7 @@ export async function POST(req: Request) {
       sync_mode: sync_mode || "lightweight",
       preset_filter: preset_filter || "all",
       custom_query: custom_query || "",
+      ai_prompt: ai_prompt || "",
     };
 
     const { error: updateErr } = await supabase

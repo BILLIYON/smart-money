@@ -40,6 +40,7 @@ function GmailCard() {
   const [syncMode, setSyncMode] = useState<"lightweight" | "deep">("lightweight");
   const [presetFilter, setPresetFilter] = useState<string>("all");
   const [customQuery, setCustomQuery] = useState("");
+  const [aiPrompt, setAiPrompt] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
 
   const loadStatus = useCallback(async () => {
@@ -50,6 +51,7 @@ function GmailCard() {
       setSyncMode(data.metadata.sync_mode || "lightweight");
       setPresetFilter(data.metadata.preset_filter || "all");
       setCustomQuery(data.metadata.custom_query || "");
+      setAiPrompt(data.metadata.ai_prompt || "");
     }
     return data as GmailStatus;
   }, []);
@@ -85,6 +87,7 @@ function GmailCard() {
           sync_mode: syncMode,
           preset_filter: presetFilter,
           custom_query: customQuery,
+          ai_prompt: aiPrompt,
         }),
       });
       if (res.ok) {
@@ -393,6 +396,22 @@ function GmailCard() {
               </p>
             </div>
           )}
+
+          {/* AI Custom Prompt/Instructions */}
+          <div>
+            <label className="font-semibold block mb-1" style={{ color: "var(--text)" }}>AI Guidelines &amp; Custom Instructions</label>
+            <textarea
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              placeholder="e.g. Focus only on OPay bank alerts. Ignore Uber transactions. Clean and categorize narrations accurately."
+              rows={2}
+              className="w-full p-[8px] rounded-[8px] border text-[12px] outline-none resize-y"
+              style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)", fontFamily: "inherit" }}
+            />
+            <p className="text-[10px] mt-1" style={{ color: "var(--muted)", lineHeight: 1.4 }}>
+              Directly instruct the Llama model on how to parse, extract, filter, or correct narrates.
+            </p>
+          </div>
 
           {/* Save Button */}
           <button

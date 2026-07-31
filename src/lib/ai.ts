@@ -630,7 +630,8 @@ export async function extractFinancialDataFromEmail(
   emailBody: string,
   subject: string,
   from: string,
-  syncMode: "lightweight" | "deep" = "lightweight"
+  syncMode: "lightweight" | "deep" = "lightweight",
+  aiPrompt = ""
 ) {
   // ── 1. LIGHTWEIGHT SEARCH MODE (Next.js regex extraction + Llama cleaning/verification) ──
   if (syncMode === "lightweight") {
@@ -644,6 +645,9 @@ export async function extractFinancialDataFromEmail(
 
       // Use Llama to verify, clean and categorize the parsed details
       const prompt = `You are a financial verification agent for Smart Money. Verify and clean this programmatically extracted bank alert details.
+
+${aiPrompt ? `CUSTOM EXTRACTION PARAMETERS / USER INSTRUCTIONS:\n- ${aiPrompt}\n` : ""}
+
 Alert Details:
 - Bank: ${data.bank || data.provider || "Unknown"}
 - Type: ${data.entry_type} (income/expense)
@@ -693,6 +697,9 @@ If it is not a real transaction, return:
 
   // ── 2. DEEP AI SEARCH MODE (Direct full body AI scraping) ──
   const prompt = `You are a financial email parser for Smart Money. Analyze this email details and body.
+
+${aiPrompt ? `CUSTOM EXTRACTION PARAMETERS / USER INSTRUCTIONS:\n- ${aiPrompt}\n` : ""}
+
 Subject: ${subject}
 From: ${from}
 Body:
