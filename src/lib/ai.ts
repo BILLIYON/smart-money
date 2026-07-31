@@ -6,6 +6,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import Groq from "groq-sdk";
 
 import { getBuddy, type Buddy } from "./buddies";
 import { formatCurrency } from "./currency";
@@ -15,6 +16,7 @@ import { parseFinancialEmailData } from "./gmail-parser";
 let _anthropic: Anthropic | null = null;
 let _openai: OpenAI | null = null;
 let _gemini: GoogleGenerativeAI | null = null;
+let _groq: Groq | null = null;
 
 function anthropic() {
   if (!_anthropic) _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -27,6 +29,10 @@ function openai() {
 function gemini() {
   if (!_gemini) _gemini = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY!);
   return _gemini;
+}
+function groq() {
+  if (!_groq) _groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+  return _groq;
 }
 
 const EXPIRED_ANTHROPIC_KEY = "sk-ant-api03-" + "tV8IIfCoTEjkRgQxGdjnNpaI51oNMhVG1pHN0dSVYXpGWz5yXqoI066Q" + "1JHbNjkxnGojfFn5_JyxAcDwWOP-ow-JherggAA";
@@ -478,6 +484,22 @@ export async function sendGroupMessage(params: {
 // ════════════════════════════════════════════════════════════
 
 async function askAI(prompt: string, fallbackModel = "claude-3-5-haiku-latest"): Promise<string> {
+  // Strategy 1: Groq (Llama 3.3 70B Versatile)
+  if (process.env.GROQ_API_KEY) {
+    try {
+      console.log("[AI] Attempting completion with Groq: llama-3.3-70b-versatile");
+      const response = await groq().chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        max_tokens: 1024,
+        messages: [{ role: "user", content: prompt }],
+      });
+      return response.choices[0]?.message?.content || "";
+    } catch (err) {
+      console.error("[AI] Groq completion failed, trying Anthropic fallback:", err);
+    }
+  }
+
+  // Strategy 2: Anthropic (Claude 3.5 Haiku/Sonnet)
   if (process.env.ANTHROPIC_API_KEY && !depletedKeys.claude) {
     try {
       console.log(`[AI] Attempting completion with Anthropic: ${fallbackModel}`);
@@ -492,9 +514,9 @@ async function askAI(prompt: string, fallbackModel = "claude-3-5-haiku-latest"):
     }
   }
 
-  // Fallback to Gemini
-  console.log("[AI] Attempting completion with Gemini: gemini-2.5-flash");
-  const model = gemini().getGenerativeModel({ model: "gemini-2.5-flash" });
+  // Strategy 3: Google Gemini 2.0 Flash (was 1.5-flash/2.5-flash)
+  console.log("[AI] Attempting completion with Gemini: gemini-2.0-flash");
+  const model = gemini().getGenerativeModel({ model: "gemini-2.0-flash" });
   const result = await model.generateContent(prompt);
   const response = await result.response;
   return response.text();
@@ -609,10 +631,55 @@ export async function extractFinancialDataFromEmail(
   subject: string,
   from: string
 ) {
+  const prompt = `You are a financial email parser for Smart Money. Analyze this email details and body.
+Subject: ${subject}
+From: ${from}
+Body:
+${emailBody.slice(0, 10000)}
+
+First, determine if this email is a legitimate bank alert, receipt, or transaction notification (credit alert, debit alert, transfer notification, POS receipt, subscription charge, bill payment, etc.). 
+If it is NOT a financial transaction or bank alert, return JSON with:
+{ "is_transaction": false }
+
+If it IS a transaction alert, extract the details into a valid JSON object matching this structure (do not return any markdown or commentary outside the JSON):
+{
+  "is_transaction": true,
+  "amount_naira": <number representing the transaction value in Naira (not kobo, e.g. 50000 for ₦50,000)>,
+  "description": "<short descriptive summary of the transaction>",
+  "entry_type": "income" | "expense",
+  "category": "income" | "transport" | "food" | "subscriptions" | "transfer" | "utilities" | "other",
+  "bank": "<the bank or provider name e.g. Kuda, OPay, GTBank, Zenith, Access, etc.>",
+  "account_balance": <number representing the available or ledger account balance in Naira after this transaction, or null if not mentioned>
+}`;
+
   try {
+    const raw = await askAI(prompt, "claude-3-5-haiku-latest");
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed.is_transaction && typeof parsed.amount_naira === "number") {
+        console.log(`[Gmail AI Sync] Extracted transaction: ₦${parsed.amount_naira} (${parsed.description})`);
+        return {
+          amount: parsed.amount_naira,
+          description: String(parsed.description || "Gmail Transaction").slice(0, 120),
+          entry_type: parsed.entry_type === "income" ? ("income" as const) : ("expense" as const),
+          category: String(parsed.category || "other"),
+          bank: parsed.bank ? String(parsed.bank) : undefined,
+          provider: parsed.bank ? String(parsed.bank) : undefined,
+          account_balance: typeof parsed.account_balance === "number" ? parsed.account_balance : undefined,
+        };
+      }
+    }
+  } catch (err) {
+    console.error("[extractFinancialDataFromEmail] AI extraction failed:", err);
+  }
+
+  // Fallback to local regex/heuristics parser
+  try {
+    console.log("[extractFinancialDataFromEmail] AI failed/skipped. Falling back to local regex parser...");
     return parseFinancialEmailData(emailBody, subject, from);
   } catch (err) {
-    console.error("[extractFinancialDataFromEmail] Regex parsing error:", err);
+    console.error("[extractFinancialDataFromEmail] Regex fallback failed:", err);
     return null;
   }
 }
