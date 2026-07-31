@@ -36,7 +36,7 @@ function GmailCard() {
   const [disconnecting, setDisconnecting] = useState(false);
 
   // Settings State
-  const [showSettings, setShowSettings] = useState(false);
+  const [showSettings, setShowSettings] = useState(true);
   const [syncMode, setSyncMode] = useState<"lightweight" | "deep">("lightweight");
   const [presetFilter, setPresetFilter] = useState<string>("all");
   const [customQuery, setCustomQuery] = useState("");
