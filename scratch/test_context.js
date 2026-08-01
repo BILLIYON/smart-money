@@ -22,7 +22,7 @@ function thirtyDaysAgo() {
 }
 
 async function main() {
-  const userId = '315d21b8-dfd2-4651-a82e-41b1b41931c3';
+  const userId = '1d8e4391-5fee-4e0b-b104-d41ed9888e9f';
 
   const MONTH_START       = monthStart();
   const PRIOR_MONTH_START = priorMonthStart();

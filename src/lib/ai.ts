@@ -137,6 +137,9 @@ function fmt(minorUnit: number, currency: string): string {
 }
 
 function formatDatabankContext(ctx: DatabankContext): string {
+  if (typeof ctx === "string") {
+    return ctx;
+  }
   const currency = ctx.currency ?? "NGN";
   const f = (n: number) => fmt(n, currency);
   const lines: string[] = [];

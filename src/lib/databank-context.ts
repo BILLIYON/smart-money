@@ -73,16 +73,27 @@ export async function getDatabankContextForUser(
   const incomeEntries   = thisMonth.filter((e) => e.entry_type === "income");
   const expenseEntries  = thisMonth.filter((e) => e.entry_type === "expense");
 
-  const totalIncome   = incomeEntries.reduce((s, e) => s + e.amount, 0);
-  const totalExpenses = Math.abs(expenseEntries.reduce((s, e) => s + e.amount, 0));
-  const savingsRate   = totalIncome > 0
+  let totalIncome   = incomeEntries.reduce((s, e) => s + e.amount, 0);
+  let totalExpenses = Math.abs(expenseEntries.reduce((s, e) => s + e.amount, 0));
+
+  // Fallback to rolling 30 days if calendar month is empty
+  const hasCalendarData = totalIncome > 0 || totalExpenses > 0;
+  const targetIncomeEntries = hasCalendarData ? incomeEntries : recent30.filter((e) => e.entry_type === "income");
+  const targetExpenseEntries = hasCalendarData ? expenseEntries : recent30.filter((e) => e.entry_type === "expense");
+
+  if (!hasCalendarData) {
+    totalIncome = targetIncomeEntries.reduce((s, e) => s + e.amount, 0);
+    totalExpenses = Math.abs(targetExpenseEntries.reduce((s, e) => s + e.amount, 0));
+  }
+
+  const savingsRate = totalIncome > 0
     ? Math.round(((totalIncome - totalExpenses) / totalIncome) * 100) / 100
     : 0;
 
-  const largestCredit = incomeEntries.reduce<typeof incomeEntries[0] | null>(
+  const largestCredit = targetIncomeEntries.reduce<typeof targetIncomeEntries[0] | null>(
     (max, e) => (!max || e.amount > max.amount ? e : max), null
   );
-  const largestDebit = expenseEntries.reduce<typeof expenseEntries[0] | null>(
+  const largestDebit = targetExpenseEntries.reduce<typeof targetExpenseEntries[0] | null>(
     (max, e) => (!max || Math.abs(e.amount) > Math.abs(max.amount) ? e : max), null
   );
 
