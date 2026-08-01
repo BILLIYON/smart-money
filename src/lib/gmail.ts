@@ -195,8 +195,9 @@ export async function syncGmailForUser(
     queryTerms = customQuery.trim();
   }
 
+  const lastSyncDate = new Date(lastSync * 1000).toISOString().split("T")[0];
   const queries = [
-    `after:${lastSync} (${queryTerms})`
+    `after:${lastSyncDate} (${queryTerms})`
   ];
 
   // Search all queries with maxResults=500 to fetch full 3 months of bank emails
