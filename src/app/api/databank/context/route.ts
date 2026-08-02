@@ -167,22 +167,52 @@ export async function GET() {
   const totalAssets = entries.filter((e) => e.entry_type === "asset").reduce((s, e) => s + e.amount, 0);
   const totalDebt = entries.filter((e) => e.entry_type === "debt").reduce((s, e) => s + Math.abs(e.amount), 0);
 
-  const netWorth = netSavingsAllTime + totalAssets - totalDebt;
-  const savingsBalance = Math.max(0, netSavingsAllTime) + totalAssets;
+  // Group entries by bank/provider to find the most recent balance for each
+  const bankBalances: Record<string, { balance: number; date: string }> = {};
+  const sortedEntriesForBalances = [...entries].sort((a, b) => {
+    return (b.entry_date ?? "").localeCompare(a.entry_date ?? "");
+  });
+
+  for (const entry of sortedEntriesForBalances) {
+    const bankKey = (entry.metadata as any)?.bank || (entry.metadata as any)?.provider || "Other";
+    const balance = (entry.metadata as any)?.account_balance;
+    if (typeof balance === "number" && balance > 0 && !bankBalances[bankKey]) {
+      bankBalances[bankKey] = {
+        balance,
+        date: entry.entry_date ?? ""
+      };
+    }
+  }
+
+  const totalBankBalance = Object.values(bankBalances).reduce((sum, b) => sum + b.balance, 0);
+  const cashSavingsVal = totalBankBalance > 0 ? totalBankBalance : Math.max(0, netSavingsAllTime);
+
+  const netWorth = cashSavingsVal + totalAssets - totalDebt;
+  const savingsBalance = cashSavingsVal + totalAssets;
 
   const rawAssets = entries.filter((e) => e.entry_type === "asset");
-  const cashSavingsVal = Math.max(0, netSavingsAllTime);
   let assetsList = rawAssets.map((e) => ({
     name: e.description,
     value: Math.round(e.amount / 100),
     pct: Math.round((e.amount / Math.max(1, savingsBalance)) * 100),
   }));
+
   if (cashSavingsVal > 0) {
-    assetsList.unshift({
-      name: "Cash Savings",
-      value: Math.round(cashSavingsVal / 100),
-      pct: Math.round((cashSavingsVal / Math.max(1, savingsBalance)) * 100),
-    });
+    if (totalBankBalance > 0) {
+      for (const [bank, info] of Object.entries(bankBalances)) {
+        assetsList.unshift({
+          name: `${bank} Account`,
+          value: Math.round(info.balance / 100),
+          pct: Math.round((info.balance / Math.max(1, savingsBalance)) * 100),
+        });
+      }
+    } else {
+      assetsList.unshift({
+        name: "Cash Savings",
+        value: Math.round(cashSavingsVal / 100),
+        pct: Math.round((cashSavingsVal / Math.max(1, savingsBalance)) * 100),
+      });
+    }
   } else if (assetsList.length === 0 && savingsBalance > 0) {
     assetsList = [{
       name: "Cash Savings",
