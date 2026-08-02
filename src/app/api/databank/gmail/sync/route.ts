@@ -17,17 +17,29 @@ export async function POST() {
     async start(controller) {
       try {
         await syncGmailForUser(user.id, true, (progress, syncedCount) => {
-          controller.enqueue(
-            encoder.encode(JSON.stringify({ progress, synced: syncedCount }) + "\n")
-          );
+          try {
+            controller.enqueue(
+              encoder.encode(JSON.stringify({ progress, synced: syncedCount }) + "\n")
+            );
+          } catch (e) {
+            // Client disconnected. Swallow the error to let sync continue in background.
+          }
         });
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Sync failed";
-        controller.enqueue(
-          encoder.encode(JSON.stringify({ error: message, progress: 100 }) + "\n")
-        );
+        try {
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ error: message, progress: 100 }) + "\n")
+          );
+        } catch (e) {
+          // Stream already closed
+        }
       } finally {
-        controller.close();
+        try {
+          controller.close();
+        } catch (e) {
+          // Already closed
+        }
       }
     },
   });

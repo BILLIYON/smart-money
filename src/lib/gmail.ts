@@ -182,128 +182,189 @@ export async function syncGmailForUser(
   const customQuery = metadata.custom_query || "";
   const aiPrompt = metadata.ai_prompt || "";
 
-  // ── Construct Gmail search query dynamically ──
-  let queryTerms = `subject:(receipt OR payment OR transfer OR transaction OR alert OR notice OR advice OR purchase OR pos OR bank OR opay OR kuda OR palmpay OR moniepoint OR zenith OR gtbank OR access OR uba OR firstbank OR stanbic OR flutterwave OR paystack OR debit OR credit OR successful) OR "debit alert" OR "credit alert" OR "transaction alert" OR "transfer notification" OR "payment received"`;
+  try {
+    // 1. Mark as syncing
+    await supabase
+      .from("user_integrations")
+      .update({
+        metadata: {
+          ...metadata,
+          is_syncing: true,
+          sync_progress: 0,
+          sync_message: "Searching Gmail inbox..."
+        }
+      })
+      .eq("user_id", userId)
+      .eq("provider", "gmail");
 
-  if (presetFilter === "opay") {
-    queryTerms = `opay (subject:(receipt OR payment OR transfer OR alert OR transaction OR debit OR credit) OR "opay alert")`;
-  } else if (presetFilter === "uba") {
-    queryTerms = `uba (subject:(receipt OR payment OR transfer OR alert OR transaction OR debit OR credit) OR "uba alert")`;
-  } else if (presetFilter === "debits_credits") {
-    queryTerms = `"debit alert" OR "credit alert" OR "transaction alert"`;
-  } else if (presetFilter === "custom" && customQuery.trim()) {
-    queryTerms = customQuery.trim();
-  }
+    // ── Construct Gmail search query dynamically ──
+    let queryTerms = `subject:(receipt OR payment OR transfer OR transaction OR alert OR notice OR advice OR purchase OR pos OR bank OR opay OR kuda OR palmpay OR moniepoint OR zenith OR gtbank OR access OR uba OR firstbank OR stanbic OR flutterwave OR paystack OR debit OR credit OR successful) OR "debit alert" OR "credit alert" OR "transaction alert" OR "transfer notification" OR "payment received"`;
 
-  const lastSyncDate = new Date(lastSync * 1000).toISOString().split("T")[0];
-  const queries = [
-    `after:${lastSyncDate} (${queryTerms})`
-  ];
+    if (presetFilter === "opay") {
+      queryTerms = `opay (subject:(receipt OR payment OR transfer OR alert OR transaction OR debit OR credit) OR "opay alert")`;
+    } else if (presetFilter === "uba") {
+      queryTerms = `uba (subject:(receipt OR payment OR transfer OR alert OR transaction OR debit OR credit) OR "uba alert")`;
+    } else if (presetFilter === "debits_credits") {
+      queryTerms = `"debit alert" OR "credit alert" OR "transaction alert"`;
+    } else if (presetFilter === "custom" && customQuery.trim()) {
+      queryTerms = customQuery.trim();
+    }
 
-  // Search all queries with maxResults=500 to fetch full 3 months of bank emails
-  const allIds = (
-    await Promise.all(queries.map((q) => searchEmails(gmail, q, 500)))
-  ).flat();
+    const lastSyncDate = new Date(lastSync * 1000).toISOString().split("T")[0];
+    const queries = [
+      `after:${lastSyncDate} (${queryTerms})`
+    ];
 
-  // Deduplicate message IDs
-  const uniqueIds = [...new Set(allIds)];
+    // Search all queries with maxResults=500 to fetch full 3 months of bank emails
+    const allIds = (
+      await Promise.all(queries.map((q) => searchEmails(gmail, q, 500)))
+    ).flat();
 
-  if (uniqueIds.length === 0) {
-    onProgress?.(100, 0);
+    // Deduplicate message IDs
+    const uniqueIds = [...new Set(allIds)];
+
+    if (uniqueIds.length === 0) {
+      onProgress?.(100, 0);
+      // Update last sync time
+      await supabase
+        .from("user_integrations")
+        .update({
+          last_synced_at: new Date().toISOString(),
+          metadata: {
+            ...metadata,
+            is_syncing: false,
+            sync_progress: 100,
+            sync_message: "No new transactions found"
+          }
+        })
+        .eq("user_id", userId)
+        .eq("provider", "gmail");
+      return { synced: 0 };
+    }
+
+    // Fetch and parse each email
+    // Batch to avoid Gmail API rate limits (250 quota units/user/second)
+    const BATCH = 10;
+    const entries: DataBankEntry[] = [];
+
+    onProgress?.(0, 0);
+
+    for (let i = 0; i < uniqueIds.length; i += BATCH) {
+      const batch = uniqueIds.slice(i, i + BATCH);
+      const emails = await Promise.all(batch.map((id) => getEmailBody(gmail, id)));
+
+      // Parse emails in parallel via Groq Llama with Claude fallback
+      const extractedData = await Promise.all(
+        emails.map(async (email) => {
+          const cleanBody = stripHtml(email.body);
+          const data = await extractFinancialDataFromEmail(cleanBody, email.subject, email.from, syncMode, aiPrompt);
+          if (!data) return null;
+
+          // Prefer real email Date header; fall back to today if unparseable
+          let entryDate = new Date().toISOString().split("T")[0];
+          if (email.date) {
+            const parsed = new Date(email.date);
+            if (!Number.isNaN(parsed.getTime())) {
+              entryDate = parsed.toISOString().split("T")[0];
+            }
+          }
+
+          const metadataVal: Record<string, unknown> = {
+            email_from: email.from,
+            email_subject: email.subject,
+          };
+          if (data.provider) metadataVal.provider = data.provider;
+          if (data.bank) metadataVal.bank = data.bank;
+          // Store account balance in kobo (same unit as amount) for consistent conversion later
+          if (typeof data.account_balance === "number" && data.account_balance > 0) {
+            metadataVal.account_balance = Math.round(data.account_balance * 100);
+          }
+
+          return {
+            source: "gmail",
+            entry_type: data.entry_type,
+            amount: Math.round(data.amount * 100), // convert Naira → kobo
+            description: data.description,
+            category: data.category,
+            entry_date: entryDate,
+            metadata: metadataVal,
+            user_id: userId,
+            gmail_message_id: email.messageId,
+          } as DataBankEntry;
+        })
+      );
+
+      for (const entry of extractedData) {
+        if (entry) entries.push(entry);
+      }
+
+      const progressPct = Math.min(99, Math.round(((i + batch.length) / uniqueIds.length) * 100));
+      onProgress?.(progressPct, entries.length);
+
+      // Update progress in DB metadata as well
+      await supabase
+        .from("user_integrations")
+        .update({
+          metadata: {
+            ...metadata,
+            is_syncing: true,
+            sync_progress: progressPct,
+            sync_message: `Processed ${i + batch.length} of ${uniqueIds.length} emails...`
+          }
+        })
+        .eq("user_id", userId)
+        .eq("provider", "gmail");
+
+      // Small delay between batches to respect rate limits
+      if (i + BATCH < uniqueIds.length) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    }
+
+    // Upsert entries utilizing gmail_message_id unique index
+    if (entries.length > 0) {
+      const { error: upsertError } = await supabase.from("databank_entries").upsert(entries, {
+        onConflict: "gmail_message_id",
+        ignoreDuplicates: false,
+      });
+      if (upsertError) {
+        console.error("[gmail] Database upsert failed:", upsertError.message);
+        throw new Error(`Database upsert failed: ${upsertError.message}`);
+      }
+    }
+
     // Update last sync time
     await supabase
       .from("user_integrations")
-      .update({ last_synced_at: new Date().toISOString() })
+      .update({
+        last_synced_at: new Date().toISOString(),
+        metadata: {
+          ...metadata,
+          is_syncing: false,
+          sync_progress: 100,
+          sync_message: `Synced ${entries.length} new transactions`
+        }
+      })
       .eq("user_id", userId)
       .eq("provider", "gmail");
-    return { synced: 0 };
-  }
 
-  // Fetch and parse each email
-  // Batch to avoid Gmail API rate limits (250 quota units/user/second)
-  const BATCH = 10;
-  const entries: DataBankEntry[] = [];
+    onProgress?.(100, entries.length);
 
-  onProgress?.(0, 0);
-
-  for (let i = 0; i < uniqueIds.length; i += BATCH) {
-    const batch = uniqueIds.slice(i, i + BATCH);
-    const emails = await Promise.all(batch.map((id) => getEmailBody(gmail, id)));
-
-    // Parse emails in parallel via Groq Llama with Claude fallback
-    const extractedData = await Promise.all(
-      emails.map(async (email) => {
-        const cleanBody = stripHtml(email.body);
-        const data = await extractFinancialDataFromEmail(cleanBody, email.subject, email.from, syncMode, aiPrompt);
-        if (!data) return null;
-
-        // Prefer real email Date header; fall back to today if unparseable
-        let entryDate = new Date().toISOString().split("T")[0];
-        if (email.date) {
-          const parsed = new Date(email.date);
-          if (!Number.isNaN(parsed.getTime())) {
-            entryDate = parsed.toISOString().split("T")[0];
-          }
+    return { synced: entries.length };
+  } catch (err: any) {
+    // Reset syncing status on error
+    await supabase
+      .from("user_integrations")
+      .update({
+        metadata: {
+          ...metadata,
+          is_syncing: false,
+          sync_progress: null,
+          sync_message: err.message || "Sync failed"
         }
-
-        const metadata: Record<string, unknown> = {
-          email_from: email.from,
-          email_subject: email.subject,
-        };
-        if (data.provider) metadata.provider = data.provider;
-        if (data.bank) metadata.bank = data.bank;
-        // Store account balance in kobo (same unit as amount) for consistent conversion later
-        if (typeof data.account_balance === "number" && data.account_balance > 0) {
-          metadata.account_balance = Math.round(data.account_balance * 100);
-        }
-
-        return {
-          source: "gmail",
-          entry_type: data.entry_type,
-          amount: Math.round(data.amount * 100), // convert Naira → kobo
-          description: data.description,
-          category: data.category,
-          entry_date: entryDate,
-          metadata,
-          user_id: userId,
-          gmail_message_id: email.messageId,
-        } as DataBankEntry;
       })
-    );
-
-    for (const entry of extractedData) {
-      if (entry) entries.push(entry);
-    }
-
-    const progressPct = Math.min(99, Math.round(((i + batch.length) / uniqueIds.length) * 100));
-    onProgress?.(progressPct, entries.length);
-
-    // Small delay between batches to respect rate limits
-    if (i + BATCH < uniqueIds.length) {
-      await new Promise((r) => setTimeout(r, 100));
-    }
+      .eq("user_id", userId)
+      .eq("provider", "gmail");
+    throw err;
   }
-
-  // Upsert entries utilizing gmail_message_id unique index
-  if (entries.length > 0) {
-    const { error: upsertError } = await supabase.from("databank_entries").upsert(entries, {
-      onConflict: "gmail_message_id",
-      ignoreDuplicates: false,
-    });
-    if (upsertError) {
-      console.error("[gmail] Database upsert failed:", upsertError.message);
-      throw new Error(`Database upsert failed: ${upsertError.message}`);
-    }
-  }
-
-  // Update last sync time
-  await supabase
-    .from("user_integrations")
-    .update({ last_synced_at: new Date().toISOString() })
-    .eq("user_id", userId)
-    .eq("provider", "gmail");
-
-  onProgress?.(100, entries.length);
-
-  return { synced: entries.length };
 }

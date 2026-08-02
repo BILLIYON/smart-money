@@ -24,6 +24,7 @@ type GmailStatus = {
   connected: boolean;
   lastSyncedAt: string | null;
   entryCount: number;
+  metadata?: any;
 };
 
 // ── Gmail Card ────────────────────────────────────────────────
@@ -52,8 +53,13 @@ function GmailCard() {
       setPresetFilter(data.metadata.preset_filter || "all");
       setCustomQuery(data.metadata.custom_query || "");
       setAiPrompt(data.metadata.ai_prompt || "");
+      if (data.metadata.is_syncing) {
+        setSyncing(true);
+        setSyncProgress(data.metadata.sync_progress ?? 0);
+        setSyncMsg(data.metadata.sync_message || "Syncing in background...");
+      }
     }
-    return data as GmailStatus;
+    return data;
   }, []);
 
   // On mount: load status, then auto-sync if stale (>4h)
@@ -74,6 +80,34 @@ function GmailCard() {
       loadStatus();
     }
   }, [searchParams, loadStatus]);
+
+  // Poll Gmail status if it is currently syncing in the background
+  useEffect(() => {
+    if (!status?.metadata?.is_syncing) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/databank/gmail/status");
+        if (res.ok) {
+          const data = await res.json();
+          setStatus(data);
+          if (data.metadata?.is_syncing) {
+            setSyncing(true);
+            setSyncProgress(data.metadata.sync_progress ?? 0);
+            setSyncMsg(data.metadata.sync_message || "Syncing in background...");
+          } else {
+            setSyncing(false);
+            setSyncProgress(null);
+            setSyncMsg(data.metadata?.sync_message || "Sync complete!");
+            setTimeout(() => setSyncMsg(null), 4000);
+            await useDatabankStore.getState().loadContext();
+          }
+        }
+      } catch (e) {
+        console.error("Background sync poll error:", e);
+      }
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [status?.metadata?.is_syncing]);
 
   const [syncProgress, setSyncProgress] = useState<number | null>(null);
 
