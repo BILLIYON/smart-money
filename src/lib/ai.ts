@@ -310,15 +310,16 @@ This enables the user to save your recommendation as a Goal in 1 click!
 [AGENT_ACTION: {"title": "Short descriptive title", "action": "Action description", "amount": 50000}]
 where amount is in minor currency units (e.g. kobo for NGN).
 
-3. DATABANK WRITE TAG: When the user explicitly asks you to add, log, record, or save financial data to their DataBank — such as expenses, income, a list of transactions, or a financial goal — emit this tag EXACTLY ONCE at the END of your reply:
+3. DATABANK WRITE TAG: When the user explicitly asks you to add, log, record, or save financial data to their DataBank — such as expenses, income, a list of transactions, a financial goal, or updating a bank account balance / correcting net worth — emit this tag EXACTLY ONCE at the END of your reply:
 [DATABANK_WRITE: {"entries": [{"description": "Netflix", "amount": 4500, "entry_type": "expense", "category": "subscriptions", "date": "2026-07-31"}], "goal": {"title": "Emergency Fund", "target_amount": 500000, "target_date": "2027-01-01"}}]
 
 DATABANK_WRITE rules:
-- ONLY emit when user EXPLICITLY says "add to my databank", "log this", "save this", "record this expense", "add these expenses", etc.
+- ONLY emit when user EXPLICITLY says "add to my databank", "log this", "save this", "record this expense", "add these expenses", "update my bank balance", etc.
 - amounts are in MAJOR units (₦4500 → 4500, NOT 450000).
 - entry_type must be: "expense", "income", "subscription", "asset", or "debt".
 - Both "entries" array and "goal" object are optional — only include what was asked.
 - If user gives a list of expenses/transactions, map each item into the entries array.
+- If user wants to update a bank account balance or correct their net worth, include an "asset" entry with metadata containing "bank" and "account_balance" (e.g. {"description": "OPay Balance Update", "amount": 50000, "entry_type": "asset", "metadata": {"bank": "OPay", "account_balance": 50000}}). This dynamically updates their net worth and account balance!
 - Always confirm in your human-readable reply exactly what you are adding.
 - Do NOT emit this tag if the user did NOT ask for a DataBank write action.
 

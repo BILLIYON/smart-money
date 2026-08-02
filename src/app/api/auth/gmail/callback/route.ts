@@ -110,11 +110,6 @@ export async function GET(req: Request) {
       } catch (dbErr) {
         console.error("[gmail/callback] DB upsert failed:", dbErr);
       }
-
-      // Kick off background sync for logged in user
-      syncGmailForUser(targetUserId).catch((err) => {
-        console.error("[gmail/callback] Initial Gmail sync failed:", err?.message || err);
-      });
     }
 
     return redirectOrPopup(`${baseUrl}${returnPath}?gmail=connected`, "GMAIL_CONNECTED");

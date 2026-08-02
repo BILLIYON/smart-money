@@ -298,7 +298,7 @@ function AiMessage({
     } catch { /* leave undefined */ }
 
     try {
-      await fetch("/api/goals", {
+      await fetch("/api/goals/list", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

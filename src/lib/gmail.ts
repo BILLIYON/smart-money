@@ -272,6 +272,32 @@ export async function syncGmailForUser(
     onProgress?.(0, 0);
 
     for (let i = 0; i < uniqueIds.length; i += BATCH) {
+      // Check if sync was cancelled/stopped by the user
+      const { data: currentIntegration } = await supabase
+        .from("user_integrations")
+        .select("metadata")
+        .eq("user_id", userId)
+        .eq("provider", "gmail")
+        .single();
+      const currentMeta = currentIntegration?.metadata as any || {};
+      if (currentMeta.should_stop_sync) {
+        // Reset flags and stop
+        await supabase
+          .from("user_integrations")
+          .update({
+            metadata: {
+              ...currentMeta,
+              is_syncing: false,
+              should_stop_sync: false,
+              sync_progress: null,
+              sync_message: "Sync stopped by user"
+            }
+          })
+          .eq("user_id", userId)
+          .eq("provider", "gmail");
+        throw new Error("Sync stopped by user");
+      }
+
       const batch = uniqueIds.slice(i, i + BATCH);
       const emails = await Promise.all(batch.map((id) => getEmailBody(gmail, id)));
 

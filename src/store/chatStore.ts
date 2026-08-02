@@ -591,12 +591,24 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (!res.ok) return;
       const data = await res.json();
       if (data.session && data.messages) {
-        const buddyId = data.session.buddy_ids?.[0] ?? get().activeBuddyId;
-        set((s) => ({
-          activeSessionId: sessionId,
-          activeBuddyId: buddyId,
-          threads: { ...s.threads, [buddyId]: data.messages },
-        }));
+        const isGroup = !!data.session.is_group;
+        if (isGroup) {
+          const groupId = data.session.buddy_ids?.[0] ?? get().activeGroupId;
+          set((s) => ({
+            chatMode: "group",
+            activeSessionId: sessionId,
+            activeGroupId: groupId,
+            groupThreads: { ...s.groupThreads, [groupId]: data.messages },
+          }));
+        } else {
+          const buddyId = data.session.buddy_ids?.[0] ?? get().activeBuddyId;
+          set((s) => ({
+            chatMode: "1to1",
+            activeSessionId: sessionId,
+            activeBuddyId: buddyId,
+            threads: { ...s.threads, [buddyId]: data.messages },
+          }));
+        }
       }
     } catch (e) {
       console.error("[chatStore] loadSessionMessages:", e);
@@ -608,12 +620,23 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const res = await fetch(`/api/chat/messages?buddyId=${buddyId}`);
       if (!res.ok) return;
       const data = await res.json();
-      if (data.session && data.messages && data.messages.length > 0) {
-        set((s) => ({
-          activeSessionId: data.session.id,
-          activeBuddyId: buddyId,
-          threads: { ...s.threads, [buddyId]: data.messages },
-        }));
+      if (data.session) {
+        const isGroup = !!data.session.is_group;
+        if (isGroup) {
+          set((s) => ({
+            chatMode: "group",
+            activeSessionId: data.session.id,
+            activeGroupId: buddyId,
+            groupThreads: { ...s.groupThreads, [buddyId]: data.messages || [] },
+          }));
+        } else {
+          set((s) => ({
+            chatMode: "1to1",
+            activeSessionId: data.session.id,
+            activeBuddyId: buddyId,
+            threads: { ...s.threads, [buddyId]: data.messages || [] },
+          }));
+        }
       } else {
         const sessId = await get().createNewSession(buddyId);
         if (sessId) set({ activeSessionId: sessId });

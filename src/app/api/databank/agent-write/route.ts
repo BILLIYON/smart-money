@@ -16,6 +16,7 @@ interface EntryPayload {
   entry_type: EntryType;
   category?: string;
   date?: string;         // ISO date string; defaults to today
+  metadata?: Record<string, any>;
 }
 
 interface GoalPayload {
@@ -83,6 +84,7 @@ export async function POST(req: Request) {
           description: description.trim(),
           category,
           entry_date: date,
+          metadata: entry.metadata ?? {},
         })
         .select("id")
         .single();

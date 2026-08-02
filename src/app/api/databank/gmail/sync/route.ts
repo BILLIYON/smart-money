@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createServiceSupabaseClient } from "@/lib/supabase-server";
 import { syncGmailForUser } from "@/lib/gmail";
 
 export const maxDuration = 60;
@@ -54,5 +55,40 @@ export async function POST() {
       "Connection": "keep-alive",
     },
   });
+}
+
+export async function DELETE() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const serviceSupabase = createServiceSupabaseClient();
+
+  // Load current metadata via service role client
+  const { data: integration } = await serviceSupabase
+    .from("user_integrations")
+    .select("metadata")
+    .eq("user_id", user.id)
+    .eq("provider", "gmail")
+    .single();
+
+  const metadata = integration?.metadata as any || {};
+
+  // Set the stop flag via service role client
+  await serviceSupabase
+    .from("user_integrations")
+    .update({
+      metadata: {
+        ...metadata,
+        should_stop_sync: true,
+      }
+    })
+    .eq("user_id", user.id)
+    .eq("provider", "gmail");
+
+  return Response.json({ success: true });
 }
 

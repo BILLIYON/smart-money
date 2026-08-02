@@ -52,52 +52,29 @@ const DEFAULT_PRESETS = [
   }
 ];
 
-function parseInstructionsToQueryAndFilter(instructions: string) {
+function parseQueryToFilter(query: string): string {
   const includes: string[] = [];
   const excludes: string[] = [];
   
-  const words = instructions.split(/[\s,]+/);
-  for (const word of words) {
-    const cleanWord = word.trim().replace(/["']/g, "");
-    if (!cleanWord) continue;
-    
-    if (cleanWord.toLowerCase().startsWith("include:")) {
-      const val = cleanWord.substring(8).trim();
-      if (val) includes.push(val);
-    } else if (cleanWord.toLowerCase().startsWith("exclude:")) {
-      const val = cleanWord.substring(8).trim();
-      if (val) excludes.push(val);
+  // Extract words and negative matches from the query
+  const terms = query.match(/(?:[^\s"-]+|"[^"]+")+|-[^\s"]+|-"[^"]+"/g) || [];
+  for (const term of terms) {
+    const clean = term.trim();
+    if (clean.startsWith("-")) {
+      const val = clean.substring(1).replace(/["()]/g, "").trim().toLowerCase();
+      if (val && val !== "or" && val !== "and") excludes.push(val);
     } else {
-      if (/^(opay|uba|kuda|palmpay|moniepoint|zenith|gtbank|access|firstbank|stanbic)$/i.test(cleanWord)) {
-        includes.push(cleanWord.toLowerCase());
+      const val = clean.replace(/["()]/g, "").trim().toLowerCase();
+      if (val && val !== "or" && val !== "and" && !val.includes("subject:") && !val.includes("from:") && !val.includes("to:") && !val.includes("label:") && !val.includes("has:")) {
+        includes.push(val);
       }
     }
   }
-
-  if (includes.length === 0) {
-    const matches = instructions.match(/\b(opay|uba|kuda|palmpay|moniepoint|zenith|gtbank|access|firstbank|stanbic)\b/gi);
-    if (matches) {
-      includes.push(...new Set(matches.map(m => m.toLowerCase())));
-    }
-  }
-
-  let query = "";
-  if (includes.length > 0) {
-    query += `(${includes.join(" OR ")})`;
-  } else {
-    query = `subject:(receipt OR payment OR transfer OR transaction OR alert OR notice OR advice OR purchase OR pos OR bank OR opay OR kuda OR palmpay OR moniepoint OR zenith OR gtbank OR access OR uba OR firstbank OR stanbic OR flutterwave OR paystack OR debit OR credit OR successful) OR "debit alert" OR "credit alert" OR "transaction alert" OR "transfer notification" OR "payment received"`;
-  }
   
-  if (excludes.length > 0) {
-    query += ` ${excludes.map(e => `-${e}`).join(" ")}`;
-  }
-
-  const filterRules = [
+  return [
     ...includes.map(i => `include:${i}`),
     ...excludes.map(e => `exclude:${e}`)
   ].join(",");
-
-  return { query: query.trim(), filter: filterRules };
 }
 
 type GmailStatus = {
@@ -124,7 +101,7 @@ function GmailCard() {
   // Custom presets list
   const [presets, setPresets] = useState<Array<{ id: string; label: string; query: string; filter: string; instructions?: string }>>([]);
   const [presetLabel, setPresetLabel] = useState("");
-  const [presetInstructions, setPresetInstructions] = useState("");
+  const [presetQuery, setPresetQuery] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
 
   const loadStatus = useCallback(async () => {
@@ -136,13 +113,13 @@ function GmailCard() {
       const activePreset = data.metadata.preset_filter || "all";
       setPresetFilter(activePreset);
       
-      const loadedPresets = data.metadata.presets || DEFAULT_PRESETS;
+      const loadedPresets = Array.isArray(data.metadata.presets) ? data.metadata.presets : DEFAULT_PRESETS;
       setPresets(loadedPresets);
 
       const current = loadedPresets.find((p: any) => p.id === activePreset) || loadedPresets[0];
       if (current) {
         setPresetLabel(current.label);
-        setPresetInstructions(current.instructions || current.filter || "");
+        setPresetQuery(current.query || "");
       }
 
       if (data.metadata.is_syncing) {
@@ -154,16 +131,11 @@ function GmailCard() {
     return data;
   }, []);
 
-  // On mount: load status, then auto-sync if stale (>4h)
+
+
+  // On mount: load status
   useEffect(() => {
-    loadStatus().then((data) => {
-      if (!data.connected || !data.lastSyncedAt) return;
-      const ageMs = Date.now() - new Date(data.lastSyncedAt).getTime();
-      if (ageMs > 4 * 60 * 60 * 1000) {
-        // fire-and-forget background sync
-        fetch("/api/databank/gmail/sync", { method: "POST" }).catch(() => {});
-      }
-    });
+    loadStatus();
   }, [loadStatus]);
 
   // If redirected back with ?gmail=connected, re-fetch status
@@ -226,6 +198,19 @@ function GmailCard() {
       popup.error("Error", "Failed to communicate with settings server.");
     } finally {
       setSavingSettings(false);
+    }
+  }
+
+  async function handleStopSync() {
+    try {
+      await fetch("/api/databank/gmail/sync", { method: "DELETE" });
+      setSyncing(false);
+      setSyncProgress(null);
+      setSyncMsg("Sync stopped by user");
+      setTimeout(() => setSyncMsg(null), 4000);
+      await loadStatus();
+    } catch (e) {
+      console.error("Failed to stop sync:", e);
     }
   }
 
@@ -500,29 +485,33 @@ function GmailCard() {
                       id: newId,
                       label: "New Custom Preset",
                       query: `(opay) -paystack`,
-                      filter: "include:opay,exclude:paystack",
-                      instructions: "include:opay,exclude:paystack"
+                      filter: "include:opay,exclude:paystack"
                     };
                     setPresets(prev => [...prev, newPreset]);
                     setPresetFilter(newId);
                     setPresetLabel("New Custom Preset");
-                    setPresetInstructions("include:opay,exclude:paystack");
+                    setPresetQuery("(opay) -paystack");
                   }}
                   className="px-2 py-[2px] rounded-[4px] border text-[10px] font-semibold transition-all cursor-pointer bg-transparent"
                   style={{ color: "var(--green2)", borderColor: "var(--green)" }}
                 >
                   ➕ New Preset
                 </button>
-                {!["all", "opay", "uba", "debits_credits"].includes(presetFilter) && (
+                {presets.length > 0 && (
                   <button
                     type="button"
                     onClick={() => {
                       const updated = presets.filter(p => p.id !== presetFilter);
                       setPresets(updated);
-                      setPresetFilter("all");
-                      const allPreset = updated.find(p => p.id === "all") || DEFAULT_PRESETS[0];
-                      setPresetLabel(allPreset.label);
-                      setPresetInstructions(allPreset.instructions || allPreset.filter || "");
+                      if (updated.length > 0) {
+                        setPresetFilter(updated[0].id);
+                        setPresetLabel(updated[0].label);
+                        setPresetQuery(updated[0].query || "");
+                      } else {
+                        setPresetFilter("");
+                        setPresetLabel("");
+                        setPresetQuery("");
+                      }
                     }}
                     className="px-2 py-[2px] rounded-[4px] border text-[10px] font-semibold transition-all cursor-pointer bg-transparent"
                     style={{ color: "#EA4335", borderColor: "#EA4335" }}
@@ -537,10 +526,13 @@ function GmailCard() {
               onChange={(e) => {
                 const targetId = e.target.value;
                 setPresetFilter(targetId);
-                const current = presets.find((p) => p.id === targetId) || DEFAULT_PRESETS[0];
+                const current = presets.find((p) => p.id === targetId);
                 if (current) {
                   setPresetLabel(current.label);
-                  setPresetInstructions(current.instructions || current.filter || "");
+                  setPresetQuery(current.query || "");
+                } else {
+                  setPresetLabel("");
+                  setPresetQuery("");
                 }
               }}
               className="w-full p-[8px] rounded-[8px] border text-[12px] outline-none mb-3"
@@ -552,8 +544,8 @@ function GmailCard() {
             </select>
           </div>
 
-          {/* Preset Name Editor (only for custom presets) */}
-          {!["all", "opay", "uba", "debits_credits"].includes(presetFilter) && (
+          {/* Preset Name Editor */}
+          {presetFilter && (
             <div>
               <label className="font-semibold block mb-1" style={{ color: "var(--text)" }}>Preset Name</label>
               <input
@@ -564,37 +556,36 @@ function GmailCard() {
                   setPresetLabel(val);
                   setPresets(prev => prev.map(p => p.id === presetFilter ? { ...p, label: val } : p));
                 }}
-                className="w-full p-[8px] rounded-[8px] border text-[12px] outline-none"
+                className="w-full p-[8px] rounded-[8px] border text-[12px] outline-none mb-3"
                 style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)" }}
               />
             </div>
           )}
 
-          {/* Preset Rules & Instructions (Single text area!) */}
-          <div>
-            <label className="font-semibold block mb-1" style={{ color: "var(--text)" }}>
-              {["all", "opay", "uba", "debits_credits"].includes(presetFilter) ? "Filter Rules (View-only)" : "Filter Rules & Instructions"}
-            </label>
-            <textarea
-              value={presetInstructions}
-              disabled={["all", "opay", "uba", "debits_credits"].includes(presetFilter)}
-              onChange={(e) => {
-                const val = e.target.value;
-                setPresetInstructions(val);
-                const parsed = parseInstructionsToQueryAndFilter(val);
-                setPresets(prev => prev.map(p => p.id === presetFilter ? { ...p, instructions: val, query: parsed.query, filter: parsed.filter } : p));
-              }}
-              placeholder="e.g. include: opay, exclude: paystack"
-              rows={3}
-              className="w-full p-[8px] rounded-[8px] border text-[12px] outline-none resize-y"
-              style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)", fontFamily: "inherit" }}
-            />
-            <p className="text-[10px] mt-1" style={{ color: "var(--muted)", lineHeight: 1.4 }}>
-              {["all", "opay", "uba", "debits_credits"].includes(presetFilter)
-                ? "This is a built-in default preset. Add a new preset to customize search filters."
-                : "Enter strict guidelines. E.g. include: opay, exclude: paystack. Gmail query parameters are generated automatically."}
-            </p>
-          </div>
+          {/* Custom Search Query (Single Input!) */}
+          {presetFilter && (
+            <div>
+              <label className="font-semibold block mb-1" style={{ color: "var(--text)" }}>
+                Custom Search Query
+              </label>
+              <textarea
+                value={presetQuery}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setPresetQuery(val);
+                  const filter = parseQueryToFilter(val);
+                  setPresets(prev => prev.map(p => p.id === presetFilter ? { ...p, query: val, filter: filter } : p));
+                }}
+                placeholder="e.g. opay -paystack"
+                rows={3}
+                className="w-full p-[8px] rounded-[8px] border text-[12px] outline-none resize-y"
+                style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)", fontFamily: "inherit" }}
+              />
+              <p className="text-[10px] mt-1" style={{ color: "var(--muted)", lineHeight: 1.4 }}>
+                Define the Gmail search parameters. Gmail will retrieve emails matching this query, and we will strictly filter out any messages not matching these keywords.
+              </p>
+            </div>
+          )}
 
           {/* Save Button */}
           <button
@@ -618,28 +609,66 @@ function GmailCard() {
         </div>
       )}
 
+      {/* Progress Bar & Stop Button */}
+      {syncing && (
+        <div className="mb-4 p-3.5 rounded-[12px]" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
+          <div className="flex items-center justify-between text-[11px] font-semibold mb-2">
+            <span style={{ color: "var(--text)" }}>{syncMsg || "Syncing your Gmail Data..."}</span>
+            <span style={{ color: "var(--green)" }}>{syncProgress !== null ? `${syncProgress}%` : "Syncing..."}</span>
+          </div>
+          
+          {/* Modern Progress Bar Track */}
+          <div className="w-full h-[6px] rounded-full overflow-hidden mb-3.5" style={{ background: "rgba(0,0,0,0.08)" }}>
+            <div 
+              className="h-full rounded-full transition-all duration-300 ease-out"
+              style={{ 
+                width: `${syncProgress ?? 0}%`,
+                background: "linear-gradient(90deg, var(--green) 0%, var(--green2) 100%)",
+                boxShadow: "0 0 8px var(--green2)"
+              }}
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={handleStopSync}
+            className="w-full py-[8px] rounded-[8px] text-[11px] font-semibold transition-all duration-150 border cursor-pointer"
+            style={{ 
+              borderColor: "rgba(220,38,38,0.25)", 
+              color: "#DC2626", 
+              background: "rgba(220,38,38,0.04)" 
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(220,38,38,0.1)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(220,38,38,0.04)"; }}
+          >
+            ⏹ Stop Sync
+          </button>
+        </div>
+      )}
+
       {/* Action buttons */}
-      <div className="flex gap-2">
-        <button
-          onClick={handleSyncNow}
-          disabled={syncing}
-          className="flex-1 py-[9px] rounded-[10px] text-[12px] font-semibold transition-colors duration-150"
-          style={{ background: "var(--green)", color: "#fff", border: "none", opacity: syncing ? 0.7 : 1, cursor: syncing ? "not-allowed" : "pointer" }}
-          onMouseEnter={(e) => { if (!syncing) (e.currentTarget as HTMLButtonElement).style.background = "var(--green2)"; }}
-          onMouseLeave={(e) => { if (!syncing) (e.currentTarget as HTMLButtonElement).style.background = "var(--green)"; }}
-        >
-          {syncing ? (syncProgress !== null ? `Syncing (${syncProgress}%)…` : "Syncing…") : "Sync Now"}
-        </button>
-        <button
-          onClick={() => setConfirmDisconnect(true)}
-          className="px-4 py-[9px] rounded-[10px] text-[12px] font-medium border transition-colors duration-150"
-          style={{ color: "#E24B4A", borderColor: "#E24B4A", background: "transparent" }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(226,75,74,.06)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
-        >
-          Disconnect
-        </button>
-      </div>
+      {!syncing && (
+        <div className="flex gap-2">
+          <button
+            onClick={handleSyncNow}
+            className="flex-1 py-[9px] rounded-[10px] text-[12px] font-semibold transition-colors duration-150 border-none cursor-pointer"
+            style={{ background: "var(--green)", color: "#fff" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green2)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green)"; }}
+          >
+            🔄 Sync Now
+          </button>
+          <button
+            onClick={() => setConfirmDisconnect(true)}
+            className="px-4 py-[9px] rounded-[10px] text-[12px] font-medium border transition-colors duration-150 cursor-pointer"
+            style={{ color: "#E24B4A", borderColor: "#E24B4A", background: "transparent" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(226,75,74,.06)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+          >
+            Disconnect
+          </button>
+        </div>
+      )}
 
       {/* Return to Chat — shown when arriving via the Gmail OAuth flow */}
       {searchParams.get("gmail") === "connected" && (
