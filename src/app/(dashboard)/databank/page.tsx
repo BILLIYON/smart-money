@@ -20,6 +20,86 @@ function timeAgo(iso: string | null): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+// ── Default Presets ───────────────────────────────────────────
+const DEFAULT_PRESETS = [
+  {
+    id: "all",
+    label: "Default Broad Scan (All Bank Alerts)",
+    query: `subject:(receipt OR payment OR transfer OR transaction OR alert OR notice OR advice OR purchase OR pos OR bank OR opay OR kuda OR palmpay OR moniepoint OR zenith OR gtbank OR access OR uba OR firstbank OR stanbic OR flutterwave OR paystack OR debit OR credit OR successful) OR "debit alert" OR "credit alert" OR "transaction alert" OR "transfer notification" OR "payment received"`,
+    filter: "",
+    instructions: "Scan all standard bank alerts and receipts broadly."
+  },
+  {
+    id: "opay",
+    label: "OPay alerts only",
+    query: `opay (subject:(receipt OR payment OR transfer OR alert OR transaction OR debit OR credit) OR "opay alert")`,
+    filter: "include:opay",
+    instructions: "include:opay"
+  },
+  {
+    id: "uba",
+    label: "UBA bank alerts only",
+    query: `uba (subject:(receipt OR payment OR transfer OR alert OR transaction OR debit OR credit) OR "uba alert")`,
+    filter: "include:uba",
+    instructions: "include:uba"
+  },
+  {
+    id: "debits_credits",
+    label: "Debits & Credits only",
+    query: `"debit alert" OR "credit alert" OR "transaction alert"`,
+    filter: "",
+    instructions: "Scan debit and credit transaction messages specifically."
+  }
+];
+
+function parseInstructionsToQueryAndFilter(instructions: string) {
+  const includes: string[] = [];
+  const excludes: string[] = [];
+  
+  const words = instructions.split(/[\s,]+/);
+  for (const word of words) {
+    const cleanWord = word.trim().replace(/["']/g, "");
+    if (!cleanWord) continue;
+    
+    if (cleanWord.toLowerCase().startsWith("include:")) {
+      const val = cleanWord.substring(8).trim();
+      if (val) includes.push(val);
+    } else if (cleanWord.toLowerCase().startsWith("exclude:")) {
+      const val = cleanWord.substring(8).trim();
+      if (val) excludes.push(val);
+    } else {
+      if (/^(opay|uba|kuda|palmpay|moniepoint|zenith|gtbank|access|firstbank|stanbic)$/i.test(cleanWord)) {
+        includes.push(cleanWord.toLowerCase());
+      }
+    }
+  }
+
+  if (includes.length === 0) {
+    const matches = instructions.match(/\b(opay|uba|kuda|palmpay|moniepoint|zenith|gtbank|access|firstbank|stanbic)\b/gi);
+    if (matches) {
+      includes.push(...new Set(matches.map(m => m.toLowerCase())));
+    }
+  }
+
+  let query = "";
+  if (includes.length > 0) {
+    query += `(${includes.join(" OR ")})`;
+  } else {
+    query = `subject:(receipt OR payment OR transfer OR transaction OR alert OR notice OR advice OR purchase OR pos OR bank OR opay OR kuda OR palmpay OR moniepoint OR zenith OR gtbank OR access OR uba OR firstbank OR stanbic OR flutterwave OR paystack OR debit OR credit OR successful) OR "debit alert" OR "credit alert" OR "transaction alert" OR "transfer notification" OR "payment received"`;
+  }
+  
+  if (excludes.length > 0) {
+    query += ` ${excludes.map(e => `-${e}`).join(" ")}`;
+  }
+
+  const filterRules = [
+    ...includes.map(i => `include:${i}`),
+    ...excludes.map(e => `exclude:${e}`)
+  ].join(",");
+
+  return { query: query.trim(), filter: filterRules };
+}
+
 type GmailStatus = {
   connected: boolean;
   lastSyncedAt: string | null;
@@ -40,8 +120,11 @@ function GmailCard() {
   const [showSettings, setShowSettings] = useState(true);
   const [syncMode, setSyncMode] = useState<"lightweight" | "deep">("lightweight");
   const [presetFilter, setPresetFilter] = useState<string>("all");
-  const [customQuery, setCustomQuery] = useState("");
-  const [aiPrompt, setAiPrompt] = useState("");
+  
+  // Custom presets list
+  const [presets, setPresets] = useState<Array<{ id: string; label: string; query: string; filter: string; instructions?: string }>>([]);
+  const [presetLabel, setPresetLabel] = useState("");
+  const [presetInstructions, setPresetInstructions] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
 
   const loadStatus = useCallback(async () => {
@@ -50,9 +133,18 @@ function GmailCard() {
     setStatus(data);
     if (data.metadata) {
       setSyncMode(data.metadata.sync_mode || "lightweight");
-      setPresetFilter(data.metadata.preset_filter || "all");
-      setCustomQuery(data.metadata.custom_query || "");
-      setAiPrompt(data.metadata.ai_prompt || "");
+      const activePreset = data.metadata.preset_filter || "all";
+      setPresetFilter(activePreset);
+      
+      const loadedPresets = data.metadata.presets || DEFAULT_PRESETS;
+      setPresets(loadedPresets);
+
+      const current = loadedPresets.find((p: any) => p.id === activePreset) || loadedPresets[0];
+      if (current) {
+        setPresetLabel(current.label);
+        setPresetInstructions(current.instructions || current.filter || "");
+      }
+
       if (data.metadata.is_syncing) {
         setSyncing(true);
         setSyncProgress(data.metadata.sync_progress ?? 0);
@@ -120,8 +212,7 @@ function GmailCard() {
         body: JSON.stringify({
           sync_mode: syncMode,
           preset_filter: presetFilter,
-          custom_query: customQuery,
-          ai_prompt: aiPrompt,
+          presets: presets,
         }),
       });
       if (res.ok) {
@@ -398,52 +489,110 @@ function GmailCard() {
 
           {/* Preset Filters */}
           <div>
-            <label className="font-semibold block mb-1" style={{ color: "var(--text)" }}>Alert Presets</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="font-semibold block" style={{ color: "var(--text)" }}>Alert Presets</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newId = `custom_${Date.now()}`;
+                    const newPreset = {
+                      id: newId,
+                      label: "New Custom Preset",
+                      query: `(opay) -paystack`,
+                      filter: "include:opay,exclude:paystack",
+                      instructions: "include:opay,exclude:paystack"
+                    };
+                    setPresets(prev => [...prev, newPreset]);
+                    setPresetFilter(newId);
+                    setPresetLabel("New Custom Preset");
+                    setPresetInstructions("include:opay,exclude:paystack");
+                  }}
+                  className="px-2 py-[2px] rounded-[4px] border text-[10px] font-semibold transition-all cursor-pointer bg-transparent"
+                  style={{ color: "var(--green2)", borderColor: "var(--green)" }}
+                >
+                  ➕ New Preset
+                </button>
+                {!["all", "opay", "uba", "debits_credits"].includes(presetFilter) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = presets.filter(p => p.id !== presetFilter);
+                      setPresets(updated);
+                      setPresetFilter("all");
+                      const allPreset = updated.find(p => p.id === "all") || DEFAULT_PRESETS[0];
+                      setPresetLabel(allPreset.label);
+                      setPresetInstructions(allPreset.instructions || allPreset.filter || "");
+                    }}
+                    className="px-2 py-[2px] rounded-[4px] border text-[10px] font-semibold transition-all cursor-pointer bg-transparent"
+                    style={{ color: "#EA4335", borderColor: "#EA4335" }}
+                  >
+                    🗑️ Delete Preset
+                  </button>
+                )}
+              </div>
+            </div>
             <select
               value={presetFilter}
-              onChange={(e) => setPresetFilter(e.target.value)}
-              className="w-full p-[8px] rounded-[8px] border text-[12px] outline-none"
+              onChange={(e) => {
+                const targetId = e.target.value;
+                setPresetFilter(targetId);
+                const current = presets.find((p) => p.id === targetId) || DEFAULT_PRESETS[0];
+                if (current) {
+                  setPresetLabel(current.label);
+                  setPresetInstructions(current.instructions || current.filter || "");
+                }
+              }}
+              className="w-full p-[8px] rounded-[8px] border text-[12px] outline-none mb-3"
               style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)" }}
             >
-              <option value="all">Default Broad Scan (All Bank Alerts)</option>
-              <option value="opay">OPay alerts only</option>
-              <option value="uba">UBA bank alerts only</option>
-              <option value="debits_credits">Debits & Credits only</option>
-              <option value="custom">Custom Search parameters...</option>
+              {presets.map((p) => (
+                <option key={p.id} value={p.id}>{p.label}</option>
+              ))}
             </select>
           </div>
 
-          {/* Custom Query Input */}
-          {presetFilter === "custom" && (
+          {/* Preset Name Editor (only for custom presets) */}
+          {!["all", "opay", "uba", "debits_credits"].includes(presetFilter) && (
             <div>
-              <label className="font-semibold block mb-1" style={{ color: "var(--text)" }}>Custom Search query</label>
+              <label className="font-semibold block mb-1" style={{ color: "var(--text)" }}>Preset Name</label>
               <input
                 type="text"
-                value={customQuery}
-                onChange={(e) => setCustomQuery(e.target.value)}
-                placeholder="e.g. OPay OR Zenith OR exclude:payment"
+                value={presetLabel}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setPresetLabel(val);
+                  setPresets(prev => prev.map(p => p.id === presetFilter ? { ...p, label: val } : p));
+                }}
                 className="w-full p-[8px] rounded-[8px] border text-[12px] outline-none"
                 style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)" }}
               />
-              <p className="text-[10px] mt-1" style={{ color: "var(--muted)" }}>
-                Supports standard Gmail search terms (e.g. `OPay`, `UBA`, `subject:alert`).
-              </p>
             </div>
           )}
 
-          {/* AI Custom Prompt/Instructions */}
+          {/* Preset Rules & Instructions (Single text area!) */}
           <div>
-            <label className="font-semibold block mb-1" style={{ color: "var(--text)" }}>AI Guidelines &amp; Custom Instructions</label>
+            <label className="font-semibold block mb-1" style={{ color: "var(--text)" }}>
+              {["all", "opay", "uba", "debits_credits"].includes(presetFilter) ? "Filter Rules (View-only)" : "Filter Rules & Instructions"}
+            </label>
             <textarea
-              value={aiPrompt}
-              onChange={(e) => setAiPrompt(e.target.value)}
-              placeholder="e.g. Focus only on OPay bank alerts. Ignore Uber transactions. Clean and categorize narrations accurately."
-              rows={2}
+              value={presetInstructions}
+              disabled={["all", "opay", "uba", "debits_credits"].includes(presetFilter)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setPresetInstructions(val);
+                const parsed = parseInstructionsToQueryAndFilter(val);
+                setPresets(prev => prev.map(p => p.id === presetFilter ? { ...p, instructions: val, query: parsed.query, filter: parsed.filter } : p));
+              }}
+              placeholder="e.g. include: opay, exclude: paystack"
+              rows={3}
               className="w-full p-[8px] rounded-[8px] border text-[12px] outline-none resize-y"
               style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)", fontFamily: "inherit" }}
             />
             <p className="text-[10px] mt-1" style={{ color: "var(--muted)", lineHeight: 1.4 }}>
-              Directly instruct the Llama model on how to parse, extract, filter, or correct narrates.
+              {["all", "opay", "uba", "debits_credits"].includes(presetFilter)
+                ? "This is a built-in default preset. Add a new preset to customize search filters."
+                : "Enter strict guidelines. E.g. include: opay, exclude: paystack. Gmail query parameters are generated automatically."}
             </p>
           </div>
 

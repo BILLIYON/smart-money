@@ -15,6 +15,34 @@ type DataBankEntry = {
   gmail_message_id?: string;
 };
 
+// Default sync presets for Gmail scanning
+export const DEFAULT_PRESETS = [
+  {
+    id: "all",
+    label: "Default Broad Scan (All Bank Alerts)",
+    query: `subject:(receipt OR payment OR transfer OR transaction OR alert OR notice OR advice OR purchase OR pos OR bank OR opay OR kuda OR palmpay OR moniepoint OR zenith OR gtbank OR access OR uba OR firstbank OR stanbic OR flutterwave OR paystack OR debit OR credit OR successful) OR "debit alert" OR "credit alert" OR "transaction alert" OR "transfer notification" OR "payment received"`,
+    filter: ""
+  },
+  {
+    id: "opay",
+    label: "OPay alerts only",
+    query: `opay (subject:(receipt OR payment OR transfer OR alert OR transaction OR debit OR credit) OR "opay alert")`,
+    filter: "include:opay"
+  },
+  {
+    id: "uba",
+    label: "UBA bank alerts only",
+    query: `uba (subject:(receipt OR payment OR transfer OR alert OR transaction OR debit OR credit) OR "uba alert")`,
+    filter: "include:uba"
+  },
+  {
+    id: "debits_credits",
+    label: "Debits & Credits only",
+    query: `"debit alert" OR "credit alert" OR "transaction alert"`,
+    filter: ""
+  }
+];
+
 // ── 1. Get an authenticated Gmail client for a user ──────────
 export async function getGmailClient(userId: string) {
   const supabase = createServiceClient(); // service role, bypasses RLS
@@ -197,18 +225,12 @@ export async function syncGmailForUser(
       .eq("user_id", userId)
       .eq("provider", "gmail");
 
-    // ── Construct Gmail search query dynamically ──
-    let queryTerms = `subject:(receipt OR payment OR transfer OR transaction OR alert OR notice OR advice OR purchase OR pos OR bank OR opay OR kuda OR palmpay OR moniepoint OR zenith OR gtbank OR access OR uba OR firstbank OR stanbic OR flutterwave OR paystack OR debit OR credit OR successful) OR "debit alert" OR "credit alert" OR "transaction alert" OR "transfer notification" OR "payment received"`;
+    // Load presets from metadata or defaults
+    const presets = (metadata.presets || DEFAULT_PRESETS) as Array<{ id: string; label: string; query: string; filter: string }>;
+    const activePreset = presets.find((p) => p.id === presetFilter) || presets.find((p) => p.id === "all") || presets[0];
 
-    if (presetFilter === "opay") {
-      queryTerms = `opay (subject:(receipt OR payment OR transfer OR alert OR transaction OR debit OR credit) OR "opay alert")`;
-    } else if (presetFilter === "uba") {
-      queryTerms = `uba (subject:(receipt OR payment OR transfer OR alert OR transaction OR debit OR credit) OR "uba alert")`;
-    } else if (presetFilter === "debits_credits") {
-      queryTerms = `"debit alert" OR "credit alert" OR "transaction alert"`;
-    } else if (presetFilter === "custom" && customQuery.trim()) {
-      queryTerms = customQuery.trim();
-    }
+    const queryTerms = activePreset ? activePreset.query : DEFAULT_PRESETS[0].query;
+    const filterRules = activePreset ? activePreset.filter : "";
 
     const lastSyncDate = new Date(lastSync * 1000).toISOString().split("T")[0];
     const queries = [
@@ -259,6 +281,42 @@ export async function syncGmailForUser(
           const cleanBody = stripHtml(email.body);
           const data = await extractFinancialDataFromEmail(cleanBody, email.subject, email.from, syncMode, aiPrompt);
           if (!data) return null;
+
+          // Apply strict preset filter rules
+          if (filterRules) {
+            const rules = filterRules.split(",").map((r) => r.trim().toLowerCase());
+            let isMatch = true;
+            const bankName = (data.bank || data.provider || "").toLowerCase();
+            const desc = (data.description || "").toLowerCase();
+            const subjectLower = email.subject.toLowerCase();
+            const bodyLower = cleanBody.toLowerCase();
+
+            for (const rule of rules) {
+              if (rule.startsWith("exclude:")) {
+                const target = rule.substring(8).trim();
+                if (target && (bankName.includes(target) || desc.includes(target) || subjectLower.includes(target) || bodyLower.includes(target))) {
+                  isMatch = false;
+                  break;
+                }
+              } else if (rule.startsWith("include:")) {
+                const target = rule.substring(8).trim();
+                if (target && (!bankName.includes(target) && !desc.includes(target) && !subjectLower.includes(target) && !bodyLower.includes(target))) {
+                  isMatch = false;
+                  break;
+                }
+              } else {
+                if (rule && !bankName.includes(rule) && !desc.includes(rule) && !subjectLower.includes(rule) && !bodyLower.includes(rule)) {
+                  isMatch = false;
+                  break;
+                }
+              }
+            }
+
+            if (!isMatch) {
+              console.log(`[Gmail Sync] Strictly filtered out transaction from "${email.subject}" due to rule: ${filterRules}`);
+              return null;
+            }
+          }
 
           // Prefer real email Date header; fall back to today if unparseable
           let entryDate = new Date().toISOString().split("T")[0];

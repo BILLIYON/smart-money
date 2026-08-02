@@ -9,7 +9,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { sync_mode, preset_filter, custom_query, ai_prompt } = await req.json();
+    const { sync_mode, preset_filter, custom_query, ai_prompt, presets } = await req.json();
 
     // Fetch existing metadata to merge
     const { data: integration, error: fetchErr } = await supabase
@@ -30,6 +30,10 @@ export async function POST(req: Request) {
       custom_query: custom_query || "",
       ai_prompt: ai_prompt || "",
     };
+
+    if (presets) {
+      updatedMetadata.presets = presets;
+    }
 
     const { error: updateErr } = await supabase
       .from("user_integrations")
