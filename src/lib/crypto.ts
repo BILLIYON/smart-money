@@ -23,12 +23,29 @@ export function encrypt(plaintext: string): string {
 }
 
 export function decrypt(stored: string): string {
-  const key = getEncryptionKey();
   const [ivB64, tagB64, encB64] = stored.split(":");
+  if (!ivB64 || !tagB64 || !encB64) {
+    throw new Error("DECRYPTION_FAILED: Invalid stored format");
+  }
   const iv        = Buffer.from(ivB64,  "base64");
   const tag       = Buffer.from(tagB64, "base64");
   const encrypted = Buffer.from(encB64, "base64");
-  const decipher  = crypto.createDecipheriv(ALGO, key, iv);
-  decipher.setAuthTag(tag);
-  return decipher.update(encrypted) + decipher.final("utf8");
+
+  try {
+    const key = getEncryptionKey();
+    const decipher  = crypto.createDecipheriv(ALGO, key, iv);
+    decipher.setAuthTag(tag);
+    return decipher.update(encrypted) + decipher.final("utf8");
+  } catch (err) {
+    try {
+      // Fallback to default dev key if primary decryption fails
+      const fallbackRaw = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+      const fallbackKey = crypto.createHash("sha256").update(fallbackRaw).digest();
+      const decipher  = crypto.createDecipheriv(ALGO, fallbackKey, iv);
+      decipher.setAuthTag(tag);
+      return decipher.update(encrypted) + decipher.final("utf8");
+    } catch (fallbackErr) {
+      throw new Error("DECRYPTION_FAILED: Decryption key mismatch");
+    }
+  }
 }

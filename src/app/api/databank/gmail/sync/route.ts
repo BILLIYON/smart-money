@@ -26,7 +26,10 @@ export async function POST() {
           }
         });
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Sync failed";
+        let message = err instanceof Error ? err.message : "Sync failed";
+        if (message.includes("DECRYPTION_FAILED")) {
+          message = "Gmail connection encryption key mismatch. Please disconnect and reconnect your Gmail account to re-authenticate.";
+        }
         try {
           controller.enqueue(
             encoder.encode(JSON.stringify({ error: message, progress: 100 }) + "\n")
