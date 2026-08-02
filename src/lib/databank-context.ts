@@ -29,7 +29,7 @@ export async function getDatabankContextForUser(
   const [entriesRes, goalsRes, integrationsRes, signalsRes, userRes] = await Promise.all([
     supabase
       .from("databank_entries")
-      .select("entry_type, amount, description, category, entry_date, source")
+      .select("entry_type, amount, description, category, entry_date, source, metadata")
       .eq("user_id", userId)
       .order("entry_date", { ascending: false }),
 
@@ -183,12 +183,52 @@ export async function getDatabankContextForUser(
     .map((s: any) => s.signal_sources?.name)
     .filter(Boolean) as string[];
 
+  // ── Net worth & Savings calculations ──────────────────────
+  const totalIncomeAllTime = entries.filter((e) => e.entry_type === "income").reduce((s, e) => s + e.amount, 0);
+  const totalExpensesAllTime = entries.filter((e) => e.entry_type === "expense").reduce((s, e) => s + Math.abs(e.amount), 0);
+  const netSavingsAllTime = totalIncomeAllTime - totalExpensesAllTime;
+
+  const totalAssets = entries.filter((e) => e.entry_type === "asset").reduce((s, e) => s + e.amount, 0);
+  const totalDebt = entries.filter((e) => e.entry_type === "debt").reduce((s, e) => s + Math.abs(e.amount), 0);
+
+  // Group entries by bank/provider to find the most recent balance for each
+  const bankBalancesRecord: Record<string, { balance: number; date: string }> = {};
+  const sortedEntriesForBalances = [...entries].sort((a, b) => {
+    return (b.entry_date ?? "").localeCompare(a.entry_date ?? "");
+  });
+
+  for (const entry of sortedEntriesForBalances) {
+    const bankKey = (entry.metadata as any)?.bank || (entry.metadata as any)?.provider || "Other";
+    const balance = (entry.metadata as any)?.account_balance;
+    if (typeof balance === "number" && balance > 0 && !bankBalancesRecord[bankKey]) {
+      bankBalancesRecord[bankKey] = {
+        balance,
+        date: entry.entry_date ?? ""
+      };
+    }
+  }
+
+  const totalBankBalance = Object.values(bankBalancesRecord).reduce((sum, b) => sum + b.balance, 0);
+  const cashSavingsVal = totalBankBalance > 0 ? totalBankBalance : Math.max(0, netSavingsAllTime);
+
+  const netWorth = cashSavingsVal + totalAssets - totalDebt;
+  const savingsBalance = cashSavingsVal + totalAssets;
+
+  const bankBalances = Object.entries(bankBalancesRecord).map(([bank, info]) => ({
+    bank,
+    balance: info.balance,
+    date: info.date,
+  }));
+
   return {
     currency,
     primaryGoal,
     connectedSources,
     lastSyncAt,
     activeSignals,
+    netWorth,
+    savingsBalance,
+    bankBalances,
     monthlySummary: {
       totalIncome,
       totalExpenses,

@@ -98,11 +98,13 @@ export type DatabankContext = {
   activeSignals?: string[];    // names of active signal sources
   currency?: string;           // ISO 4217 code from user profile, defaults to NGN
   primaryGoal?: string;        // User's primary financial goal (e.g. from onboarding)
+  netWorth?: number;           // total net worth in cents
+  savingsBalance?: number;     // total cash savings in cents
+  bankBalances?: { bank: string; balance: number; date: string }[];
 
   // Legacy flat fields — kept for backwards compat with older callers
   monthlyIncome?: number;
   monthlyExpenses?: number;
-  savingsBalance?: number;
   topSpendingCategories?: { category: string; amount: number }[];
 };
 
@@ -143,6 +145,21 @@ function formatDatabankContext(ctx: DatabankContext): string {
   const currency = ctx.currency ?? "NGN";
   const f = (n: number) => fmt(n, currency);
   const lines: string[] = [];
+
+  if (typeof ctx.netWorth === "number") {
+    lines.push(`Total Net Worth: ${f(ctx.netWorth)}`);
+  }
+  if (typeof ctx.savingsBalance === "number") {
+    lines.push(`Total Cash Savings: ${f(ctx.savingsBalance)}`);
+  }
+  if (ctx.bankBalances?.length) {
+    lines.push(
+      "Current Account Balances: " +
+        ctx.bankBalances
+          .map((b) => `${b.bank} Account: ${f(b.balance)} (as of ${b.date})`)
+          .join(", ")
+    );
+  }
 
   if (ctx.primaryGoal) {
     lines.push(`User's primary financial goal: "${ctx.primaryGoal}"`);
