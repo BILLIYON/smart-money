@@ -212,7 +212,7 @@ function inferCategory(text: string, entryType: "income" | "expense", bank?: str
  * Marketing and newsletters are ignored.
  */
 function isTransactionEmail(text: string): boolean {
-  return /(debit\s*alert|credit\s*alert|transaction\s*alert|transfer\s*notification|bank\s*transfer|transfer\s*in|transfer\s*out|\bcredited\b|\bdebited\b|you\s+(?:sent|received|paid)|money\s+(?:sent|received)|pos\s*(?:purchase|transaction)|payment\s*(?:successful|received|completed))/i.test(
+  return /(debit|credit|transaction|transfer|receipt|payment|alert|credited|debited|paid|sent|received|purchase|pos|invoice|bill)/i.test(
     text
   );
 }

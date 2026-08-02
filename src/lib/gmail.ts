@@ -183,7 +183,7 @@ export async function syncGmailForUser(
   const aiPrompt = metadata.ai_prompt || "";
 
   // ── Construct Gmail search query dynamically ──
-  let queryTerms = `subject:(receipt OR payment OR transfer OR transaction OR alert OR notice OR advice OR purchase OR pos OR bank OR opay OR kuda OR palmpay OR moniepoint OR zenith OR gtbank OR access OR uba OR firstbank OR stanbic OR flutterwave OR paystack) OR "debit alert" OR "credit alert" OR "transaction alert" OR "transfer notification" OR "payment received"`;
+  let queryTerms = `subject:(receipt OR payment OR transfer OR transaction OR alert OR notice OR advice OR purchase OR pos OR bank OR opay OR kuda OR palmpay OR moniepoint OR zenith OR gtbank OR access OR uba OR firstbank OR stanbic OR flutterwave OR paystack OR debit OR credit OR successful) OR "debit alert" OR "credit alert" OR "transaction alert" OR "transfer notification" OR "payment received"`;
 
   if (presetFilter === "opay") {
     queryTerms = `opay (subject:(receipt OR payment OR transfer OR alert OR transaction OR debit OR credit) OR "opay alert")`;
