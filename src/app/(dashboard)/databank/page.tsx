@@ -93,9 +93,12 @@ function GmailCard() {
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
 
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   // Settings State
   const [showSettings, setShowSettings] = useState(true);
   const [syncMode, setSyncMode] = useState<"lightweight" | "deep">("lightweight");
+  const [aiEngine, setAiEngine] = useState<string>("groq");
   const [presetFilter, setPresetFilter] = useState<string>("all");
   
   // Custom presets list
@@ -105,33 +108,40 @@ function GmailCard() {
   const [savingSettings, setSavingSettings] = useState(false);
 
   const loadStatus = useCallback(async () => {
-    const res = await fetch("/api/databank/gmail/status");
-    const data = await res.json();
-    setStatus(data);
-    if (data.metadata) {
-      setSyncMode(data.metadata.sync_mode || "lightweight");
-      const activePreset = data.metadata.preset_filter || "all";
-      setPresetFilter(activePreset);
-      
-      const loadedPresets = Array.isArray(data.metadata.presets) ? data.metadata.presets : DEFAULT_PRESETS;
-      setPresets(loadedPresets);
-
-      const current = loadedPresets.find((p: any) => p.id === activePreset) || loadedPresets[0];
-      if (current) {
-        setPresetLabel(current.label);
-        setPresetQuery(current.query || "");
+    try {
+      const res = await fetch("/api/databank/gmail/status");
+      if (res.status === 401) {
+        setStatus({ connected: false, lastSyncedAt: null, entryCount: 0 });
+        return null;
       }
+      const data = await res.json();
+      setStatus(data);
+      if (data.metadata) {
+        setSyncMode(data.metadata.sync_mode || "lightweight");
+        setAiEngine(data.metadata.ai_engine || "groq");
+        const activePreset = data.metadata.preset_filter || "all";
+        setPresetFilter(activePreset);
+        
+        const loadedPresets = Array.isArray(data.metadata.presets) ? data.metadata.presets : DEFAULT_PRESETS;
+        setPresets(loadedPresets);
 
-      if (data.metadata.is_syncing) {
-        setSyncing(true);
-        setSyncProgress(data.metadata.sync_progress ?? 0);
-        setSyncMsg(data.metadata.sync_message || "Syncing in background...");
+        const current = loadedPresets.find((p: any) => p.id === activePreset) || loadedPresets[0];
+        if (current) {
+          setPresetLabel(current.label);
+          setPresetQuery(current.query || "");
+        }
+
+        if (data.metadata.is_syncing) {
+          setSyncing(true);
+          setSyncProgress(data.metadata.sync_progress ?? 0);
+          setSyncMsg(data.metadata.sync_message || "Syncing in background...");
+        }
       }
+      return data;
+    } catch (e) {
+      return null;
     }
-    return data;
   }, []);
-
-
 
   // On mount: load status
   useEffect(() => {
@@ -151,6 +161,11 @@ function GmailCard() {
     const interval = setInterval(async () => {
       try {
         const res = await fetch("/api/databank/gmail/status");
+        if (res.status === 401) {
+          clearInterval(interval);
+          setStatus({ connected: false, lastSyncedAt: null, entryCount: 0 });
+          return;
+        }
         if (res.ok) {
           const data = await res.json();
           setStatus(data);
@@ -163,7 +178,7 @@ function GmailCard() {
             setSyncProgress(null);
             setSyncMsg(data.metadata?.sync_message || "Sync complete!");
             setTimeout(() => setSyncMsg(null), 4000);
-            await useDatabankStore.getState().loadContext();
+            await useDatabankStore.getState().loadContext().catch(() => {});
           }
         }
       } catch (e) {
@@ -183,6 +198,7 @@ function GmailCard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sync_mode: syncMode,
+          ai_engine: aiEngine,
           preset_filter: presetFilter,
           presets: presets,
         }),
@@ -203,6 +219,10 @@ function GmailCard() {
 
   async function handleStopSync() {
     try {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
       await fetch("/api/databank/gmail/sync", { method: "DELETE" });
       setSyncing(false);
       setSyncProgress(null);
@@ -219,7 +239,13 @@ function GmailCard() {
     setSyncMsg(null);
     setSyncProgress(0);
     try {
-      const res = await fetch("/api/databank/gmail/sync", { method: "POST" });
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      const res = await fetch("/api/databank/gmail/sync", { 
+        method: "POST",
+        signal: controller.signal
+      });
       if (!res.body) {
         throw new Error("No response stream");
       }
@@ -462,13 +488,13 @@ function GmailCard() {
                   borderColor: syncMode === "deep" ? "#EA4335" : "var(--border)",
                 }}
               >
-                🔍 Deep AI Search (Llama Only)
+                🔍 Deep AI Search
               </button>
             </div>
             <p className="text-[10px] mt-1" style={{ color: "var(--muted)", lineHeight: 1.4 }}>
               {syncMode === "lightweight"
-                ? "Recommended. Next.js extracts candidates programmatically, and Groq Llama cleans data."
-                : "Passes entire email body straight to Llama-3.3-70B model. More comprehensive but uses more tokens."}
+                ? "Recommended. Programmatic extraction with AI verification."
+                : "Passes entire email body straight to selected AI model."}
             </p>
           </div>
 

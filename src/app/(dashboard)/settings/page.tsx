@@ -198,6 +198,10 @@ function ProfileTab() {
 
   useEffect(() => {
     loadProfile().then(() => setLoading(false));
+    if (typeof window !== "undefined") {
+      const savedEngine = localStorage.getItem("databank_ai_engine") || "groq-70b";
+      setAiEngine(savedEngine);
+    }
   }, [loadProfile]);
 
   useEffect(() => {
@@ -490,8 +494,19 @@ function ProfileTab() {
             </div>
             <select
               value={aiEngine}
-              onChange={(e) => {
-                setAiEngine(e.target.value);
+              onChange={async (e) => {
+                const val = e.target.value;
+                setAiEngine(val);
+                if (typeof window !== "undefined") {
+                  localStorage.setItem("databank_ai_engine", val);
+                }
+                try {
+                  await fetch("/api/databank/gmail/settings", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ ai_engine: val }),
+                  });
+                } catch (err) {}
                 popup.success("AI Engine Selected", `Switched primary AI provider to ${e.target.selectedOptions[0].text}`);
               }}
               style={{

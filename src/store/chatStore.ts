@@ -1,13 +1,66 @@
 import { create } from "zustand";
+import { useDatabankStore } from "./databankStore";
+
+function extractJsonPayload(content: string, tagPrefix: string): { jsonStr: string | null; fullMatch: string | null } {
+  const tagIndex = content.indexOf(tagPrefix);
+  if (tagIndex === -1) return { jsonStr: null, fullMatch: null };
+
+  const startBrace = content.indexOf("{", tagIndex);
+  if (startBrace === -1) return { jsonStr: null, fullMatch: null };
+
+  let depth = 0;
+  let endBrace = -1;
+  let inString = false;
+  let escape = false;
+
+  for (let i = startBrace; i < content.length; i++) {
+    const char = content[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (char === "\\") {
+      escape = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (char === "{") depth++;
+      else if (char === "}") {
+        depth--;
+        if (depth === 0) {
+          endBrace = i;
+          break;
+        }
+      }
+    }
+  }
+
+  if (endBrace === -1) return { jsonStr: null, fullMatch: null };
+
+  const jsonStr = content.slice(startBrace, endBrace + 1);
+  const closingBracket = content.indexOf("]", endBrace);
+  const fullMatch = closingBracket !== -1
+    ? content.slice(tagIndex, closingBracket + 1)
+    : content.slice(tagIndex, endBrace + 1);
+
+  return { jsonStr, fullMatch };
+}
+
+function cleanJsonString(str: string): string {
+  return str.replace(/,\s*([}\]])/g, "$1");
+}
 
 function extractAgentAction(content: string) {
   let agentCardData;
   let finalContent = content;
-  const actionRegex = /\[AGENT_ACTION:\s*(\{[\s\S]*?\})\s*\]/;
-  const match = actionRegex.exec(content);
-  if (match) {
+  const { jsonStr, fullMatch } = extractJsonPayload(content, "[AGENT_ACTION:");
+  if (jsonStr && fullMatch) {
     try {
-      const payload = JSON.parse(match[1]);
+      const payload = JSON.parse(cleanJsonString(jsonStr));
       agentCardData = {
         title: payload.title || "Proposed Action",
         action: payload.action || "Execute Transaction",
@@ -17,7 +70,7 @@ function extractAgentAction(content: string) {
         benefit: "AI Recommended",
         benefitColor: "var(--green2)",
       };
-      finalContent = content.replace(actionRegex, "").trim();
+      finalContent = content.replace(fullMatch, "").trim();
     } catch (e) {
       console.error("Failed to parse agentCardData", e);
     }
@@ -28,18 +81,17 @@ function extractAgentAction(content: string) {
 function extractGoalData(content: string, buddyName: string) {
   let goalCardData;
   let finalContent = content;
-  const goalRegex = /\[GOAL:\s*(\{[\s\S]*?\})\s*\]/;
-  const match = goalRegex.exec(content);
-  if (match) {
+  const { jsonStr, fullMatch } = extractJsonPayload(content, "[GOAL:");
+  if (jsonStr && fullMatch) {
     try {
-      const payload = JSON.parse(match[1]);
+      const payload = JSON.parse(cleanJsonString(jsonStr));
       goalCardData = {
         name: payload.name || "New Financial Goal",
         amount: payload.amount || "₦0",
         date: payload.date || "TBD",
         buddyName,
       };
-      finalContent = content.replace(goalRegex, "").trim();
+      finalContent = content.replace(fullMatch, "").trim();
     } catch (e) {
       console.error("Failed to parse goalCardData", e);
     }
@@ -50,12 +102,11 @@ function extractGoalData(content: string, buddyName: string) {
 function extractDatabankWriteData(content: string) {
   let databankWriteData;
   let finalContent = content;
-  const writeRegex = /\[DATABANK_WRITE:\s*(\{[\s\S]*?\})\s*\]/;
-  const match = writeRegex.exec(content);
-  if (match) {
+  const { jsonStr, fullMatch } = extractJsonPayload(content, "[DATABANK_WRITE:");
+  if (jsonStr && fullMatch) {
     try {
-      databankWriteData = JSON.parse(match[1]);
-      finalContent = content.replace(writeRegex, "").trim();
+      databankWriteData = JSON.parse(cleanJsonString(jsonStr));
+      finalContent = content.replace(fullMatch, "").trim();
     } catch (e) {
       console.error("Failed to parse databankWriteData", e);
     }
@@ -418,6 +469,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const buddyName = buddyId; // will be overridden by the buddy's display name in the UI
       const { finalContent: afterGoal, goalCardData } = extractGoalData(afterAgent, buddyName);
       const { finalContent, databankWriteData } = extractDatabankWriteData(afterGoal);
+
+      if (databankWriteData || goalCardData) {
+        setTimeout(() => {
+          useDatabankStore.getState().loadContext().catch(() => {});
+        }, 500);
+      }
+
       return {
         threads: {
           ...s.threads,

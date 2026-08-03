@@ -130,7 +130,7 @@ export async function GET() {
     type: e.entry_type as "income" | "expense",
     category: e.category ?? "Uncategorized",
     date: e.entry_date,
-    source: e.source ?? "manual",
+    source: (e as any).metadata?.created_by_ai ? "ai" : (e.source ?? "manual"),
   }));
 
   // ── Active goals ─────────────────────────────────────────

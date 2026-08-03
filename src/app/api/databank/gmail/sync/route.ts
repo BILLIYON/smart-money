@@ -75,14 +75,18 @@ export async function DELETE() {
     .eq("provider", "gmail")
     .single();
 
-  const metadata = integration?.metadata as any || {};
+  const metadata = (integration?.metadata as any) || {};
 
-  // Set the stop flag via service role client
+  // Set stop flag AND immediately clear is_syncing state
   await serviceSupabase
     .from("user_integrations")
     .update({
       metadata: {
         ...metadata,
+        is_syncing: false,
+        sync_progress: null,
+        sync_message: "Sync stopped by user",
+        sync_updated_at: new Date().toISOString(),
         should_stop_sync: true,
       }
     })
@@ -91,4 +95,5 @@ export async function DELETE() {
 
   return Response.json({ success: true });
 }
+
 

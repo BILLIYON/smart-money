@@ -121,6 +121,10 @@ export const useDatabankStore = create<DatabankStore>((set, get) => ({
     set({ isLoading: true });
     try {
       const res = await fetch("/api/databank/context");
+      if (res.status === 401) {
+        set({ context: null });
+        return;
+      }
       if (!res.ok) throw new Error(await res.text());
       const data = (await res.json()) as DatabankContextResponse;
       set({ context: data });

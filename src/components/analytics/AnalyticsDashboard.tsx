@@ -544,7 +544,8 @@ export function AnalyticsDashboard() {
         cat: t.category,
         date: dateStr,
         amt: amtStr,
-        type: t.type === "income" ? "credit" as const : "debit" as const
+        type: t.type === "income" ? "credit" as const : "debit" as const,
+        source: t.source,
       };
     });
 
@@ -1044,6 +1045,55 @@ export function AnalyticsDashboard() {
           </ChartCard>
         </div>
 
+        {/* Active Financial Goals & Targets Card */}
+        <ChartCard
+          title="🎯 Active Financial Goals & Targets"
+          sub="Set automatically by AI Buddy or added manually"
+          action="Set goal in Chat →"
+          onAction={() => goToChat("I want to set a new financial goal to track.")}
+        >
+          {context?.activeGoals && context.activeGoals.length > 0 ? (
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
+              {context.activeGoals.map((goal, i) => (
+                <div
+                  key={`${goal.title}-${i}`}
+                  className="rounded-[12px] p-4 flex flex-col justify-between"
+                  style={{ background: "var(--bg)", border: "1px solid var(--border)" }}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1 gap-2">
+                      <span className="text-[13px] font-bold truncate" style={{ color: "var(--text)" }}>{goal.title}</span>
+                      <span className="text-[10px] font-semibold px-2 py-[2px] rounded-full flex-shrink-0" style={{ background: "rgba(0,196,140,0.12)", color: "var(--green2)" }}>
+                        {goal.progressPercent}% Target
+                      </span>
+                    </div>
+                    <div className="text-[11px] mb-3" style={{ color: "var(--muted)" }}>
+                      Saved ₦{Math.round(goal.currentAmount / 100).toLocaleString()} of ₦{Math.round(goal.targetAmount / 100).toLocaleString()}
+                      {goal.targetDate ? ` · Target: ${goal.targetDate}` : ""}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: "var(--card)" }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(100, goal.progressPercent)}%`, background: "var(--green)" }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-5 text-center rounded-[12px]" style={{ background: "var(--bg)", border: "1px dashed var(--border)" }}>
+              <div className="text-[22px] mb-1">🎯</div>
+              <div className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>No Active Goals Created Yet</div>
+              <div className="text-[11px] max-w-sm mx-auto mt-1" style={{ color: "var(--muted)" }}>
+                Ask your AI Buddy in chat (e.g. &quot;Set an emergency fund goal of ₦500,000&quot;) to auto-create and track goals here!
+              </div>
+            </div>
+          )}
+        </ChartCard>
+
         {/* Monthly Category Trends Table (Expandable) */}
         <ChartCard
           title="Monthly Category Trends"
@@ -1130,7 +1180,18 @@ export function AnalyticsDashboard() {
               <div key={`${txn.name}-${txn.date}-${txn.amt}-${index}`} className="flex items-center gap-3 py-3" style={{ borderBottom: "1px solid var(--border)", borderBottomStyle: "solid", borderBottomWidth: 1, borderBottomColor: "var(--border)" }}>
                 <div className="flex items-center justify-center rounded-[8px] text-[14px] flex-shrink-0" style={{ width: 36, height: 36, background: txn.bg }}>{txn.icon}</div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-medium" style={{ color: "var(--text)" }}>{txn.name}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-[13px] font-medium truncate" style={{ color: "var(--text)" }}>{txn.name}</div>
+                    {txn.source === "ai" ? (
+                      <span className="text-[9px] font-bold px-1.5 py-[1px] rounded flex-shrink-0" style={{ background: "rgba(139,92,246,0.15)", color: "#a855f7", border: "1px solid rgba(139,92,246,0.3)" }}>
+                        🤖 AI Logged
+                      </span>
+                    ) : txn.source === "gmail" ? (
+                      <span className="text-[9px] font-semibold px-1.5 py-[1px] rounded flex-shrink-0" style={{ background: "rgba(59,130,246,0.15)", color: "#60a5fa", border: "1px solid rgba(59,130,246,0.3)" }}>
+                        📧 Gmail
+                      </span>
+                    ) : null}
+                  </div>
                   <div className="text-[11px]" style={{ color: "var(--muted)" }}>{txn.cat}</div>
                 </div>
                 <div className="text-right flex-shrink-0">

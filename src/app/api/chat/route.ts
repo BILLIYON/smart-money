@@ -3,6 +3,98 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceSupabaseClient } from "@/lib/supabase-server";
 import { sendMessage, type Message, type DatabankContext } from "@/lib/ai";
 
+function extractJsonPayload(content: string, tagPrefix: string): { jsonStr: string | null; fullMatch: string | null } {
+  const tagIndex = content.indexOf(tagPrefix);
+  if (tagIndex === -1) return { jsonStr: null, fullMatch: null };
+
+  const startBrace = content.indexOf("{", tagIndex);
+  if (startBrace === -1) return { jsonStr: null, fullMatch: null };
+
+  let depth = 0;
+  let endBrace = -1;
+  let inString = false;
+  let escape = false;
+
+  for (let i = startBrace; i < content.length; i++) {
+    const char = content[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (char === "\\") {
+      escape = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (char === "{") depth++;
+      else if (char === "}") {
+        depth--;
+        if (depth === 0) {
+          endBrace = i;
+          break;
+        }
+      }
+    }
+  }
+
+  if (endBrace === -1) return { jsonStr: null, fullMatch: null };
+
+  const jsonStr = content.slice(startBrace, endBrace + 1);
+  const closingBracket = content.indexOf("]", endBrace);
+  const fullMatch = closingBracket !== -1
+    ? content.slice(tagIndex, closingBracket + 1)
+    : content.slice(tagIndex, endBrace + 1);
+
+  return { jsonStr, fullMatch };
+}
+
+function cleanJsonString(str: string): string {
+  return str.replace(/,\s*([}\]])/g, "$1");
+}
+
+function parseIsoDate(dateStr?: string | null): string | null {
+  if (!dateStr) return null;
+  const str = String(dateStr).trim();
+  
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+
+  const monthYearMatch = str.match(/^([a-zA-Z]+)\s+(\d{2,4})$/);
+  if (monthYearMatch) {
+    const monthName = monthYearMatch[1];
+    let year = monthYearMatch[2];
+    if (year.length === 2) year = `20${year}`;
+    const d = new Date(`${monthName} 1, ${year}`);
+    if (!isNaN(d.getTime())) {
+      return d.toISOString().split("T")[0];
+    }
+  }
+
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toISOString().split("T")[0];
+  }
+
+  return null;
+}
+
+function parseAmountToKobo(rawAmt: any): number {
+  if (typeof rawAmt === "number") {
+    return Math.round(Math.abs(rawAmt) * 100);
+  }
+  if (!rawAmt) return 0;
+  const str = String(rawAmt).toLowerCase().trim();
+  let multiplier = 1;
+  if (str.endsWith("k")) multiplier = 1000;
+  else if (str.endsWith("m")) multiplier = 1000000;
+
+  const numericPart = parseFloat(str.replace(/[^0-9.]/g, "")) || 0;
+  return Math.round(Math.abs(numericPart * multiplier) * 100);
+}
+
 export async function POST(req: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -111,8 +203,8 @@ export async function POST(req: Request) {
   // Tee the stream: one side goes to the client, the other accumulates for DB save
   const [clientStream, dbStream] = stream.tee();
 
-  // Fire-and-forget: collect the full AI response and persist it (only for authenticated users with sessionId)
-  if (user && sessionId) {
+  // Fire-and-forget: collect the full AI response and persist it (for all authenticated users)
+  if (user) {
     (async () => {
       try {
         const chunks: Uint8Array[] = [];
@@ -161,81 +253,111 @@ export async function POST(req: Request) {
         }
 
         // Extract and process [DATABANK_WRITE: {...}] tags
-        const writeRegex = /\[DATABANK_WRITE:\s*(\{[\s\S]*?\})\s*\]/g;
-        let writeMatch;
-        let hadDatabankWrite = false;
+        const serviceSupabase = createServiceSupabaseClient();
 
-        while ((writeMatch = writeRegex.exec(fullText)) !== null) {
-          try {
-            const payload = JSON.parse(writeMatch[1]);
-            const domainUrl = process.env.NEXT_PUBLIC_APP_URL || "https://smartmoney.technology";
+        let remainingText = fullText;
+        let foundWriteTag = true;
 
-            // Fire off the agent-write call server-side using the same auth session cookies
-            const writeResp = await fetch(`${domainUrl}/api/databank/agent-write`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                // Forward auth by calling supabase insert directly from context we already have
-              },
-              body: JSON.stringify({
-                entries: payload.entries ?? [],
-                goal: payload.goal ?? null,
-                buddy_id: buddyId,
-                _user_id: user.id, // used below for direct supabase fallback
-              }),
-            });
+        while (foundWriteTag) {
+          const { jsonStr, fullMatch } = extractJsonPayload(remainingText, "[DATABANK_WRITE:");
+          if (jsonStr && fullMatch) {
+            try {
+              const payload = JSON.parse(cleanJsonString(jsonStr));
 
-            if (!writeResp.ok) {
-              // Fallback: write directly via service role client to bypass any RLS limits
-              const serviceSupabase = createServiceSupabaseClient();
-              const p = payload as { entries?: any[]; goal?: any };
-
-              if (p.entries && Array.isArray(p.entries)) {
-                for (const e of p.entries) {
-                  if (!e.description || !e.amount) continue;
+              // Process entries
+              if (payload.entries && Array.isArray(payload.entries)) {
+                for (const e of payload.entries) {
+                  if (!e.description || typeof e.amount !== "number") continue;
+                  const rawAmt = typeof e.amount === "number" ? e.amount : parseFloat(String(e.amount).replace(/[^0-9.]/g, "")) || 0;
                   await serviceSupabase.from("databank_entries").insert({
                     user_id: user.id,
                     source: "manual",
                     entry_type: e.entry_type ?? "expense",
-                    amount: Math.round(Math.abs(e.amount) * 100),
-                    description: e.description.trim(),
+                    amount: Math.round(Math.abs(rawAmt) * 100),
+                    description: String(e.description).trim(),
                     category: e.category ?? "other",
                     entry_date: e.date ?? new Date().toISOString().split("T")[0],
-                    metadata: e.metadata ?? {},
+                    metadata: { ...(e.metadata || {}), created_by_ai: true, buddy_id: buddyId },
                   });
                 }
               }
 
-              if (p.goal && p.goal.title && p.goal.target_amount) {
-                await serviceSupabase.from("goals").insert({
-                  user_id: user.id,
-                  buddy_id: buddyId ?? null,
-                  title: p.goal.title.trim(),
-                  target_amount: Math.round(Math.abs(p.goal.target_amount) * 100),
-                  current_amount: Math.round(Math.abs(p.goal.current_amount ?? 0) * 100),
-                  target_date: p.goal.target_date ?? null,
-                  status: "active",
-                });
-              }
-            }
+              // Process nested goal in DATABANK_WRITE
+              if (payload.goal && (payload.goal.title || payload.goal.name)) {
+                const title = payload.goal.title || payload.goal.name;
+                const rawAmt = payload.goal.target_amount || payload.goal.amount || 0;
+                const targetKobo = parseAmountToKobo(rawAmt);
+                const validTargetDate = parseIsoDate(payload.goal.target_date || payload.goal.date);
 
-            hadDatabankWrite = true;
-          } catch (e) {
-            console.error("[/api/chat] Failed to parse DATABANK_WRITE JSON:", e);
+                if (title && targetKobo > 0) {
+                  const { error: gErr } = await serviceSupabase.from("goals").insert({
+                    user_id: user.id,
+                    buddy_id: buddyId ?? null,
+                    title: String(title).trim(),
+                    target_amount: targetKobo,
+                    current_amount: parseAmountToKobo(payload.goal.current_amount ?? 0),
+                    target_date: validTargetDate,
+                    status: "active",
+                  });
+                  if (gErr) {
+                    console.error("[/api/chat] Goal insert error:", gErr);
+                  }
+                }
+              }
+            } catch (e) {
+              console.error("[/api/chat] Failed to process DATABANK_WRITE:", e);
+            }
+            remainingText = remainingText.replace(fullMatch, "").trim();
+          } else {
+            foundWriteTag = false;
           }
         }
 
-        if (hadDatabankWrite) {
-          // Strip the write blocks from the stored message — the UI renders a card separately
-          finalContent = finalContent.replace(/\[DATABANK_WRITE:\s*\{[\s\S]*?\}\s*\]/g, '').trim();
+        // Extract and process standalone [GOAL: {...}] tags
+        let foundGoalTag = true;
+        while (foundGoalTag) {
+          const { jsonStr, fullMatch } = extractJsonPayload(remainingText, "[GOAL:");
+          if (jsonStr && fullMatch) {
+            try {
+              const payload = JSON.parse(cleanJsonString(jsonStr));
+              const title = payload.title || payload.name;
+              const rawAmt = payload.target_amount || payload.amount || 0;
+              const targetKobo = parseAmountToKobo(rawAmt);
+              const validTargetDate = parseIsoDate(payload.target_date || payload.date);
+
+              if (title && targetKobo > 0) {
+                const { error: gErr } = await serviceSupabase.from("goals").insert({
+                  user_id: user.id,
+                  buddy_id: buddyId ?? null,
+                  title: String(title).trim(),
+                  target_amount: targetKobo,
+                  current_amount: parseAmountToKobo(payload.current_amount ?? 0),
+                  target_date: validTargetDate,
+                  status: "active",
+                });
+                if (gErr) {
+                  console.error("[/api/chat] Standalone Goal insert error:", gErr);
+                }
+              }
+            } catch (e) {
+              console.error("[/api/chat] Failed to process GOAL tag:", e);
+            }
+            remainingText = remainingText.replace(fullMatch, "").trim();
+          } else {
+            foundGoalTag = false;
+          }
         }
 
-        await supabase.from("messages").insert({
-          session_id: sessionId,
-          role: "assistant",
-          buddy_id: buddyId,
-          content: finalContent,
-        });
+        finalContent = remainingText;
+
+        if (sessionId) {
+          await supabase.from("messages").insert({
+            session_id: sessionId,
+            role: "assistant",
+            buddy_id: buddyId,
+            content: finalContent,
+          });
+        }
       } catch (e) {
         console.error("[/api/chat] DB persist failed:", e);
       }

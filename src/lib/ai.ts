@@ -303,7 +303,7 @@ export function getBuddySystemPrompt(
     `\n---\nSpecial output tags — use these to make chat interactive and visual:
 
 1. GOAL TAG: Whenever you give financial advice, recommend a savings target, or suggest a financial goal (e.g., build emergency fund, save ₦200,000 for investment, cut debt), always include this tag at the end of your response:
-[GOAL: {"name": "Short Goal Title", "amount": "₦500,000", "date": "Dec 2026"}]
+[GOAL: {"title": "Short Goal Title", "target_amount": 500000, "target_date": "2026-12-31"}]
 This enables the user to save your recommendation as a Goal in 1 click!
 
 2. AGENT ACTION TAG: When you recommend an actionable money transfer or payment:
@@ -659,14 +659,100 @@ Respond with valid JSON only — no markdown, no explanation outside the JSON:
 // 6. extractFinancialDataFromEmail — AI-powered Gmail parsing
 // ════════════════════════════════════════════════════════════
 
+async function askAIWithEngine(prompt: string, aiEngine = "groq"): Promise<string> {
+  const engine = (aiEngine || "groq").toLowerCase();
+
+  // 1. Groq (Llama 3.3 70B Versatile)
+  if (engine === "groq" || engine === "llama" || engine === "groq-llama") {
+    if (process.env.GROQ_API_KEY) {
+      try {
+        console.log("[AI Gmail Parser] Calling user-selected engine: Groq (llama-3.3-70b-versatile)");
+        const response = await groq().chat.completions.create({
+          model: "llama-3.3-70b-versatile",
+          max_tokens: 1024,
+          messages: [{ role: "user", content: prompt }],
+        });
+        return response.choices[0]?.message?.content || "";
+      } catch (err) {
+        console.error("[AI Gmail Parser] Groq Llama completion error:", err);
+      }
+    }
+  }
+
+  // 2. Google Gemini
+  if (engine === "gemini" || engine === "google") {
+    if (process.env.GOOGLE_AI_API_KEY) {
+      try {
+        console.log("[AI Gmail Parser] Calling user-selected engine: Gemini (gemini-2.0-flash)");
+        const model = gemini().getGenerativeModel({ model: "gemini-2.0-flash" });
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+      } catch (err) {
+        console.error("[AI Gmail Parser] Gemini completion error:", err);
+      }
+    }
+  }
+
+  // 3. Anthropic Claude
+  if (engine === "claude" || engine === "anthropic") {
+    if (process.env.ANTHROPIC_API_KEY && !depletedKeys.claude) {
+      try {
+        console.log("[AI Gmail Parser] Calling user-selected engine: Anthropic (claude-3-5-haiku-latest)");
+        const response = await anthropic().messages.create({
+          model: "claude-3-5-haiku-latest",
+          max_tokens: 512,
+          messages: [{ role: "user", content: prompt }],
+        });
+        return response.content[0].type === "text" ? response.content[0].text : "";
+      } catch (err) {
+        console.error("[AI Gmail Parser] Anthropic completion error:", err);
+      }
+    }
+  }
+
+  // 4. OpenAI
+  if (engine === "openai" || engine === "gpt") {
+    if (process.env.OPENAI_API_KEY && !depletedKeys.gpt4) {
+      try {
+        console.log("[AI Gmail Parser] Calling user-selected engine: OpenAI (gpt-4o-mini)");
+        const response = await openai().chat.completions.create({
+          model: "gpt-4o-mini",
+          max_tokens: 512,
+          messages: [{ role: "user", content: prompt }],
+        });
+        return response.choices[0]?.message?.content || "";
+      } catch (err) {
+        console.error("[AI Gmail Parser] OpenAI completion error:", err);
+      }
+    }
+  }
+
+  // Fallback to Groq Llama if available, then Gemini
+  console.log(`[AI Gmail Parser] Engine '${engine}' fallback triggered. Trying Groq Llama...`);
+  if (process.env.GROQ_API_KEY) {
+    try {
+      const response = await groq().chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        max_tokens: 1024,
+        messages: [{ role: "user", content: prompt }],
+      });
+      return response.choices[0]?.message?.content || "";
+    } catch (e) {}
+  }
+
+  return askAI(prompt);
+}
+
 export async function extractFinancialDataFromEmail(
   emailBody: string,
   subject: string,
   from: string,
   syncMode: "lightweight" | "deep" = "lightweight",
-  aiPrompt = ""
+  aiPrompt = "",
+  aiEngine = "groq"
 ) {
-  // ── 1. LIGHTWEIGHT SEARCH MODE (Next.js regex extraction + Llama cleaning/verification) ──
+  // ── 1. LIGHTWEIGHT SEARCH MODE (Next.js regex extraction + selected AI cleaning/verification) ──
   if (syncMode === "lightweight") {
     try {
       // First programmatically extract data using fast local regex parser (0 tokens, ultra-fast)
@@ -676,7 +762,7 @@ export async function extractFinancialDataFromEmail(
         return null;
       }
 
-      // Use Llama to verify, clean and categorize the parsed details
+      // Use selected AI engine (default: Groq Llama) to verify, clean and categorize the parsed details
       const prompt = `You are a financial verification agent for Smart Money. Verify and clean this programmatically extracted bank alert details.
 
 ${aiPrompt ? `CUSTOM EXTRACTION PARAMETERS / USER INSTRUCTIONS:\n- ${aiPrompt}\n` : ""}
@@ -706,12 +792,12 @@ Clean and output the transaction into a valid JSON object matching this structur
 If it is not a real transaction, return:
 { "is_transaction": false }`;
 
-      const raw = await askAI(prompt, "claude-3-5-haiku-latest");
+      const raw = await askAIWithEngine(prompt, aiEngine);
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         if (parsed.is_transaction && typeof parsed.amount_naira === "number") {
-          console.log(`[Gmail Lightweight Sync] Cleaned transaction: ₦${parsed.amount_naira} (${parsed.description})`);
+          console.log(`[Gmail Lightweight Sync (${aiEngine})] Cleaned transaction: ₦${parsed.amount_naira} (${parsed.description})`);
           return {
             amount: parsed.amount_naira,
             description: String(parsed.description || data.description || "Gmail Transaction").slice(0, 120),
@@ -754,12 +840,12 @@ If it IS a transaction alert, extract the details into a valid JSON object match
 }`;
 
   try {
-    const raw = await askAI(prompt, "claude-3-5-haiku-latest");
+    const raw = await askAIWithEngine(prompt, aiEngine);
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
       if (parsed.is_transaction && typeof parsed.amount_naira === "number") {
-        console.log(`[Gmail Deep AI Sync] Extracted transaction: ₦${parsed.amount_naira} (${parsed.description})`);
+        console.log(`[Gmail Deep AI Sync (${aiEngine})] Extracted transaction: ₦${parsed.amount_naira} (${parsed.description})`);
         return {
           amount: parsed.amount_naira,
           description: String(parsed.description || "Gmail Transaction").slice(0, 120),

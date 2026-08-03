@@ -80,8 +80,3 @@ export async function proxy(request: NextRequest) {
   return supabaseResponse;
 }
 
-export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|favicon\\.ico|robots\\.txt|sitemap\\.xml|api/signals/webhook|auth/callback|.*\\.[a-zA-Z0-9]+$).*)",
-  ],
-};

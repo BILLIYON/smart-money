@@ -140,6 +140,11 @@ export function MessageInput() {
 
   // ── 1:1 send ────────────────────────────────────────────
   const send1to1 = useCallback(async (text: string) => {
+    let currentSessionId = useChatStore.getState().activeSessionId;
+    if (!currentSessionId) {
+      currentSessionId = await useChatStore.getState().createNewSession(activeBuddyId);
+    }
+
     const time = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     const userMsgId = `u-${Date.now()}`;
     const aiMsgId = `a-${Date.now()}`;
@@ -158,13 +163,21 @@ export function MessageInput() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ buddyId: activeBuddyId, messages: history, databankContext: DATABANK_CTX }),
+        body: JSON.stringify({
+          buddyId: activeBuddyId,
+          sessionId: currentSessionId,
+          messages: history,
+          databankContext: DATABANK_CTX,
+        }),
       });
 
       await streamToStore(
         res,
         (t) => appendToken(activeBuddyId, aiMsgId, t),
-        () => finalizeStream(activeBuddyId, aiMsgId),
+        () => {
+          finalizeStream(activeBuddyId, aiMsgId);
+          setTimeout(() => useChatStore.getState().loadSessions(), 1000);
+        },
         () => { appendToken(activeBuddyId, aiMsgId, "\n\n[Connection error]"); finalizeStream(activeBuddyId, aiMsgId); }
       );
     } catch {
@@ -177,6 +190,11 @@ export function MessageInput() {
 
   // ── Group send (staggered, one per buddy) ───────────────
   const sendGroup = useCallback(async (text: string) => {
+    let currentSessionId = useChatStore.getState().activeSessionId;
+    if (!currentSessionId) {
+      currentSessionId = await useChatStore.getState().createNewSession(activeGroupId);
+    }
+
     const time = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     const userMsgId = `gu-${Date.now()}`;
 
@@ -209,13 +227,21 @@ export function MessageInput() {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ buddyId: bid, messages: history, databankContext: DATABANK_CTX }),
+          body: JSON.stringify({
+            buddyId: bid,
+            sessionId: currentSessionId,
+            messages: history,
+            databankContext: DATABANK_CTX,
+          }),
         });
 
         await streamToStore(
           res,
           (t) => appendGroupToken(activeGroupId, replyId, t),
-          () => finalizeGroupStream(activeGroupId, replyId),
+          () => {
+            finalizeGroupStream(activeGroupId, replyId);
+            setTimeout(() => useChatStore.getState().loadSessions(), 1000);
+          },
           () => { appendGroupToken(activeGroupId, replyId, "[Connection error]"); finalizeGroupStream(activeGroupId, replyId); }
         );
       }

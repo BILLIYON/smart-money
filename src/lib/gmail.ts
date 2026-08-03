@@ -209,6 +209,7 @@ export async function syncGmailForUser(
   const presetFilter = metadata.preset_filter || "all";
   const customQuery = metadata.custom_query || "";
   const aiPrompt = metadata.ai_prompt || "";
+  const aiEngine = metadata.ai_engine || "groq";
 
   try {
     // 1. Mark as syncing
@@ -218,8 +219,10 @@ export async function syncGmailForUser(
         metadata: {
           ...metadata,
           is_syncing: true,
+          should_stop_sync: false,
           sync_progress: 0,
-          sync_message: "Searching Gmail inbox..."
+          sync_message: "Searching Gmail inbox...",
+          sync_updated_at: new Date().toISOString(),
         }
       })
       .eq("user_id", userId)
@@ -256,7 +259,8 @@ export async function syncGmailForUser(
             ...metadata,
             is_syncing: false,
             sync_progress: 100,
-            sync_message: "No new transactions found"
+            sync_message: "No new transactions found",
+            sync_updated_at: new Date().toISOString(),
           }
         })
         .eq("user_id", userId)
@@ -290,7 +294,8 @@ export async function syncGmailForUser(
               is_syncing: false,
               should_stop_sync: false,
               sync_progress: null,
-              sync_message: "Sync stopped by user"
+              sync_message: "Sync stopped by user",
+              sync_updated_at: new Date().toISOString(),
             }
           })
           .eq("user_id", userId)
@@ -301,11 +306,11 @@ export async function syncGmailForUser(
       const batch = uniqueIds.slice(i, i + BATCH);
       const emails = await Promise.all(batch.map((id) => getEmailBody(gmail, id)));
 
-      // Parse emails in parallel via Groq Llama with Claude fallback
+      // Parse emails in parallel via user-selected AI engine (default: Groq Llama)
       const extractedData = await Promise.all(
         emails.map(async (email) => {
           const cleanBody = stripHtml(email.body);
-          const data = await extractFinancialDataFromEmail(cleanBody, email.subject, email.from, syncMode, aiPrompt);
+          const data = await extractFinancialDataFromEmail(cleanBody, email.subject, email.from, syncMode, aiPrompt, aiEngine);
           if (!data) return null;
 
           // Apply strict preset filter rules
@@ -385,15 +390,16 @@ export async function syncGmailForUser(
       const progressPct = Math.min(99, Math.round(((i + batch.length) / uniqueIds.length) * 100));
       onProgress?.(progressPct, entries.length);
 
-      // Update progress in DB metadata as well
+      // Update progress in DB metadata with fresh heartbeat timestamp
       await supabase
         .from("user_integrations")
         .update({
           metadata: {
-            ...metadata,
+            ...currentMeta,
             is_syncing: true,
             sync_progress: progressPct,
-            sync_message: `Processed ${i + batch.length} of ${uniqueIds.length} emails...`
+            sync_message: `Processed ${i + batch.length} of ${uniqueIds.length} emails...`,
+            sync_updated_at: new Date().toISOString(),
           }
         })
         .eq("user_id", userId)
@@ -426,7 +432,8 @@ export async function syncGmailForUser(
           ...metadata,
           is_syncing: false,
           sync_progress: 100,
-          sync_message: `Synced ${entries.length} new transactions`
+          sync_message: `Synced ${entries.length} new transactions`,
+          sync_updated_at: new Date().toISOString(),
         }
       })
       .eq("user_id", userId)
@@ -444,7 +451,8 @@ export async function syncGmailForUser(
           ...metadata,
           is_syncing: false,
           sync_progress: null,
-          sync_message: err.message || "Sync failed"
+          sync_message: err.message || "Sync failed",
+          sync_updated_at: new Date().toISOString(),
         }
       })
       .eq("user_id", userId)
