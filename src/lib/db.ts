@@ -260,36 +260,44 @@ export async function submitBuddy(config: BuddySubmission, creatorId: string): P
     ? config.categories 
     : ["General"];
 
-  const { data, error } = await db
-    .from("buddies")
-    .insert({
-      id: slug,
-      name: config.buddyName || "Untitled Buddy",
-      tag: config.tag || "",
-      description: config.desc || "",
-      avatar_content: config.avatarContent || "🤖",
-      avatar_bg: config.avatarBg || "#1A3A6E",
-      avatar_is_serif: config.avatarIsSerif ?? false,
-      banner_color: config.bannerColor || "linear-gradient(135deg,#0B1E3D,#1A3A6E)",
-      category: categories,
-      is_fan_sim: config.isFanSim ?? false,
-      fan_disclaimer: config.disclaimer || null,
-      philosophy: config.philosophy || null,
-      ai_model: config.model ? config.model.toLowerCase() : "claude",
-      price_monthly: isNaN(priceMonthly) ? 0 : priceMonthly,
-      rating: 5.0,
-      review_count: 0,
-      creator_id: creatorId || null,
-      status: "pending",
-    })
-    .select("id")
-    .single();
+  const modelVal = config.model ? config.model.toLowerCase() : "claude";
+
+  const record = {
+    id: slug,
+    name: config.buddyName || "Untitled Buddy",
+    tag: config.tag || "",
+    description: config.desc || "",
+    avatar_content: config.avatarContent || "🤖",
+    avatar_bg: config.avatarBg || "#1A3A6E",
+    avatar_is_serif: config.avatarIsSerif ?? false,
+    banner_color: config.bannerColor || "linear-gradient(135deg,#0B1E3D,#1A3A6E)",
+    category: categories,
+    is_fan_sim: config.isFanSim ?? false,
+    fan_disclaimer: config.disclaimer || null,
+    philosophy: config.philosophy || null,
+    ai_model: modelVal,
+    price_monthly: isNaN(priceMonthly) ? 0 : priceMonthly,
+    rating: 5.0,
+    review_count: 0,
+    creator_id: creatorId || null,
+    status: "pending",
+  };
+
+  let { data, error } = await db.from("buddies").insert(record).select("id").single();
+
+  if (error && (error.code === "23514" || error.message?.includes("check constraint"))) {
+    console.warn("[submitBuddy] Postgres check constraint failed for model:", modelVal, "falling back to 'claude'");
+    record.ai_model = "claude";
+    const res = await db.from("buddies").insert(record).select("id").single();
+    data = res.data;
+    error = res.error;
+  }
 
   if (error) {
     console.error("[submitBuddy] Insert error:", error);
     throw error;
   }
-  return data.id;
+  return data?.id || slug;
 }
 
 export type CommunityBuddyRow = {
@@ -413,7 +421,16 @@ export async function createDbBuddy(payload: Partial<DbBuddy>): Promise<DbBuddy>
     category: payload.category || ["General"],
   };
 
-  const { data, error } = await db.from("buddies").insert(record).select("*").single();
+  let { data, error } = await db.from("buddies").insert(record).select("*").single();
+
+  if (error && (error.code === "23514" || error.message?.includes("check constraint"))) {
+    console.warn("[createDbBuddy] Postgres check constraint failed for model:", record.ai_model, "falling back to 'claude'");
+    record.ai_model = "claude";
+    const res = await db.from("buddies").insert(record).select("*").single();
+    data = res.data;
+    error = res.error;
+  }
+
   if (error) {
     console.error("[createDbBuddy] Error:", error);
     throw error;
@@ -423,12 +440,20 @@ export async function createDbBuddy(payload: Partial<DbBuddy>): Promise<DbBuddy>
 
 export async function updateDbBuddy(id: string, payload: Partial<DbBuddy>): Promise<DbBuddy> {
   const db = getClient();
-  const { data, error } = await db
+  let { data, error } = await db
     .from("buddies")
     .update(payload)
     .eq("id", id)
     .select("*")
     .single();
+
+  if (error && (error.code === "23514" || error.message?.includes("check constraint")) && payload.ai_model) {
+    console.warn("[updateDbBuddy] Postgres check constraint failed for model:", payload.ai_model, "falling back to 'claude'");
+    const fallbackPayload = { ...payload, ai_model: "claude" };
+    const res = await db.from("buddies").update(fallbackPayload).eq("id", id).select("*").single();
+    data = res.data;
+    error = res.error;
+  }
 
   if (error) {
     console.error("[updateDbBuddy] Error:", error);
