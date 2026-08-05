@@ -30,7 +30,7 @@ type StudioConfig = {
   signaturePhrase: string;
   willNotAdviseOn: string;
   // ④ AI Model
-  model: "Claude" | "GPT-4" | "Gemini";
+  model: "Claude" | "GPT-4" | "Gemini" | "Groq";
   // ⑤ Notifications
   triggers: boolean[];
   maxNotifs: number;
@@ -90,6 +90,42 @@ function Toggle({ on, onToggle, "aria-label": ariaLabel }: { on: boolean; onTogg
       }} />
     </button>
   );
+}
+
+// ── Image Compressor Helper ──────────────────────────────────
+function compressImage(file: File, maxDimension = 300, quality = 0.85): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(e.target?.result as string);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = () => resolve(e.target?.result as string);
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => resolve("");
+    reader.readAsDataURL(file);
+  });
 }
 
 // ── Personality Slider ─────────────────────────────────────
@@ -186,11 +222,11 @@ export default function StudioPage() {
     includes: ["Unlimited chat sessions", "Full DataBank integration"],
     priceNote: "3-day free trial · Cancel anytime",
     // Personality
-    tone: 65,
-    delivery: 80,
-    register: 70,
-    signaturePhrase: '"If it doesn\'t generate income, it\'s an expense."',
-    willNotAdviseOn: "Crypto speculation, short-term trading, lottery",
+    tone: 50,
+    delivery: 50,
+    register: 50,
+    signaturePhrase: "",
+    willNotAdviseOn: "",
     // AI Model
     model: "Claude",
     // Notifications
@@ -198,13 +234,10 @@ export default function StudioPage() {
     maxNotifs: 3,
     // Pricing
     price: "paid",
-    customPrice: "2000",
+    customPrice: "",
   });
 
-  const [files, setFiles] = useState<KnowledgeFile[]>([
-    { id: "f1", emoji: "📄", bg: "#E3F2FD", name: "Lagos_Finance_Guide.pdf", meta: "248 pages · Ingested" },
-    { id: "f2", emoji: "🎙️", bg: "#F3E5F5", name: "Podcast_Transcript_S01.txt", meta: "12 episodes · Transcribed" },
-  ]);
+  const [files, setFiles] = useState<KnowledgeFile[]>([]);
 
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState(false);
@@ -212,9 +245,7 @@ export default function StudioPage() {
 
   // ── Preview chat ───────────────────────────────────────
   const [previewMsgs, setPreviewMsgs] = useState<PreviewMsg[]>([
-    { role: "assistant", content: "I see your salary just hit — ₦380k credited. Before you touch it, let's map where every naira goes. What's your most urgent financial priority right now?" },
-    { role: "user", content: "Pay off my credit card debt of ₦95k" },
-    { role: "assistant", content: "Good — that's 24% interest eating you alive. Pay it off today, not at month end. That's ₦95k freed from a wealth-destroying obligation. Then we talk about what comes next." },
+    { role: "assistant", content: "👋 Welcome! I am your real-time preview assistant. Fill in your buddy's details on the left, then send a message here to test how I respond in real-time." },
   ]);
   const [previewInput, setPreviewInput] = useState("");
   const [previewStreaming, setPreviewStreaming] = useState(false);
@@ -309,7 +340,21 @@ export default function StudioPage() {
         body: JSON.stringify(config),
       });
 
-      const data = await res.json();
+      const responseText = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        if (res.status === 413) {
+          popup.alert(
+            "Payload Too Large",
+            "The buddy configuration payload is too large. Please reset or choose a smaller photo/file."
+          );
+          return;
+        }
+        popup.alert("Submission Error", responseText || "Server returned an invalid response.");
+        return;
+      }
 
       if (!res.ok || !data.ok) {
         popup.alert("Submission Failed", data.error || "Failed to submit buddy for review. Please try again.");
@@ -323,6 +368,22 @@ export default function StudioPage() {
     } finally {
       setPublishing(false);
     }
+  }
+
+  function handleKnowledgeFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const uploaded = Array.from(e.target.files || []);
+    if (uploaded.length === 0) return;
+
+    const newFiles: KnowledgeFile[] = uploaded.map((file, idx) => ({
+      id: `kb-${Date.now()}-${idx}`,
+      emoji: file.name.endsWith(".pdf") ? "📄" : file.name.endsWith(".txt") ? "📝" : "📁",
+      bg: file.name.endsWith(".pdf") ? "#E3F2FD" : "#F3E5F5",
+      name: file.name,
+      meta: `${(file.size / 1024).toFixed(1)} KB · Ingested`,
+    }));
+
+    setFiles((prev) => [...prev, ...newFiles]);
+    popup.success("Knowledge Ingested", `Added ${uploaded.length} file(s) to knowledge base.`);
   }
 
   function removeFile(id: string) {
@@ -393,6 +454,7 @@ export default function StudioPage() {
     { id: "Claude", label: "Claude", sub: "Nuanced · Balanced" },
     { id: "GPT-4", label: "GPT-4", sub: "Direct · Bold" },
     { id: "Gemini", label: "Gemini", sub: "Live · Web-aware" },
+    { id: "Groq", label: "Groq", sub: "Llama 3.3 · Ultra Fast" },
   ];
 
   const priceOptions: { id: StudioConfig["price"]; label: string; sub: string }[] = [
@@ -549,14 +611,11 @@ export default function StudioPage() {
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (event) => {
-                              const base64 = event.target?.result as string;
+                            compressImage(file).then((base64) => {
                               if (base64) {
                                 setConfig((c) => ({ ...c, avatarContent: base64 }));
                               }
-                            };
-                            reader.readAsDataURL(file);
+                            });
                           }
                         }}
                       />
@@ -789,33 +848,46 @@ export default function StudioPage() {
             {/* Step 2: Knowledge Base                              */}
             {/* ─────────────────────────────────────────────────── */}
             <StepCard num="2" title="② Knowledge Base" done={files.length > 0} badge={files.length > 0 ? `${files.length} sources` : undefined}>
-              <div
+              <label
                 className="flex flex-col items-center justify-center gap-1 py-5 rounded-[12px] border-2 border-dashed cursor-pointer transition-all duration-150 mb-3"
                 style={{ borderColor: "var(--border)" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "var(--green)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border)"; }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLLabelElement).style.borderColor = "var(--green)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLLabelElement).style.borderColor = "var(--border)"; }}
               >
                 <div className="text-[22px]">📚</div>
-                <div className="text-[13px] font-medium" style={{ color: "var(--muted)" }}>Drop PDFs, videos, or paste a URL</div>
+                <div className="text-[13px] font-medium" style={{ color: "var(--muted)" }}>Click or drop PDFs, text files, or transcripts</div>
                 <div className="text-[11px]" style={{ color: "var(--border)" }}>Books · Articles · Transcripts · Course materials</div>
-              </div>
+                <input
+                  type="file"
+                  multiple
+                  accept=".pdf,.txt,.doc,.docx,.csv"
+                  className="hidden"
+                  onChange={handleKnowledgeFileUpload}
+                />
+              </label>
               <div className="flex flex-col gap-2">
-                {files.map((f) => (
-                  <div key={f.id} className="flex items-center gap-3 px-3 py-[10px] rounded-[10px]" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
-                    <div className="flex items-center justify-center rounded-[8px] text-[14px] flex-shrink-0" style={{ width: 32, height: 32, background: f.bg }}>{f.emoji}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[12px] font-medium truncate" style={{ color: "var(--text)" }}>{f.name}</div>
-                      <div className="text-[11px]" style={{ color: "var(--muted)" }}>{f.meta}</div>
-                    </div>
-                    <button
-                      onClick={() => removeFile(f.id)}
-                      className="text-[16px] w-6 h-6 flex items-center justify-center"
-                      style={{ color: "var(--muted)", background: "transparent", border: "none", cursor: "pointer" }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#E24B4A"; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--muted)"; }}
-                    >×</button>
+                {files.length === 0 ? (
+                  <div className="text-[12px] text-center py-2" style={{ color: "var(--muted)" }}>
+                    No knowledge files uploaded yet. Upload PDFs or text files above to add domain context for your buddy.
                   </div>
-                ))}
+                ) : (
+                  files.map((f) => (
+                    <div key={f.id} className="flex items-center gap-3 px-3 py-[10px] rounded-[10px]" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
+                      <div className="flex items-center justify-center rounded-[8px] text-[14px] flex-shrink-0" style={{ width: 32, height: 32, background: f.bg }}>{f.emoji}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[12px] font-medium truncate" style={{ color: "var(--text)" }}>{f.name}</div>
+                        <div className="text-[11px]" style={{ color: "var(--muted)" }}>{f.meta}</div>
+                      </div>
+                      <button
+                        onClick={() => removeFile(f.id)}
+                        className="text-[16px] w-6 h-6 flex items-center justify-center"
+                        style={{ color: "var(--muted)", background: "transparent", border: "none", cursor: "pointer" }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#E24B4A"; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--muted)"; }}
+                      >×</button>
+                    </div>
+                  ))
+                )}
               </div>
             </StepCard>
 

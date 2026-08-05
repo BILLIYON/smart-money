@@ -12,6 +12,7 @@ const MODEL_COLOR: Record<string, string> = {
   Claude: "#7B68EE",
   "GPT-4": "#10A37F",
   Gemini: "#4285F4",
+  Groq: "#F55036",
 };
 
 function rowToBuddy(row: CommunityBuddyRow): Buddy {
@@ -20,7 +21,12 @@ function rowToBuddy(row: CommunityBuddyRow): Buddy {
     : row.price === "custom" && row.custom_price ? `$${row.custom_price}/mo`
     : "$5/mo";
   const badgeType: "free" | "pro" = row.price === "free" ? "free" : "pro";
-  const model = (row.model ?? "Claude") as Buddy["model"];
+  const rawModel = (row.model ?? "").toLowerCase();
+  const model: Buddy["model"] =
+    rawModel.includes("groq") || rawModel.includes("llama") ? "Groq" :
+    rawModel.includes("gpt") ? "GPT-4" :
+    rawModel.includes("gemini") ? "Gemini" :
+    "Claude";
   return {
     id: row.id,
     name: row.name,

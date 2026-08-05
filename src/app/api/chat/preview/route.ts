@@ -15,6 +15,9 @@ function getGemini() {
 }
 
 type StudioConfig = {
+  buddyName?: string;
+  tag?: string;
+  philosophy?: string;
   tone: number;        // 0–100
   delivery: number;   // 0–100
   register: number;   // 0–100
@@ -29,6 +32,8 @@ export async function POST(req: Request) {
     messages: { role: "user" | "assistant"; content: string }[];
     config: StudioConfig;
   };
+
+  const buddyName = config.buddyName?.trim() || "AI Finance Buddy";
 
   const toneLabel =
     config.tone > 66
@@ -50,7 +55,9 @@ export async function POST(req: Request) {
       : "formal and structured";
 
   const system = [
-    "You are a custom AI Finance Buddy being previewed in Smart Money's AI Studio.",
+    `You are ${buddyName}, a custom AI Finance Buddy currently being built in Smart Money's AI Studio.`,
+    config.tag ? `Tagline: ${config.tag}` : "",
+    config.philosophy ? `Philosophy:\n${config.philosophy}` : "",
     `Tone: ${toneLabel}. Delivery: ${deliveryLabel}. Register: ${registerLabel}.`,
     config.signaturePhrase
       ? `Your signature phrase is: "${config.signaturePhrase}" — weave it in naturally when appropriate.`
@@ -60,7 +67,7 @@ export async function POST(req: Request) {
       : "",
     "",
     "Keep responses concise (2–4 sentences). Use ₦ for Nigerian currency.",
-    "This is a live preview — show off the persona's personality right away.",
+    "This is a live preview — demonstrate your distinct voice and financial mindset right away.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -99,7 +106,7 @@ export async function POST(req: Request) {
     
     try {
       const model = getGemini().getGenerativeModel({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.0-flash",
         systemInstruction: system,
       });
 

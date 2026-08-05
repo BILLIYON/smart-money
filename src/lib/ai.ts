@@ -252,10 +252,11 @@ function formatDatabankContext(ctx: DatabankContext): string {
   return lines.length > 0 ? lines.join("\n") : "No DataBank data connected yet.";
 }
 
-/** Normalise the model field from buddies.ts ("Claude" | "GPT-4" | "Gemini") */
-function resolveModel(buddy: Buddy, override?: "claude" | "gpt4" | "gemini"): "claude" | "gpt4" | "gemini" {
+/** Normalise the model field from buddies.ts ("Claude" | "GPT-4" | "Gemini" | "Groq") */
+function resolveModel(buddy: Buddy, override?: "claude" | "gpt4" | "gemini" | "groq"): "claude" | "gpt4" | "gemini" | "groq" {
   if (override) return override;
   const m = buddy.model.toLowerCase();
+  if (m.includes("groq") || m.includes("llama")) return "groq";
   if (m.includes("gpt")) return "gpt4";
   if (m.includes("gemini")) return "gemini";
   return "claude";
@@ -332,14 +333,14 @@ Never include both GOAL and DATABANK_WRITE tags in the same message. Keep your t
 }
 
 // ════════════════════════════════════════════════════════════
-// 2. sendMessage — routes to Claude / GPT-4 / Gemini
+// 2. sendMessage — routes to Claude / GPT-4 / Gemini / Groq
 // ════════════════════════════════════════════════════════════
 
 export async function sendMessage(params: {
   buddyId: string;
   messages: Message[];
   databankContext: DatabankContext;
-  model?: "claude" | "gpt4" | "gemini";
+  model?: "claude" | "gpt4" | "gemini" | "groq";
   crossSessionMemory?: string;
 }): Promise<ReadableStream<Uint8Array>> {
   const { buddyId, messages, databankContext, model: modelOverride, crossSessionMemory } = params;
@@ -352,9 +353,11 @@ export async function sendMessage(params: {
   const resolvedModel = resolveModel(buddy, modelOverride);
 
   // Define order of fallback prioritizing active keys
-  const modelsToTry: Array<"claude" | "gpt4" | "gemini"> = [];
+  const modelsToTry: Array<"claude" | "gpt4" | "gemini" | "groq"> = [];
 
-  if (resolvedModel === "claude" && !depletedKeys.claude) {
+  if (resolvedModel === "groq" && process.env.GROQ_API_KEY) {
+    modelsToTry.push("groq");
+  } else if (resolvedModel === "claude" && !depletedKeys.claude) {
     modelsToTry.push("claude");
   } else if (resolvedModel === "gpt4" && !depletedKeys.gpt4) {
     modelsToTry.push("gpt4");
@@ -362,7 +365,10 @@ export async function sendMessage(params: {
     modelsToTry.push("gemini");
   }
 
-  // Add Gemini as the high-priority functional fallback
+  // Add Groq / Gemini as high-priority fallbacks
+  if (process.env.GROQ_API_KEY && !modelsToTry.includes("groq")) {
+    modelsToTry.push("groq");
+  }
   if (!modelsToTry.includes("gemini")) {
     modelsToTry.push("gemini");
   }
@@ -383,7 +389,9 @@ export async function sendMessage(params: {
   for (const modelName of modelsToTry) {
     try {
       console.log(`[AI] Attempting stream with model: ${modelName}`);
-      if (modelName === "claude") {
+      if (modelName === "groq") {
+        return await streamGroq(system, messages);
+      } else if (modelName === "claude") {
         return await streamClaude(system, messages);
       } else if (modelName === "gpt4") {
         return await streamGPT4(system, messages);
@@ -486,6 +494,31 @@ async function streamGemini(
       try {
         for await (const chunk of result.stream) {
           const text = chunk.text();
+          if (text) controller.enqueue(new TextEncoder().encode(text));
+        }
+      } finally {
+        controller.close();
+      }
+    },
+  });
+}
+
+// ── Groq (Llama 3.3 70B) ──────────────────────────────────
+async function streamGroq(
+  system: string,
+  messages: Message[]
+): Promise<ReadableStream<Uint8Array>> {
+  const response = await groq().chat.completions.create({
+    model: "llama-3.3-70b-versatile",
+    messages: [{ role: "system", content: system }, ...messages],
+    stream: true,
+  });
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for await (const chunk of response) {
+          const text = chunk.choices[0]?.delta?.content ?? "";
           if (text) controller.enqueue(new TextEncoder().encode(text));
         }
       } finally {

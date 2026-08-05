@@ -10,6 +10,7 @@ import {
   deleteBuddyAction,
 } from "@/app/admin/buddies/actions";
 import { popup } from "@/store/popupStore";
+import { isImageAvatar } from "@/lib/utils";
 
 interface Props {
   initialBuddies: DbBuddy[];
@@ -83,6 +84,53 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
     setFormIsFanSim(buddy.is_fan_sim || false);
     setFormFanDisclaimer(buddy.fan_disclaimer || "");
     setModalOpen(true);
+  };
+
+  const compressImage = (file: File, maxDimension = 300, quality = 0.85): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve(e.target?.result as string);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        };
+        img.onerror = () => resolve(e.target?.result as string);
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    compressImage(file).then((dataUrl) => {
+      if (dataUrl) {
+        setFormAvatarContent(dataUrl);
+        popup.success("Photo Prepared", "Buddy photo processed & optimized! Click Save to update database.");
+      }
+    });
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -420,9 +468,18 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
                       color: "#fff",
                       fontFamily: buddy.avatar_is_serif ? "serif" : "inherit",
                       fontWeight: 700,
+                      overflow: "hidden",
                     }}
                   >
-                    {buddy.avatar_content || "🤖"}
+                    {isImageAvatar(buddy.avatar_content) ? (
+                      <img
+                        src={buddy.avatar_content!}
+                        alt={buddy.name}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    ) : (
+                      buddy.avatar_content || "🤖"
+                    )}
                   </div>
                 </div>
 
@@ -539,7 +596,7 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
                         cursor: "pointer",
                       }}
                     >
-                      ✏️ Edit
+                      ✏️ Edit Photo &amp; Info
                     </button>
 
                     <button
@@ -585,7 +642,7 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
             style={{
               background: "#ffffff",
               borderRadius: 20,
-              maxWidth: 640,
+              maxWidth: 680,
               width: "100%",
               padding: 24,
               boxShadow: "0 20px 30px rgba(0,0,0,0.2)",
@@ -649,6 +706,146 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
                 </div>
               </div>
 
+              {/* 📷 Photo Upload & Avatar Manager */}
+              <div
+                style={{
+                  background: "linear-gradient(135deg, #F8FAFC 0%, #EFF6FF 100%)",
+                  padding: 16,
+                  borderRadius: 14,
+                  border: "1px solid #DBEAFE",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12,
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#1E40AF", display: "flex", alignItems: "center", gap: 6 }}>
+                  <span>📷</span> Buddy Avatar Photo &amp; Visuals
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                  {/* Live Preview Avatar */}
+                  <div
+                    style={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: "50%",
+                      background: formAvatarBg || "#1A3A6E",
+                      border: "3px solid #ffffff",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 24,
+                      color: "#fff",
+                      fontFamily: formAvatarIsSerif ? "serif" : "inherit",
+                      fontWeight: 700,
+                      overflow: "hidden",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {isImageAvatar(formAvatarContent) ? (
+                      <img
+                        src={formAvatarContent}
+                        alt="Preview"
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    ) : (
+                      formAvatarContent || "🤖"
+                    )}
+                  </div>
+
+                  {/* Upload Actions */}
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      <label
+                        style={{
+                          padding: "8px 16px",
+                          borderRadius: 8,
+                          background: "#2563EB",
+                          color: "#ffffff",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          boxShadow: "0 2px 4px rgba(37,99,235,0.25)",
+                        }}
+                      >
+                        <span>📁</span> Upload Photo File
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleFileUpload}
+                          style={{ display: "none" }}
+                        />
+                      </label>
+
+                      {isImageAvatar(formAvatarContent) && (
+                        <button
+                          type="button"
+                          onClick={() => setFormAvatarContent("🤖")}
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: 8,
+                            border: "1px solid #CBD5E1",
+                            background: "#ffffff",
+                            color: "#E24B4A",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Reset to Emoji
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#64748B" }}>
+                      Supports PNG, JPG, WebP (Max 2MB). Uploaded photo will replace emoji.
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 4 }}>
+                  <div>
+                    <label style={{ fontSize: 11, color: "#475569", fontWeight: 600, display: "block", marginBottom: 4 }}>
+                      Image URL or Emoji
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 🎯 or https://..."
+                      value={formAvatarContent}
+                      onChange={(e) => setFormAvatarContent(e.target.value)}
+                      style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 12, background: "#fff" }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: "#475569", fontWeight: 600, display: "block", marginBottom: 4 }}>
+                      Avatar Background Hex
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. #1A3A6E"
+                      value={formAvatarBg}
+                      onChange={(e) => setFormAvatarBg(e.target.value)}
+                      style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 12, background: "#fff" }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: "#475569", fontWeight: 600, display: "block", marginBottom: 4 }}>
+                      Banner Gradient CSS
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="linear-gradient(...)"
+                      value={formBannerColor}
+                      onChange={(e) => setFormBannerColor(e.target.value)}
+                      style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 12, background: "#fff" }}
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label style={{ fontSize: 12, fontWeight: 700, color: "#475569", display: "block", marginBottom: 4 }}>
                   Short Description
@@ -664,7 +861,7 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
 
               <div>
                 <label style={{ fontSize: 12, fontWeight: 700, color: "#475569", display: "block", marginBottom: 4 }}>
-                  Financial Philosophy & System Prompt
+                  Financial Philosophy &amp; System Prompt
                 </label>
                 <textarea
                   rows={3}
@@ -703,6 +900,7 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
                     <option value="claude">Claude (Anthropic)</option>
                     <option value="gpt4">GPT-4 (OpenAI)</option>
                     <option value="gemini">Gemini (Google)</option>
+                    <option value="groq">Groq (Llama 3.3 70B)</option>
                   </select>
                 </div>
 
@@ -721,43 +919,6 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
                     <option value="rejected">Rejected</option>
                     <option value="draft">Draft</option>
                   </select>
-                </div>
-              </div>
-
-              {/* Avatar & Banner Styling */}
-              <div style={{ background: "#F8FAFC", padding: 14, borderRadius: 12, display: "flex", flexDirection: "column", gap: 12 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#0B1E3D" }}>🎨 Visual Styling & Avatar</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-                  <div>
-                    <label style={{ fontSize: 11, color: "#64748B", display: "block", marginBottom: 4 }}>Avatar Emoji / Initials</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 🎯 or WB"
-                      value={formAvatarContent}
-                      onChange={(e) => setFormAvatarContent(e.target.value)}
-                      style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 13 }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: 11, color: "#64748B", display: "block", marginBottom: 4 }}>Avatar Background Hex</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. #1A3A6E"
-                      value={formAvatarBg}
-                      onChange={(e) => setFormAvatarBg(e.target.value)}
-                      style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 13 }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: 11, color: "#64748B", display: "block", marginBottom: 4 }}>Banner Gradient CSS</label>
-                    <input
-                      type="text"
-                      placeholder="linear-gradient(...)"
-                      value={formBannerColor}
-                      onChange={(e) => setFormBannerColor(e.target.value)}
-                      style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 13 }}
-                    />
-                  </div>
                 </div>
               </div>
 
