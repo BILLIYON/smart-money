@@ -16,9 +16,8 @@ export async function POST(req: Request) {
   const { userId, error } = await requireAuth();
   if (error) return error;
 
-  const config = await req.json();
-
   try {
+    const config = await req.json();
     const buddyId = await submitBuddy(config, userId);
     return NextResponse.json({
       ok: true,
@@ -26,8 +25,11 @@ export async function POST(req: Request) {
       status: "in_review",
       estimatedReviewTime: "24–48 hours",
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error("[POST /api/studio]", err);
-    return NextResponse.json({ error: "Failed to submit buddy" }, { status: 500 });
+    return NextResponse.json(
+      { error: err?.message || err?.details || "Failed to submit buddy for review" },
+      { status: 500 }
+    );
   }
 }

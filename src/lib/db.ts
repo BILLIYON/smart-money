@@ -256,24 +256,30 @@ export async function submitBuddy(config: BuddySubmission, creatorId: string): P
 
   const priceMonthly = config.price === "free" ? 0 : Number(config.customPrice || config.price || 0);
 
+  const categories = Array.isArray(config.categories) && config.categories.length > 0 
+    ? config.categories 
+    : ["General"];
+
   const { data, error } = await db
     .from("buddies")
     .insert({
       id: slug,
-      name: config.buddyName,
-      tag: config.tag,
-      description: config.desc,
+      name: config.buddyName || "Untitled Buddy",
+      tag: config.tag || "",
+      description: config.desc || "",
       avatar_content: config.avatarContent || "🤖",
       avatar_bg: config.avatarBg || "#1A3A6E",
       avatar_is_serif: config.avatarIsSerif ?? false,
       banner_color: config.bannerColor || "linear-gradient(135deg,#0B1E3D,#1A3A6E)",
-      category: config.categories || [],
+      category: categories,
       is_fan_sim: config.isFanSim ?? false,
       fan_disclaimer: config.disclaimer || null,
       philosophy: config.philosophy || null,
       ai_model: config.model ? config.model.toLowerCase() : "claude",
       price_monthly: isNaN(priceMonthly) ? 0 : priceMonthly,
-      creator_id: creatorId,
+      rating: 5.0,
+      review_count: 0,
+      creator_id: creatorId || null,
       status: "pending",
     })
     .select("id")
