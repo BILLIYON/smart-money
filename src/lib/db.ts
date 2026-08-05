@@ -329,12 +329,124 @@ export async function unhideBuddy(buddyId: string): Promise<void> {
   if (error) throw error;
 }
 
+export type DbBuddy = {
+  id: string;
+  name: string;
+  tag: string | null;
+  description: string | null;
+  philosophy: string | null;
+  price_monthly: number;
+  ai_model: string;
+  banner_color: string | null;
+  avatar_bg: string | null;
+  avatar_content: string | null;
+  avatar_is_serif: boolean | null;
+  rating: number;
+  review_count: number;
+  is_fan_sim: boolean;
+  fan_disclaimer: string | null;
+  creator_id: string | null;
+  status: string;
+  category: string[] | null;
+  created_at: string;
+  rejection_reason: string | null;
+};
+
+export async function getAllDbBuddies(): Promise<DbBuddy[]> {
+  const db = getClient();
+  const { data, error } = await db
+    .from("buddies")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[getAllDbBuddies] Error:", error);
+    throw error;
+  }
+  return data ?? [];
+}
+
+export async function getDbBuddyById(id: string): Promise<DbBuddy | null> {
+  const db = getClient();
+  const { data, error } = await db
+    .from("buddies")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (error) {
+    if (error.code === "PGRST116") return null;
+    console.error("[getDbBuddyById] Error:", error);
+    return null;
+  }
+  return data;
+}
+
+export async function createDbBuddy(payload: Partial<DbBuddy>): Promise<DbBuddy> {
+  const db = getClient();
+  const id = payload.id || (payload.name ? payload.name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") : `buddy-${Date.now()}`);
+  
+  const record = {
+    id,
+    name: payload.name || "Untitled Buddy",
+    tag: payload.tag || "",
+    description: payload.description || "",
+    philosophy: payload.philosophy || "",
+    price_monthly: payload.price_monthly ?? 0,
+    ai_model: payload.ai_model || "claude",
+    banner_color: payload.banner_color || "linear-gradient(135deg,#0B1E3D,#1A3A6E)",
+    avatar_bg: payload.avatar_bg || "#1A3A6E",
+    avatar_content: payload.avatar_content || "🤖",
+    avatar_is_serif: payload.avatar_is_serif ?? false,
+    rating: payload.rating ?? 4.8,
+    review_count: payload.review_count ?? 1,
+    is_fan_sim: payload.is_fan_sim ?? false,
+    fan_disclaimer: payload.fan_disclaimer || null,
+    creator_id: payload.creator_id || null,
+    status: payload.status || "live",
+    category: payload.category || ["General"],
+  };
+
+  const { data, error } = await db.from("buddies").insert(record).select("*").single();
+  if (error) {
+    console.error("[createDbBuddy] Error:", error);
+    throw error;
+  }
+  return data;
+}
+
+export async function updateDbBuddy(id: string, payload: Partial<DbBuddy>): Promise<DbBuddy> {
+  const db = getClient();
+  const { data, error } = await db
+    .from("buddies")
+    .update(payload)
+    .eq("id", id)
+    .select("*")
+    .single();
+
+  if (error) {
+    console.error("[updateDbBuddy] Error:", error);
+    throw error;
+  }
+  return data;
+}
+
+export async function deleteDbBuddy(id: string): Promise<void> {
+  const db = getClient();
+  await db.from("hidden_buddies").delete().eq("buddy_id", id);
+  const { error } = await db.from("buddies").delete().eq("id", id);
+  if (error) {
+    console.error("[deleteDbBuddy] Error:", error);
+    throw error;
+  }
+}
+
 export async function getApprovedCommunityBuddies(): Promise<CommunityBuddyRow[]> {
   const db = getClient();
   const { data, error } = await db
     .from("buddies")
     .select("id, name, tag, description, avatar_content, avatar_bg, avatar_is_serif, banner_color, category, is_fan_sim, fan_disclaimer, philosophy, ai_model, price_monthly")
-    .eq("status", "approved")
+    .in("status", ["approved", "live"])
     .order("created_at", { ascending: false });
   if (error) {
     console.error("[getApprovedCommunityBuddies]", error);
@@ -355,10 +467,10 @@ export async function getApprovedCommunityBuddies(): Promise<CommunityBuddyRow[]
     philosophy: b.philosophy,
     samples: [],
     includes: [],
-    price_note: b.price_monthly === 0 ? "Free" : `₦${b.price_monthly.toLocaleString()}/mo`,
+    price_note: b.price_monthly === 0 ? "Free" : `₦${(b.price_monthly / 100).toLocaleString()}/mo`,
     model: b.ai_model,
-    price: String(b.price_monthly ?? 0),
-    custom_price: String(b.price_monthly ?? 0),
+    price: b.price_monthly === 0 ? "free" : String(b.price_monthly / 100),
+    custom_price: b.price_monthly === 0 ? "0" : String(b.price_monthly / 100),
   }));
 }
 
@@ -390,10 +502,10 @@ export async function getCommunityBuddyById(id: string): Promise<CommunityBuddyR
     philosophy: data.philosophy,
     samples: [],
     includes: [],
-    price_note: data.price_monthly === 0 ? "Free" : `₦${data.price_monthly.toLocaleString()}/mo`,
+    price_note: data.price_monthly === 0 ? "Free" : `₦${(data.price_monthly / 100).toLocaleString()}/mo`,
     model: data.ai_model,
-    price: String(data.price_monthly ?? 0),
-    custom_price: String(data.price_monthly ?? 0),
+    price: data.price_monthly === 0 ? "free" : String(data.price_monthly / 100),
+    custom_price: data.price_monthly === 0 ? "0" : String(data.price_monthly / 100),
   };
 }
 
@@ -442,3 +554,4 @@ export async function getUserOnboardingStatus(userId: string) {
   if (error) throw error;
   return data?.onboarding_complete ?? false;
 }
+

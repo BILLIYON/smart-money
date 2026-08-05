@@ -77,8 +77,29 @@ export default function MarketplacePage() {
       .catch(() => {});
   }, []);
 
-  const visibleArchetypes = ARCHETYPE_BUDDIES.filter((b) => !hiddenIds.has(b.id));
-  const visibleCelebs = CELEBRITY_BUDDIES.filter((b) => !hiddenIds.has(b.id));
+  // Use DB buddies when available so Admin edits/deletions take immediate effect
+  const { visibleArchetypes, visibleCelebs, extraCommunity } = useMemo(() => {
+    if (communityBuddies.length > 0) {
+      const activeFromDb = communityBuddies.filter((b) => !hiddenIds.has(b.id));
+      const builtInIds = new Set([...ARCHETYPE_BUDDIES.map((b) => b.id), ...CELEBRITY_BUDDIES.map((b) => b.id)]);
+
+      const archetypes = activeFromDb.filter((b) => !b.isFanSim && builtInIds.has(b.id));
+      const celebs = activeFromDb.filter((b) => b.isFanSim && builtInIds.has(b.id));
+      const extra = activeFromDb.filter((b) => !builtInIds.has(b.id));
+
+      return {
+        visibleArchetypes: archetypes,
+        visibleCelebs: celebs,
+        extraCommunity: extra,
+      };
+    }
+
+    return {
+      visibleArchetypes: ARCHETYPE_BUDDIES.filter((b) => !hiddenIds.has(b.id)),
+      visibleCelebs: CELEBRITY_BUDDIES.filter((b) => !hiddenIds.has(b.id)),
+      extraCommunity: [],
+    };
+  }, [communityBuddies, hiddenIds]);
 
   // In "All" mode, show archetypes + celebs merged. Otherwise filter separately.
   const filteredArchetypes = useMemo(() => {
@@ -122,7 +143,7 @@ export default function MarketplacePage() {
 
   const filteredCommunity = useMemo(() => {
     if (activeFilter === "Celebrity Sim") return [];
-    let list = communityBuddies;
+    let list = extraCommunity;
     if (activeFilter === "Free Only") {
       list = list.filter((b) => b.badgeType === "free");
     } else if (activeFilter !== "All") {
@@ -139,7 +160,7 @@ export default function MarketplacePage() {
       );
     }
     return list;
-  }, [activeFilter, communityBuddies, searchQuery]);
+  }, [activeFilter, extraCommunity, searchQuery]);
 
   // Extract custom categories from community buddies
   const dynamicFilters = useMemo(() => {
