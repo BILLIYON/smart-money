@@ -183,7 +183,8 @@ function stripHtml(html: string): string {
 export async function syncGmailForUser(
   userId: string,
   force90Days = true,
-  onProgress?: (progress: number, syncedCount: number) => void
+  onProgress?: (progress: number, syncedCount: number) => void,
+  saveToDb = true
 ) {
   const gmail = await getGmailClient(userId);
   const supabase = createServiceClient();
@@ -411,8 +412,8 @@ export async function syncGmailForUser(
       }
     }
 
-    // Upsert entries utilizing gmail_message_id unique index
-    if (entries.length > 0) {
+    // Upsert entries utilizing gmail_message_id unique index only if saveToDb is true
+    if (saveToDb && entries.length > 0) {
       const { error: upsertError } = await supabase.from("databank_entries").upsert(entries, {
         onConflict: "gmail_message_id",
         ignoreDuplicates: false,
@@ -423,16 +424,18 @@ export async function syncGmailForUser(
       }
     }
 
-    // Update last sync time
+    // Update last sync status
     await supabase
       .from("user_integrations")
       .update({
-        last_synced_at: new Date().toISOString(),
+        ...(saveToDb && { last_synced_at: new Date().toISOString() }),
         metadata: {
           ...metadata,
           is_syncing: false,
           sync_progress: 100,
-          sync_message: `Synced ${entries.length} new transactions`,
+          sync_message: saveToDb 
+            ? `Synced ${entries.length} new transactions`
+            : `Found ${entries.length} new transactions for review`,
           sync_updated_at: new Date().toISOString(),
         }
       })
@@ -441,7 +444,7 @@ export async function syncGmailForUser(
 
     onProgress?.(100, entries.length);
 
-    return { synced: entries.length };
+    return entries;
   } catch (err: any) {
     // Reset syncing status on error
     await supabase

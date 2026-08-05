@@ -70,15 +70,15 @@ export async function GET() {
   const goals = goalsRes.data ?? [];
 
   // ── 1. Savings rate (35%) ──────────────────────────────
-  const income = entries.filter((e) => e.amount > 0).reduce((s, e) => s + e.amount, 0);
-  const expenses = entries.filter((e) => e.amount < 0).reduce((s, e) => s + Math.abs(e.amount), 0);
+  const income = entries.filter((e) => e.entry_type === "income").reduce((s, e) => s + e.amount, 0);
+  const expenses = entries.filter((e) => e.entry_type === "expense" || e.entry_type === "subscription").reduce((s, e) => s + e.amount, 0);
   const savingsRate = income > 0 ? (income - expenses) / income : 0;
   // Map: 0% → 0pts, 20% → 70pts, 35%+ → 100pts
   const savingsScore = clamp(Math.round(savingsRate * 280), 0, 100);
 
   // ── 2. Net-worth growth (25%) ──────────────────────────
-  const prevIncome = prevEntries.filter((e) => e.amount > 0).reduce((s, e) => s + e.amount, 0);
-  const prevExpenses = prevEntries.filter((e) => e.amount < 0).reduce((s, e) => s + Math.abs(e.amount), 0);
+  const prevIncome = prevEntries.filter((e) => e.entry_type === "income").reduce((s, e) => s + e.amount, 0);
+  const prevExpenses = prevEntries.filter((e) => e.entry_type === "expense" || e.entry_type === "subscription").reduce((s, e) => s + e.amount, 0);
   const thisNet = income - expenses;
   const prevNet = prevIncome - prevExpenses;
   // Positive delta → good. Cap at 100.

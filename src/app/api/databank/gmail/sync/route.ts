@@ -17,7 +17,7 @@ export async function POST() {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        await syncGmailForUser(user.id, true, (progress, syncedCount) => {
+        const results = await syncGmailForUser(user.id, true, (progress, syncedCount) => {
           try {
             controller.enqueue(
               encoder.encode(JSON.stringify({ progress, synced: syncedCount }) + "\n")
@@ -25,7 +25,14 @@ export async function POST() {
           } catch (e) {
             // Client disconnected. Swallow the error to let sync continue in background.
           }
-        });
+        }, false);
+        try {
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ progress: 100, entries: results }) + "\n")
+          );
+        } catch (e) {
+          // Stream already closed
+        }
       } catch (err: unknown) {
         let message = err instanceof Error ? err.message : "Sync failed";
         if (message.includes("DECRYPTION_FAILED")) {

@@ -25,8 +25,8 @@ export async function GET(req: Request) {
   let synced = 0;
   for (const { user_id } of integrations) {
     try {
-      const result = await syncGmailForUser(user_id);
-      synced += result.synced;
+      const result = await syncGmailForUser(user_id, true, undefined, true);
+      synced += Array.isArray(result) ? result.length : 0;
     } catch (err) {
       console.error(`Gmail sync failed for ${user_id}:`, err);
     }

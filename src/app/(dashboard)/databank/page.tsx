@@ -92,6 +92,8 @@ function GmailCard() {
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [previewEntries, setPreviewEntries] = useState<any[]>([]);
+  const [savingPreview, setSavingPreview] = useState(false);
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -275,6 +277,14 @@ function GmailCard() {
             if (parsed.synced !== undefined) {
               setSyncMsg(`Synced ${parsed.synced} new transactions`);
             }
+            if (Array.isArray(parsed.entries)) {
+              setPreviewEntries(
+                parsed.entries.map((entry: any) => ({
+                  ...entry,
+                  selected: true, // Selected/enabled by default
+                }))
+              );
+            }
           } catch (e) {
             console.error("Failed to parse progress line:", e);
           }
@@ -288,6 +298,35 @@ function GmailCard() {
       setSyncing(false);
       setSyncProgress(null);
       setTimeout(() => setSyncMsg(null), 4000);
+    }
+  }
+
+  async function handleSavePreview() {
+    setSavingPreview(true);
+    try {
+      const selectedEntries = previewEntries
+        .filter((entry) => entry.selected)
+        .map(({ selected, ...rest }) => rest);
+
+      const res = await fetch("/api/databank/gmail/save-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entries: selectedEntries }),
+      });
+
+      if (res.ok) {
+        popup.success("DataBank Updated 🚀", `Successfully saved ${selectedEntries.length} transactions to your DataBank!`);
+        setPreviewEntries([]);
+        await loadStatus();
+        await useDatabankStore.getState().loadContext();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        popup.error("Failed to Save", err.error || "Could not save your transactions.");
+      }
+    } catch {
+      popup.error("Error", "An unexpected error occurred while saving.");
+    } finally {
+      setSavingPreview(false);
     }
   }
 
@@ -450,7 +489,9 @@ function GmailCard() {
         ))}
       </div>
 
-      {/* Sync settings toggle link */}
+      {previewEntries.length === 0 ? (
+        <>
+          {/* Sync settings toggle link */}
       <div className="mb-4">
         <button
           onClick={() => setShowSettings(!showSettings)}
@@ -692,6 +733,167 @@ function GmailCard() {
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
           >
             Disconnect
+          </button>
+        </div>
+      )}
+        </>
+      ) : (
+        <div className="mt-4 p-4 rounded-[12px] border" style={{ background: "var(--bg)", borderColor: "var(--border)" }}>
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <div>
+              <div className="text-[13px] font-bold" style={{ color: "var(--text)" }}>📥 Sync Preview ({previewEntries.length} items)</div>
+              <div className="text-[10px]" style={{ color: "var(--muted)" }}>Verify, edit, or delete Gmail transactions before saving.</div>
+            </div>
+            <button
+              onClick={() => setPreviewEntries([])}
+              className="text-[11px] font-semibold transition-colors bg-transparent border-none cursor-pointer p-0"
+              style={{ color: "#E24B4A" }}
+            >
+              Cancel Preview
+            </button>
+          </div>
+
+          {/* Table Container */}
+          <div className="overflow-x-auto max-h-[300px] border rounded-[8px] mb-4" style={{ borderColor: "var(--border)", scrollbarWidth: "thin" }}>
+            <table className="w-full text-left text-[11px]" style={{ borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ background: "rgba(0,0,0,0.03)", borderBottom: "1px solid var(--border)" }}>
+                  <th className="p-2 w-8"><input type="checkbox" checked={previewEntries.every(e => e.selected)} onChange={(e) => {
+                    const checked = e.target.checked;
+                    setPreviewEntries(prev => prev.map(item => ({ ...item, selected: checked })));
+                  }} /></th>
+                  <th className="p-2">Date</th>
+                  <th className="p-2">Description</th>
+                  <th className="p-2">Type</th>
+                  <th className="p-2">Category</th>
+                  <th className="p-2 text-right">Amount</th>
+                  <th className="p-2 text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {previewEntries.map((entry, idx) => {
+                  const balance = entry.metadata?.account_balance;
+                  return (
+                    <tr key={entry.gmail_message_id || idx} style={{ borderBottom: "1px solid var(--border)", opacity: entry.selected ? 1 : 0.6 }}>
+                      {/* Checkbox */}
+                      <td className="p-2">
+                        <input 
+                          type="checkbox" 
+                          checked={entry.selected} 
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setPreviewEntries(prev => prev.map((item, i) => i === idx ? { ...item, selected: checked } : item));
+                          }}
+                        />
+                      </td>
+
+                      {/* Date */}
+                      <td className="p-2 whitespace-nowrap" style={{ color: "var(--muted)" }}>
+                        {entry.entry_date}
+                      </td>
+
+                      {/* Description */}
+                      <td className="p-2">
+                        <input
+                          type="text"
+                          value={entry.description}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setPreviewEntries(prev => prev.map((item, i) => i === idx ? { ...item, description: val } : item));
+                          }}
+                          className="w-full bg-transparent border-none outline-none font-medium p-0"
+                          style={{ color: "var(--text)", borderBottom: "1px dashed transparent" }}
+                          onFocus={(e) => e.target.style.borderBottomColor = "var(--green)"}
+                          onBlur={(e) => e.target.style.borderBottomColor = "transparent"}
+                        />
+                        {/* Account Balance if present */}
+                        {typeof balance === "number" && (
+                          <div className="text-[9px] font-semibold mt-0.5" style={{ color: "var(--green2)" }}>
+                            🏦 Bal: ₦{(balance / 100).toLocaleString()}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Entry Type */}
+                      <td className="p-2">
+                        <select
+                          value={entry.entry_type}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setPreviewEntries(prev => prev.map((item, i) => i === idx ? { ...item, entry_type: val } : item));
+                          }}
+                          className="bg-transparent border-none outline-none text-[10px]"
+                          style={{ color: "var(--text)" }}
+                        >
+                          <option value="expense">Expense</option>
+                          <option value="income">Income</option>
+                          <option value="subscription">Sub</option>
+                          <option value="asset">Asset</option>
+                          <option value="debt">Debt</option>
+                        </select>
+                      </td>
+
+                      {/* Category */}
+                      <td className="p-2">
+                        <select
+                          value={entry.category || "other"}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setPreviewEntries(prev => prev.map((item, i) => i === idx ? { ...item, category: val } : item));
+                          }}
+                          className="bg-transparent border-none outline-none text-[10px]"
+                          style={{ color: "var(--text)" }}
+                        >
+                          {["income", "housing", "groceries", "utilities", "subscriptions", "transport", "dining", "shopping", "entertainment", "transfer", "other"].map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
+                        </select>
+                      </td>
+
+                      {/* Amount */}
+                      <td className="p-2 text-right">
+                        <div className="flex items-center justify-end gap-0.5">
+                          <span>₦</span>
+                          <input
+                            type="text"
+                            value={(entry.amount / 100).toString()}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              setPreviewEntries(prev => prev.map((item, i) => i === idx ? { ...item, amount: Math.round(val * 100) } : item));
+                            }}
+                            className="bg-transparent border-none outline-none font-semibold text-right p-0"
+                            style={{ width: "50px", color: "var(--text)" }}
+                          />
+                        </div>
+                      </td>
+
+                      {/* Actions */}
+                      <td className="p-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPreviewEntries(prev => prev.filter((_, i) => i !== idx));
+                          }}
+                          className="text-red-500 hover:text-red-700 bg-transparent border-none cursor-pointer"
+                          title="Delete entry"
+                        >
+                          🗑️
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <button
+            onClick={handleSavePreview}
+            disabled={savingPreview || !previewEntries.some(e => e.selected)}
+            className="w-full py-[10px] rounded-[10px] text-[12px] font-semibold text-white transition-colors duration-150 border-none cursor-pointer"
+            style={{ background: "var(--green)", opacity: (savingPreview || !previewEntries.some(e => e.selected)) ? 0.6 : 1 }}
+          >
+            {savingPreview ? "Saving to DataBank..." : "✅ Confirm & Save to DataBank"}
           </button>
         </div>
       )}

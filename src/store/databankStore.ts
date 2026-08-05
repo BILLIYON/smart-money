@@ -29,6 +29,7 @@ export type DatabankContextResponse = {
     title: string;
     targetAmount: number;
     currentAmount: number;
+    targetDate: string;
     progressPercent: number;
   }[];
   recentTransactions: {
