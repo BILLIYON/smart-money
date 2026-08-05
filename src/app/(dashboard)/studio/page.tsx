@@ -205,6 +205,9 @@ function RevRow({ label, amount, highlight = false }: { label: string; amount: s
 
 // ── Main page ──────────────────────────────────────────────
 export default function StudioPage() {
+  const [editBuddyId, setEditBuddyId] = useState<string | null>(null);
+  const [adminNote, setAdminNote] = useState<string | null>(null);
+
   const [config, setConfig] = useState<StudioConfig>({
     // Identity
     buddyName: "",
@@ -242,6 +245,50 @@ export default function StudioPage() {
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState(false);
   const [customCategory, setCustomCategory] = useState("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const editId = params.get("edit");
+    if (!editId) return;
+
+    setEditBuddyId(editId);
+    fetch(`/api/studio/edit?id=${editId}`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.buddy) {
+          const b = res.buddy;
+          let modelName = "Claude";
+          if (b.ai_model) {
+            const m = b.ai_model.toLowerCase();
+            if (m.includes("gpt")) modelName = "GPT-4";
+            else if (m.includes("gemini")) modelName = "Gemini";
+            else if (m.includes("groq")) modelName = "Groq";
+          }
+          setConfig((prev) => ({
+            ...prev,
+            buddyName: b.name || "",
+            tag: b.tag || "",
+            desc: b.description || "",
+            avatarContent: b.avatar_content || "🤖",
+            avatarBg: b.avatar_bg || "#1A3A6E",
+            avatarIsSerif: b.avatar_is_serif ?? false,
+            bannerColor: b.banner_color || "linear-gradient(135deg,#0B1E3D,#1A3A6E)",
+            categories: Array.isArray(b.category) ? b.category : b.category ? [b.category] : [],
+            isFanSim: b.is_fan_sim ?? false,
+            disclaimer: b.fan_disclaimer || "",
+            philosophy: b.philosophy || "",
+            model: modelName as any,
+            price: b.price_monthly > 0 ? "custom" : "free",
+            customPrice: b.price_monthly ? String(Math.round(b.price_monthly / 100)) : "",
+          }));
+          if (b.rejection_reason) {
+            setAdminNote(b.rejection_reason);
+          }
+        }
+      })
+      .catch((err) => console.error("Failed to load buddy for edit:", err));
+  }, []);
 
   // ── Preview chat ───────────────────────────────────────
   const [previewMsgs, setPreviewMsgs] = useState<PreviewMsg[]>([
@@ -337,7 +384,7 @@ export default function StudioPage() {
       const res = await fetch("/api/studio", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(config),
+        body: JSON.stringify({ ...config, editBuddyId }),
       });
 
       const responseText = await res.text();
@@ -479,7 +526,7 @@ export default function StudioPage() {
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <div className="text-[22px] font-semibold" style={{ color: "var(--text)", fontFamily: "var(--font-sora)" }}>
             <em style={{ fontFamily: "var(--font-dm-serif)", fontStyle: "italic", color: "var(--green)" }}>AI Studio</em>
-            {" "}<span style={{ color: "var(--muted)", fontSize: 18 }}>— Build a Finance Buddy</span>
+            {" "}<span style={{ color: "var(--muted)", fontSize: 18 }}>— {editBuddyId ? "Edit & Resubmit Buddy" : "Build a Finance Buddy"}</span>
           </div>
           <button
             onClick={handlePublish}
@@ -493,17 +540,33 @@ export default function StudioPage() {
               cursor: publishing ? "wait" : "pointer",
             }}
           >
-            {publishing ? "Submitting…" : published ? "✓ Submitted for Review" : "Publish to Marketplace"}
+            {publishing ? "Submitting…" : published ? "✓ Resubmitted for Review" : editBuddyId ? "Resubmit Buddy for Review →" : "Publish to Marketplace"}
           </button>
         </div>
 
+        {/* Admin Correction Note Banner */}
+        {adminNote && (
+          <div
+            className="p-4 rounded-[14px] mb-6 border"
+            style={{ background: "rgba(245,166,35,.1)", borderColor: "#F5A623", color: "#C47F00" }}
+          >
+            <div className="font-bold text-[14px] mb-1">🔄 Admin Correction Instructions</div>
+            <div className="text-[13px] italic">&quot;{adminNote}&quot;</div>
+            <div className="text-[11px] mt-2 font-medium opacity-90">
+              Please adjust the fields below according to the admin&apos;s feedback, then click &quot;Resubmit Buddy for Review&quot;.
+            </div>
+          </div>
+        )}
+
         {/* Hint badge */}
-        <div
-          className="inline-flex items-center gap-2 px-3 py-[5px] rounded-full text-[11px] font-medium mb-6"
-          style={{ background: "rgba(245,166,35,.12)", border: "1px solid rgba(245,166,35,.3)", color: "#C47F00" }}
-        >
-          💡 Complete all 6 steps to publish your buddy and start earning
-        </div>
+        {!adminNote && (
+          <div
+            className="inline-flex items-center gap-2 px-3 py-[5px] rounded-full text-[11px] font-medium mb-6"
+            style={{ background: "rgba(245,166,35,.12)", border: "1px solid rgba(245,166,35,.3)", color: "#C47F00" }}
+          >
+            💡 Complete all 6 steps to publish your buddy and start earning
+          </div>
+        )}
 
         {/* Studio layout */}
         <div

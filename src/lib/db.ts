@@ -174,10 +174,20 @@ export type PendingBuddy = {
   id: string;
   name: string;
   tag: string | null;
+  description: string | null;
+  philosophy: string | null;
   avatar_bg: string | null;
   avatar_content: string | null;
+  avatar_is_serif: boolean | null;
   banner_color: string | null;
+  category: string[] | null;
+  is_fan_sim: boolean | null;
+  fan_disclaimer: string | null;
+  ai_model: string | null;
+  price_monthly: number | null;
   created_at: string;
+  status: string;
+  rejection_reason: string | null;
   creator_email: string | null;
 };
 
@@ -185,9 +195,9 @@ export async function getPendingBuddies(): Promise<PendingBuddy[]> {
   const db = getClient();
   const { data, error } = await db
     .from("buddies")
-    .select("id, name, tag, avatar_bg, avatar_content, banner_color, created_at, creator:users!creator_id(email)")
-    .eq("status", "pending")
-    .order("created_at", { ascending: true });
+    .select("id, name, tag, description, philosophy, avatar_bg, avatar_content, avatar_is_serif, banner_color, category, is_fan_sim, fan_disclaimer, ai_model, price_monthly, created_at, status, rejection_reason, creator:users!creator_id(email)")
+    .in("status", ["pending", "revision_requested", "flagged", "rejected"])
+    .order("created_at", { ascending: false });
 
   if (error) throw error;
 
@@ -195,10 +205,20 @@ export async function getPendingBuddies(): Promise<PendingBuddy[]> {
     id: row.id,
     name: row.name,
     tag: row.tag,
+    description: row.description,
+    philosophy: row.philosophy,
     avatar_bg: row.avatar_bg,
     avatar_content: row.avatar_content,
+    avatar_is_serif: row.avatar_is_serif,
     banner_color: row.banner_color,
+    category: Array.isArray(row.category) ? row.category : row.category ? [row.category] : [],
+    is_fan_sim: row.is_fan_sim,
+    fan_disclaimer: row.fan_disclaimer,
+    ai_model: row.ai_model,
+    price_monthly: row.price_monthly,
     created_at: row.created_at,
+    status: row.status,
+    rejection_reason: row.rejection_reason,
     creator_email: (row.creator as unknown as { email: string | null } | null)?.email ?? null,
   }));
 }
@@ -208,6 +228,24 @@ export async function approveBuddy(id: string): Promise<void> {
   const { error } = await db
     .from("buddies")
     .update({ status: "approved", rejection_reason: null })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function requestBuddyRevision(id: string, feedback: string): Promise<void> {
+  const db = getClient();
+  const { error } = await db
+    .from("buddies")
+    .update({ status: "revision_requested", rejection_reason: feedback })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function flagBuddyViolation(id: string, reason: string): Promise<void> {
+  const db = getClient();
+  const { error } = await db
+    .from("buddies")
+    .update({ status: "flagged", rejection_reason: reason })
     .eq("id", id);
   if (error) throw error;
 }
@@ -248,11 +286,11 @@ export type BuddySubmission = {
   customPrice: string;
 };
 
-export async function submitBuddy(config: BuddySubmission, creatorId: string): Promise<string> {
+export async function submitBuddy(config: BuddySubmission & { editBuddyId?: string }, creatorId: string): Promise<string> {
   const db = getClient();
-  const slug = config.buddyName
+  const slug = config.editBuddyId || (config.buddyName
     ? config.buddyName.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") + "-" + Date.now().toString(36)
-    : "custom-buddy-" + Date.now().toString(36);
+    : "custom-buddy-" + Date.now().toString(36));
 
   const priceMonthly = config.price === "free" ? 0 : Number(config.customPrice || config.price || 0);
 
@@ -281,14 +319,15 @@ export async function submitBuddy(config: BuddySubmission, creatorId: string): P
     review_count: 0,
     creator_id: creatorId || null,
     status: "pending",
+    rejection_reason: null,
   };
 
-  let { data, error } = await db.from("buddies").insert(record).select("id").single();
+  let { data, error } = await db.from("buddies").upsert(record).select("id").single();
 
   if (error && (error.code === "23514" || error.message?.includes("check constraint"))) {
     console.warn("[submitBuddy] Postgres check constraint failed for model:", modelVal, "falling back to 'claude'");
     record.ai_model = "claude";
-    const res = await db.from("buddies").insert(record).select("id").single();
+    const res = await db.from("buddies").upsert(record).select("id").single();
     data = res.data;
     error = res.error;
   }

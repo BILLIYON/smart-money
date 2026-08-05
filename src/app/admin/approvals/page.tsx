@@ -1,5 +1,6 @@
 import { getPendingBuddies } from "@/lib/db";
 import { BuddyApprovalActions } from "@/components/admin/BuddyApprovalActions";
+import { isImageAvatar } from "@/lib/utils";
 
 export const metadata = { title: "Buddy Approvals · Admin · Smart Money" };
 
@@ -21,21 +22,25 @@ function Avatar({
   return (
     <div
       style={{
-        width: 56,
-        height: 56,
+        width: 52,
+        height: 52,
         borderRadius: 14,
         background: bg ?? "#132952",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        fontSize: content ? 24 : 18,
+        fontSize: isImageAvatar(content) ? 14 : 22,
         fontWeight: 700,
         color: "#ffffff",
         flexShrink: 0,
-        marginBottom: 14,
+        overflow: "hidden",
       }}
     >
-      {content ?? initials}
+      {isImageAvatar(content) ? (
+        <img src={content!} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      ) : (
+        content ?? initials
+      )}
     </div>
   );
 }
@@ -54,11 +59,11 @@ export default async function BuddyApprovalsPage() {
   return (
     <div>
       <h1 style={{ fontSize: 22, fontWeight: 700, color: "#0B1E3D", marginBottom: 6 }}>
-        Buddy Approvals
+        Buddy Approvals & Review Queue
       </h1>
-      <p style={{ fontSize: 14, color: "#6B7A99", marginBottom: 28 }}>
+      <p style={{ fontSize: 14, color: "#6B7A99", marginBottom: 24 }}>
         {buddies.length > 0
-          ? `${buddies.length} submission${buddies.length !== 1 ? "s" : ""} awaiting review.`
+          ? `${buddies.length} submission${buddies.length !== 1 ? "s" : ""} in review queue.`
           : "All caught up."}
       </p>
 
@@ -77,17 +82,17 @@ export default async function BuddyApprovalsPage() {
         >
           <div style={{ fontSize: 40, marginBottom: 16 }}>✦</div>
           <div style={{ fontSize: 16, fontWeight: 700, color: "#0B1E3D", marginBottom: 6 }}>
-            No pending approvals
+            No pending submissions
           </div>
           <div style={{ fontSize: 13, color: "#6B7A99" }}>
-            New buddy submissions will appear here.
+            New buddy submissions and revision requests will appear here.
           </div>
         </div>
       ) : (
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
+            gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))",
             gap: 20,
           }}
         >
@@ -97,57 +102,94 @@ export default async function BuddyApprovalsPage() {
               style={{
                 background: "#ffffff",
                 borderRadius: 16,
-                padding: 24,
+                padding: 20,
                 boxShadow: "0 1px 4px rgba(11,30,61,.06)",
                 display: "flex",
                 flexDirection: "column",
+                border: "1px solid #E2E7F0",
               }}
             >
-              <Avatar bg={buddy.avatar_bg} content={buddy.avatar_content} name={buddy.name} />
-
-              <div style={{ fontSize: 15, fontWeight: 700, color: "#0B1E3D", marginBottom: 4 }}>
-                {buddy.name}
+              {/* Header */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                <Avatar bg={buddy.avatar_bg} content={buddy.avatar_content} name={buddy.name} />
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "#0B1E3D" }}>
+                    {buddy.name}
+                  </div>
+                  {buddy.tag && (
+                    <span
+                      style={{
+                        display: "inline-block",
+                        fontSize: 10,
+                        fontWeight: 600,
+                        padding: "2px 8px",
+                        borderRadius: 12,
+                        background: "rgba(0,196,140,.1)",
+                        color: "#00A677",
+                        marginTop: 4,
+                      }}
+                    >
+                      {buddy.tag}
+                    </span>
+                  )}
+                </div>
               </div>
 
-              {buddy.tag && (
-                <span
-                  style={{
-                    display: "inline-block",
-                    alignSelf: "flex-start",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    padding: "3px 10px",
-                    borderRadius: 20,
-                    background: "rgba(0,196,140,.1)",
-                    color: "#00A677",
-                    marginBottom: 12,
-                  }}
-                >
-                  {buddy.tag}
-                </span>
+              {/* Description & Philosophy */}
+              {buddy.description && (
+                <div style={{ fontSize: 12, color: "#475569", marginBottom: 8, lineHeight: 1.4 }}>
+                  {buddy.description}
+                </div>
               )}
 
+              {buddy.philosophy && (
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "#0B1E3D",
+                    background: "#F8FAFC",
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    marginBottom: 12,
+                    borderLeft: "3px solid #00C48C",
+                  }}
+                >
+                  <strong style={{ color: "#64748B" }}>Philosophy: </strong>
+                  &quot;{buddy.philosophy}&quot;
+                </div>
+              )}
+
+              {/* Meta information */}
               <div
                 style={{
                   display: "flex",
                   flexDirection: "column",
                   gap: 4,
                   marginTop: "auto",
-                  paddingTop: 12,
+                  paddingTop: 10,
                   borderTop: "1px solid #E2E7F0",
+                  fontSize: 11,
+                  color: "#64748B",
                 }}
               >
-                <div style={{ fontSize: 12, color: "#6B7A99" }}>
-                  <span style={{ color: "#0B1E3D", fontWeight: 500 }}>Creator: </span>
-                  {buddy.creator_email ?? "Unknown"}
+                <div>
+                  <strong style={{ color: "#0B1E3D" }}>AI Model: </strong>
+                  {(buddy.ai_model || "claude").toUpperCase()} ·{" "}
+                  <strong style={{ color: "#0B1E3D" }}>Price: </strong>
+                  {buddy.price_monthly ? `₦${(buddy.price_monthly / 100).toLocaleString()}/mo` : "Free"}
                 </div>
-                <div style={{ fontSize: 12, color: "#6B7A99" }}>
-                  <span style={{ color: "#0B1E3D", fontWeight: 500 }}>Submitted: </span>
+                <div>
+                  <strong style={{ color: "#0B1E3D" }}>Creator: </strong>
+                  {buddy.creator_email ?? "Community Creator"}
+                </div>
+                <div>
+                  <strong style={{ color: "#0B1E3D" }}>Submitted: </strong>
                   {fmt(buddy.created_at)}
                 </div>
               </div>
 
-              <BuddyApprovalActions buddyId={buddy.id} />
+              {/* Approval Actions component */}
+              <BuddyApprovalActions buddy={buddy} />
             </div>
           ))}
         </div>

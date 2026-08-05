@@ -16,7 +16,8 @@ type Buddy = {
   subscribers: number | null;
   rating: number | null;
   monthlyRevenue: number | null;
-  status: "live" | "review";
+  status: "live" | "pending" | "revision_requested" | "flagged";
+  rejectionReason: string | null;
 };
 
 type DashData = {
@@ -60,15 +61,31 @@ function StatCard({
 }
 
 // ── Status pill ────────────────────────────────────────────
-function StatusPill({ status }: { status: "live" | "review" }) {
-  const isLive = status === "live";
+function StatusPill({ status }: { status: Buddy["status"] }) {
+  if (status === "live") {
+    return (
+      <span className="inline-flex items-center gap-[5px] px-[10px] py-[3px] rounded-full text-[10px] font-semibold" style={{ background: "rgba(0,196,140,.1)", color: "var(--green2)" }}>
+        ● Live
+      </span>
+    );
+  }
+  if (status === "revision_requested") {
+    return (
+      <span className="inline-flex items-center gap-[5px] px-[10px] py-[3px] rounded-full text-[10px] font-semibold" style={{ background: "rgba(245,166,35,.15)", color: "#C47F00", border: "1px solid rgba(245,166,35,.3)" }}>
+        🔄 Correction Needed
+      </span>
+    );
+  }
+  if (status === "flagged") {
+    return (
+      <span className="inline-flex items-center gap-[5px] px-[10px] py-[3px] rounded-full text-[10px] font-semibold" style={{ background: "rgba(220,38,38,.12)", color: "#DC2626", border: "1px solid rgba(220,38,38,.3)" }}>
+        🚩 Flagged Violation
+      </span>
+    );
+  }
   return (
-    <span className="inline-flex items-center gap-[5px] px-[10px] py-[3px] rounded-full text-[10px] font-semibold"
-      style={{
-        background: isLive ? "rgba(0,196,140,.1)" : "rgba(245,166,35,.12)",
-        color: isLive ? "var(--green2)" : "#C47F00",
-      }}>
-      {isLive ? "● Live" : "In Review"}
+    <span className="inline-flex items-center gap-[5px] px-[10px] py-[3px] rounded-full text-[10px] font-semibold" style={{ background: "rgba(245,166,35,.12)", color: "#C47F00" }}>
+      ⏳ In Review
     </span>
   );
 }
@@ -420,55 +437,87 @@ export default function CreatorPage() {
 
             {/* Table rows */}
             {data.buddies.map((buddy, i) => (
-              <div
-                key={buddy.id}
-                className="grid px-5 py-[14px] items-center transition-all duration-150"
-                style={{
-                  gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr",
-                  borderBottom: i < data.buddies.length - 1 ? "1px solid var(--border)" : "none",
-                  opacity: buddy.status === "review" ? 0.55 : 1,
-                  cursor: "default",
-                }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "var(--bg)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
-              >
-                {/* Buddy cell */}
-                <div className="flex items-center gap-[10px] min-w-0">
+              <div key={buddy.id} style={{ borderBottom: i < data.buddies.length - 1 ? "1px solid var(--border)" : "none" }}>
+                <div
+                  className="grid px-5 py-[14px] items-center transition-all duration-150"
+                  style={{
+                    gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr",
+                    opacity: buddy.status === "pending" ? 0.75 : 1,
+                    cursor: "default",
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "var(--bg)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
+                >
+                  {/* Buddy cell */}
+                  <div className="flex items-center gap-[10px] min-w-0">
+                    <div
+                      className="flex items-center justify-center rounded-[10px] text-[16px] flex-shrink-0 overflow-hidden"
+                      style={{ width: 34, height: 34, background: buddy.avatarBg }}
+                    >
+                      {isImageAvatar(buddy.emoji) ? (
+                        <img src={buddy.emoji} alt="avatar" className="w-full h-full object-cover" />
+                      ) : (
+                        buddy.emoji
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold truncate" style={{ color: "var(--text)" }}>
+                        {buddy.name}
+                      </div>
+                      <div className="text-[10px]" style={{ color: "var(--muted)" }}>
+                        {buddy.price} · {buddy.model} · {buddy.category}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-[13px]" style={{ color: "var(--muted)" }}>
+                    {buddy.subscribers ?? "—"}
+                  </div>
+
+                  <div className="text-[13px] font-semibold" style={{ color: buddy.rating ? "var(--gold)" : "var(--muted)" }}>
+                    {buddy.rating ? `${buddy.rating} ★` : "—"}
+                  </div>
+
+                  <div className="text-[13px] font-semibold" style={{ color: buddy.monthlyRevenue ? "var(--green2)" : "var(--muted)" }}>
+                    {buddy.monthlyRevenue ? fmt(buddy.monthlyRevenue) : "—"}
+                  </div>
+
+                  <div>
+                    <StatusPill status={buddy.status} />
+                  </div>
+                </div>
+
+                {/* Feedback Note Banner */}
+                {buddy.rejectionReason && (buddy.status === "revision_requested" || buddy.status === "flagged") && (
                   <div
-                    className="flex items-center justify-center rounded-[10px] text-[16px] flex-shrink-0 overflow-hidden"
-                    style={{ width: 34, height: 34, background: buddy.avatarBg }}
+                    className="px-5 py-3 border-t"
+                    style={{
+                      background: buddy.status === "flagged" ? "rgba(220,38,38,.06)" : "rgba(245,166,35,.08)",
+                      borderColor: "var(--border)",
+                    }}
                   >
-                    {isImageAvatar(buddy.emoji) ? (
-                      <img src={buddy.emoji} alt="avatar" className="w-full h-full object-cover" />
-                    ) : (
-                      buddy.emoji
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[13px] font-semibold truncate" style={{ color: "var(--text)" }}>
-                      {buddy.name}
+                    <div className="flex items-center justify-between flex-wrap gap-2 text-[12px]">
+                      <div>
+                        <span className="font-bold" style={{ color: buddy.status === "flagged" ? "#DC2626" : "#C47F00" }}>
+                          {buddy.status === "flagged" ? "🚩 Violation Note from Admin: " : "🔄 Admin Correction Note: "}
+                        </span>
+                        <span style={{ color: "var(--text)" }}>&quot;{buddy.rejectionReason}&quot;</span>
+                      </div>
+                      <button
+                        onClick={() => router.push(`/studio?edit=${buddy.id}`)}
+                        className="px-3 py-1.5 rounded-[8px] text-[11px] font-semibold border transition-colors"
+                        style={{
+                          background: "var(--bg)",
+                          borderColor: buddy.status === "flagged" ? "rgba(220,38,38,.4)" : "rgba(245,166,35,.4)",
+                          color: buddy.status === "flagged" ? "#DC2626" : "#C47F00",
+                          cursor: "pointer",
+                        }}
+                      >
+                        ✏️ Fix & Resubmit in Studio →
+                      </button>
                     </div>
-                    <div className="text-[10px]" style={{ color: "var(--muted)" }}>
-                      {buddy.price} · {buddy.model} · {buddy.category}
-                    </div>
                   </div>
-                </div>
-
-                <div className="text-[13px]" style={{ color: "var(--muted)" }}>
-                  {buddy.subscribers ?? "—"}
-                </div>
-
-                <div className="text-[13px] font-semibold" style={{ color: buddy.rating ? "var(--gold)" : "var(--muted)" }}>
-                  {buddy.rating ? `${buddy.rating} ★` : "—"}
-                </div>
-
-                <div className="text-[13px] font-semibold" style={{ color: buddy.monthlyRevenue ? "var(--green2)" : "var(--muted)" }}>
-                  {buddy.monthlyRevenue ? fmt(buddy.monthlyRevenue) : "—"}
-                </div>
-
-                <div>
-                  <StatusPill status={buddy.status} />
-                </div>
+                )}
               </div>
             ))}
           </div>

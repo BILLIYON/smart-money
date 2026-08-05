@@ -9,7 +9,7 @@ export async function GET() {
   const { data: buddiesRaw, error: buddiesErr } = await supabase
     .from("buddies")
     .select(
-      "id, name, tag, avatar_bg, avatar_content, ai_model, category, rating, review_count, price_monthly, creator_share_pct, status"
+      "id, name, tag, avatar_bg, avatar_content, ai_model, category, rating, review_count, price_monthly, creator_share_pct, status, rejection_reason"
     )
     .eq("creator_id", userId)
     .order("created_at", { ascending: false });
@@ -127,6 +127,15 @@ export async function GET() {
     const revNgn = Math.round(revKobo / 100);
     const priceNgn = Math.round(priceMo / 100);
 
+    const mappedStatus =
+      b.status === "live" || b.status === "approved"
+        ? "live"
+        : b.status === "revision_requested"
+        ? "revision_requested"
+        : b.status === "flagged" || b.status === "rejected"
+        ? "flagged"
+        : "pending";
+
     return {
       id: b.id,
       emoji: b.avatar_content ?? "🤖",
@@ -138,7 +147,8 @@ export async function GET() {
       subscribers: subs > 0 ? subs : null,
       rating: b.rating > 0 ? Number(b.rating) : null,
       monthlyRevenue: revNgn > 0 ? revNgn : null,
-      status: b.status === "live" ? "live" : "review",
+      status: mappedStatus,
+      rejectionReason: b.rejection_reason ?? null,
     };
   });
 
