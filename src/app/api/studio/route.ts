@@ -1,10 +1,23 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase-server";
-import { submitBuddy, getApprovedCommunityBuddies } from "@/lib/db";
+import { submitBuddy, getApprovedCommunityBuddies, getBuddiesByCreator } from "@/lib/db";
 
 export async function GET() {
   try {
     const buddies = await getApprovedCommunityBuddies();
+    
+    // Check if current user is logged in to append their pending/draft buddies
+    const auth = await requireAuth().catch(() => null);
+    if (auth && auth.userId) {
+      const creatorBuddies = await getBuddiesByCreator(auth.userId);
+      const approvedIds = new Set(buddies.map((b) => b.id));
+      for (const b of creatorBuddies) {
+        if (!approvedIds.has(b.id)) {
+          buddies.push(b);
+        }
+      }
+    }
+
     return NextResponse.json(buddies);
   } catch (err) {
     console.error("[GET /api/studio]", err);

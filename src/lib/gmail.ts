@@ -177,7 +177,53 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-
+function cleanQueryForGmail(query: string): string {
+  const includes: string[] = [];
+  const excludes: string[] = [];
+  
+  const terms = query.match(/"[^"]+"|[^\s,]+/g) || [];
+  const negWords = ["ignore", "exclude", "omit", "without", "except", "dont", "don't", "no", "stop"];
+  
+  let skipNext = false;
+  for (let i = 0; i < terms.length; i++) {
+    if (skipNext) {
+      skipNext = false;
+      continue;
+    }
+    const current = terms[i].trim();
+    if (!current) continue;
+    
+    const lower = current.toLowerCase();
+    
+    if (current.startsWith("-")) {
+      excludes.push(current);
+    } else if (negWords.includes(lower)) {
+      if (i + 1 < terms.length) {
+        let val = terms[i + 1].trim();
+        if ((val.toLowerCase() === "include" || val.toLowerCase() === "including") && i + 2 < terms.length) {
+          val = terms[i + 2].trim();
+          skipNext = true;
+        }
+        if (val) {
+          if (val.startsWith('"') && val.endsWith('"')) {
+            excludes.push(`-${val}`);
+          } else {
+            excludes.push(`-${val.replace(/["()]/g, "")}`);
+          }
+        }
+        skipNext = true;
+      }
+    } else {
+      if (lower !== "or" && lower !== "and") {
+        includes.push(current);
+      } else {
+        includes.push(current.toUpperCase());
+      }
+    }
+  }
+  
+  return [...includes, ...excludes].join(" ");
+}
 
 // ── 5. Full sync for one user ─────────────────────────────────
 export async function syncGmailForUser(
@@ -234,11 +280,12 @@ export async function syncGmailForUser(
     const activePreset = presets.find((p) => p.id === presetFilter) || presets.find((p) => p.id === "all") || presets[0];
 
     const queryTerms = activePreset ? activePreset.query : DEFAULT_PRESETS[0].query;
+    const cleanedTerms = cleanQueryForGmail(queryTerms);
     const filterRules = activePreset ? activePreset.filter : "";
 
     const lastSyncDate = new Date(lastSync * 1000).toISOString().split("T")[0];
     const queries = [
-      `after:${lastSyncDate} (${queryTerms})`
+      `after:${lastSyncDate} (${cleanedTerms})`
     ];
 
     // Search all queries with maxResults=500 to fetch full 3 months of bank emails
@@ -311,7 +358,11 @@ export async function syncGmailForUser(
       const extractedData = await Promise.all(
         emails.map(async (email) => {
           const cleanBody = stripHtml(email.body);
-          const data = await extractFinancialDataFromEmail(cleanBody, email.subject, email.from, syncMode, aiPrompt, aiEngine);
+          let combinedPrompt = aiPrompt || "";
+          if (filterRules) {
+            combinedPrompt += `\nStrict filter instructions: Ignore/exclude any transaction matching these filter rules: ${filterRules}`;
+          }
+          const data = await extractFinancialDataFromEmail(cleanBody, email.subject, email.from, syncMode, combinedPrompt, aiEngine);
           if (!data) return null;
 
           // Apply strict preset filter rules

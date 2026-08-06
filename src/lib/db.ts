@@ -579,6 +579,39 @@ export async function getCommunityBuddyById(id: string): Promise<CommunityBuddyR
   };
 }
 
+export async function getBuddiesByCreator(creatorId: string): Promise<CommunityBuddyRow[]> {
+  const db = getClient();
+  const { data, error } = await db
+    .from("buddies")
+    .select("id, name, tag, description, avatar_content, avatar_bg, avatar_is_serif, banner_color, category, is_fan_sim, fan_disclaimer, philosophy, ai_model, price_monthly")
+    .eq("creator_id", creatorId)
+    .order("created_at", { ascending: false });
+  if (error) {
+    console.error("[getBuddiesByCreator]", error);
+    return [];
+  }
+  return (data ?? []).map((b) => ({
+    id: b.id,
+    name: b.name,
+    tag: b.tag,
+    description: b.description,
+    avatar_content: b.avatar_content,
+    avatar_bg: b.avatar_bg,
+    avatar_is_serif: b.avatar_is_serif,
+    banner_color: b.banner_color,
+    categories: b.category ?? [],
+    is_fan_sim: b.is_fan_sim,
+    disclaimer: b.fan_disclaimer,
+    philosophy: b.philosophy,
+    samples: [],
+    includes: [],
+    price_note: b.price_monthly === 0 ? "Free" : `₦${(b.price_monthly / 100).toLocaleString()}/mo`,
+    model: b.ai_model,
+    price: b.price_monthly === 0 ? "free" : String(b.price_monthly / 100),
+    custom_price: b.price_monthly === 0 ? "0" : String(b.price_monthly / 100),
+  }));
+}
+
 export async function deleteTestUsers(): Promise<number> {
   const db = getClient();
   const { data } = await db

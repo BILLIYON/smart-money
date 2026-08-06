@@ -56,15 +56,41 @@ function parseQueryToFilter(query: string): string {
   const includes: string[] = [];
   const excludes: string[] = [];
   
-  // Extract words and negative matches from the query
-  const terms = query.match(/(?:[^\s"-]+|"[^"]+")+|-[^\s"]+|-"[^"]+"/g) || [];
-  for (const term of terms) {
-    const clean = term.trim();
-    if (clean.startsWith("-")) {
-      const val = clean.substring(1).replace(/["()]/g, "").trim().toLowerCase();
-      if (val && val !== "or" && val !== "and") excludes.push(val);
+  // Extract words, negative matches, and quoted phrases
+  const terms = query.match(/"[^"]+"|[^\s,]+/g) || [];
+  
+  const negWords = ["ignore", "exclude", "omit", "without", "except", "dont", "don't", "no", "stop"];
+  
+  let skipNext = false;
+  for (let i = 0; i < terms.length; i++) {
+    if (skipNext) {
+      skipNext = false;
+      continue;
+    }
+    const current = terms[i].trim();
+    if (!current) continue;
+    
+    const lower = current.toLowerCase();
+    
+    if (current.startsWith("-")) {
+      const val = current.substring(1).replace(/["()]/g, "").trim().toLowerCase();
+      if (val && val !== "or" && val !== "and") {
+        excludes.push(val);
+      }
+    } else if (negWords.includes(lower)) {
+      if (i + 1 < terms.length) {
+        let val = terms[i + 1].replace(/["()]/g, "").trim().toLowerCase();
+        if ((val === "include" || val === "including") && i + 2 < terms.length) {
+          val = terms[i + 2].replace(/["()]/g, "").trim().toLowerCase();
+          skipNext = true;
+        }
+        if (val) {
+          excludes.push(val);
+        }
+        skipNext = true;
+      }
     } else {
-      const val = clean.replace(/["()]/g, "").trim().toLowerCase();
+      const val = current.replace(/["()]/g, "").trim().toLowerCase();
       if (val && val !== "or" && val !== "and" && !val.includes("subject:") && !val.includes("from:") && !val.includes("to:") && !val.includes("label:") && !val.includes("has:")) {
         includes.push(val);
       }
