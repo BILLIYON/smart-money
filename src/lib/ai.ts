@@ -731,7 +731,7 @@ Respond with valid JSON only — no markdown, no explanation outside the JSON:
 // 6. extractFinancialDataFromEmail — AI-powered Gmail parsing
 // ════════════════════════════════════════════════════════════
 
-async function askAIWithEngine(prompt: string, aiEngine = "groq"): Promise<string> {
+export async function askAIWithEngine(prompt: string, aiEngine = "groq"): Promise<string> {
   const engine = (aiEngine || "groq").toLowerCase();
 
   // 1. Groq (Llama 3.3 70B Versatile)

@@ -1,7 +1,7 @@
 import { google } from "googleapis";
 import { encrypt, decrypt } from "./crypto";
 import { createServiceClient } from "./supabase/service";
-import { extractFinancialDataFromEmail } from "./ai";
+import { extractFinancialDataFromEmail, askAIWithEngine } from "./ai";
 
 type DataBankEntry = {
   user_id?: string;
@@ -225,6 +225,111 @@ function cleanQueryForGmail(query: string): string {
   return [...includes, ...excludes].join(" ");
 }
 
+function parseQueryToFilter(query: string): string {
+  const includes: string[] = [];
+  const excludes: string[] = [];
+  
+  const terms = query.match(/"[^"]+"|[^\s,]+/g) || [];
+  const negWords = ["ignore", "exclude", "omit", "without", "except", "dont", "don't", "no", "stop"];
+  
+  let skipNext = false;
+  for (let i = 0; i < terms.length; i++) {
+    if (skipNext) {
+      skipNext = false;
+      continue;
+    }
+    const current = terms[i].trim();
+    if (!current) continue;
+    
+    const lower = current.toLowerCase();
+    
+    if (current.startsWith("-")) {
+      const val = current.substring(1).replace(/["()]/g, "").trim().toLowerCase();
+      if (val && val !== "or" && val !== "and") {
+        excludes.push(val);
+      }
+    } else if (negWords.includes(lower)) {
+      if (i + 1 < terms.length) {
+        let val = terms[i + 1].replace(/["()]/g, "").trim().toLowerCase();
+        if ((val === "include" || val === "including") && i + 2 < terms.length) {
+          val = terms[i + 2].replace(/["()]/g, "").trim().toLowerCase();
+          skipNext = true;
+        }
+        if (val) {
+          excludes.push(val);
+        }
+        skipNext = true;
+      }
+    } else {
+      const val = current.replace(/["()]/g, "").trim().toLowerCase();
+      if (val && val !== "or" && val !== "and" && !val.includes("subject:") && !val.includes("from:") && !val.includes("to:") && !val.includes("label:") && !val.includes("has:")) {
+        includes.push(val);
+      }
+    }
+  }
+  
+  return [
+    ...includes.map(i => `include:${i}`),
+    ...excludes.map(e => `exclude:${e}`)
+  ].join(",");
+}
+
+async function translateNaturalLanguageQuery(query: string, engine = "groq"): Promise<{ query: string; filter: string }> {
+  const isSimple = !/\b(please|dont|don't|not|include|exclude|ignore|except|only|subject|from|to|label|has|or|and|message|email|transaction|do)\b/i.test(query) && query.length < 30;
+  if (isSimple) {
+    return {
+      query: query,
+      filter: parseQueryToFilter(query)
+    };
+  }
+
+  const prompt = `You are a query translation agent. Convert a user's natural language filter instruction into a clean Gmail search query and local filter rules.
+User instruction: "${query}"
+
+Return a JSON object exactly matching this structure (do not output any markdown or commentary):
+{
+  "gmail_query": "<optimized Gmail search query string using standard terms and negation operators like -term. Do not include conversational words. Use subject: or from: if applicable, otherwise keep it general, e.g. 'opay -paystack'>",
+  "filter_rules": "<comma-separated list of include:X or exclude:Y instructions for post-extraction filtering, e.g. 'include:opay,exclude:paystack'>"
+}
+
+Example:
+Input: "only kuda bank and no uba alerts"
+Output:
+{
+  "gmail_query": "kuda -uba",
+  "filter_rules": "include:kuda,exclude:uba"
+}
+
+Example:
+Input: "do not include paystack or any other transaction except from opay please use opay only"
+Output:
+{
+  "gmail_query": "opay -paystack",
+  "filter_rules": "include:opay,exclude:paystack"
+}`;
+
+  try {
+    const raw = await askAIWithEngine(prompt, engine);
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed.gmail_query) {
+        return {
+          query: String(parsed.gmail_query).trim(),
+          filter: String(parsed.filter_rules || "").trim()
+        };
+      }
+    }
+  } catch (e) {
+    console.error("[translateNaturalLanguageQuery] AI translation failed, fallback to local:", e);
+  }
+
+  return {
+    query: cleanQueryForGmail(query),
+    filter: parseQueryToFilter(query)
+  };
+}
+
 // ── 5. Full sync for one user ─────────────────────────────────
 export async function syncGmailForUser(
   userId: string,
@@ -279,9 +384,9 @@ export async function syncGmailForUser(
     const presets = (metadata.presets || DEFAULT_PRESETS) as Array<{ id: string; label: string; query: string; filter: string }>;
     const activePreset = presets.find((p) => p.id === presetFilter) || presets.find((p) => p.id === "all") || presets[0];
 
-    const queryTerms = activePreset ? activePreset.query : DEFAULT_PRESETS[0].query;
-    const cleanedTerms = cleanQueryForGmail(queryTerms);
-    const filterRules = activePreset ? activePreset.filter : "";
+    const rawQuery = activePreset ? activePreset.query : DEFAULT_PRESETS[0].query;
+    const { query: cleanedTerms, filter: aiFilterRules } = await translateNaturalLanguageQuery(rawQuery, aiEngine);
+    const filterRules = aiFilterRules || (activePreset ? activePreset.filter : "");
 
     const lastSyncDate = new Date(lastSync * 1000).toISOString().split("T")[0];
     const queries = [
