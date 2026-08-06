@@ -9,6 +9,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import Groq from "groq-sdk";
 
 import { getBuddy, type Buddy } from "./buddies";
+import { getCommunityBuddyById } from "./db";
 import { formatCurrency } from "./currency";
 import { parseFinancialEmailData } from "./gmail-parser";
 
@@ -345,8 +346,46 @@ export async function sendMessage(params: {
 }): Promise<ReadableStream<Uint8Array>> {
   const { buddyId, messages, databankContext, model: modelOverride, crossSessionMemory } = params;
 
-  const buddy = getBuddy(buddyId);
-  if (!buddy) throw new Error(`Unknown buddy: ${buddyId}`);
+  let buddy = getBuddy(buddyId);
+  if (!buddy) {
+    // Fallback: try to load from DB (community/creator-submitted buddies)
+    const dbRow = await getCommunityBuddyById(buddyId);
+    if (dbRow) {
+      const rawModel = (dbRow.model ?? "").toLowerCase();
+      const model: Buddy["model"] =
+        rawModel.includes("groq") || rawModel.includes("llama") ? "Groq" :
+        rawModel.includes("gpt") ? "GPT-4" :
+        rawModel.includes("gemini") ? "Gemini" :
+        "Claude";
+      buddy = {
+        id: dbRow.id,
+        name: dbRow.name,
+        tag: dbRow.tag ?? "",
+        desc: dbRow.description ?? "",
+        price: "Free",
+        priceNote: "",
+        badge: "Free",
+        badgeType: "free",
+        bannerColor: dbRow.banner_color ?? "",
+        avatarBg: dbRow.avatar_bg ?? "",
+        avatarContent: dbRow.avatar_content ?? "🤖",
+        avatarIsSerif: dbRow.avatar_is_serif ?? false,
+        model,
+        modelColor: "#7B68EE",
+        rating: "New",
+        reviewCount: "0",
+        isFanSim: dbRow.is_fan_sim ?? false,
+        disclaimer: dbRow.disclaimer ?? undefined,
+        categories: (dbRow.categories ?? []) as Buddy["categories"],
+        philosophy: dbRow.philosophy ?? "",
+        samples: [],
+        reviews: [],
+        includes: [],
+      };
+    } else {
+      throw new Error(`Unknown buddy: ${buddyId}`);
+    }
+  }
 
   const contextStr = formatDatabankContext(databankContext);
   const system = getBuddySystemPrompt(buddy, contextStr, databankContext.currency ?? "NGN", crossSessionMemory);
