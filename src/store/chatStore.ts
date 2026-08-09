@@ -432,6 +432,10 @@ type ChatStore = {
   // Community / Dynamic Buddies
   communityBuddies: Buddy[];
   setCommunityBuddies: (buddies: Buddy[]) => void;
+
+  // Mobile layout state
+  mobileView: "list" | "chat";
+  setMobileView: (view: "list" | "chat") => void;
 };
 
 function patchMsg(msgs: ChatMessage[], msgId: string, patch: Partial<ChatMessage>): ChatMessage[] {
@@ -569,6 +573,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   enableCrossSessionMemory: true,
   setEnableCrossSessionMemory: (v) => set({ enableCrossSessionMemory: v }),
   toggleCrossSessionMemory: () => set((s) => ({ enableCrossSessionMemory: !s.enableCrossSessionMemory })),
+
+  // ── Mobile layout
+  mobileView: "list",
+  setMobileView: (view) => set({ mobileView: view }),
 
   // ── Session management ───────────────────────────────────
   sessions: [],

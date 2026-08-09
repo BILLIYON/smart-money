@@ -17,7 +17,7 @@ export default function ChatPage() {
 }
 
 function ChatContent() {
-  const { chatMode, showNewGroupModal, setHasConnectedDatabank, setChatMode, setActiveBuddyId, initThread } = useChatStore();
+  const { chatMode, showNewGroupModal, setHasConnectedDatabank, setChatMode, setActiveBuddyId, initThread, mobileView, setMobileView } = useChatStore();
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -26,21 +26,22 @@ function ChatContent() {
       setChatMode("1to1");
       setActiveBuddyId(buddyId);
       initThread(buddyId, []);
+      setMobileView("chat");
     }
     if (searchParams.get("source") === "databank") {
       setHasConnectedDatabank(true);
     }
-  }, [searchParams, setHasConnectedDatabank, setChatMode, setActiveBuddyId, initThread]);
+  }, [searchParams, setHasConnectedDatabank, setChatMode, setActiveBuddyId, initThread, setMobileView]);
 
   return (
-    <div className="flex overflow-hidden" style={{ height: "calc(100vh - 64px)" }}>
-      {/* Sidebar — hidden on mobile */}
-      <div className="hidden md:flex">
+    <div className="flex overflow-hidden relative w-full h-[calc(100vh-124px)] md:h-[calc(100vh-64px)]">
+      {/* Sidebar — full width on mobile if list view, normal width on desktop */}
+      <div className={`${mobileView === "list" ? "flex" : "hidden"} md:flex w-full md:w-[320px] lg:w-[380px] h-full flex-shrink-0 border-r border-[var(--border)]`}>
         <ChatSidebar />
       </div>
 
-      {/* Main chat column */}
-      <div className="flex flex-col flex-1 overflow-hidden min-w-0">
+      {/* Main chat column — full width on mobile if chat view */}
+      <div className={`${mobileView === "chat" ? "flex" : "hidden"} md:flex flex-col flex-1 overflow-hidden min-w-0 h-full`}>
         {chatMode === "1to1" ? <MessageThread /> : <GroupMessageThread />}
         <MessageInput />
       </div>

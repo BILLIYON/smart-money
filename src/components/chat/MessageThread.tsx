@@ -340,7 +340,7 @@ function AiMessage({
   const isWaiting = msg.streaming && (!msg.content || !msg.content.trim());
 
   return (
-    <div className="flex gap-[10px]" style={{ maxWidth: "80%" }}>
+    <div className="flex gap-2 sm:gap-[10px]" style={{ maxWidth: "92%" }}>
       {/* Avatar */}
       <div
         className="flex items-center justify-center flex-shrink-0 rounded-[10px] overflow-hidden"
@@ -459,7 +459,7 @@ function AiMessage({
 function UserMessage({ msg }: { msg: ChatMessage }) {
   const initials = useUserInitials();
   return (
-    <div className="flex gap-[10px] self-end flex-row-reverse" style={{ maxWidth: "80%" }}>
+    <div className="flex gap-2 sm:gap-[10px] self-end flex-row-reverse" style={{ maxWidth: "92%" }}>
       <div
         className="flex items-center justify-center flex-shrink-0 rounded-[10px] text-[12px] font-semibold"
         style={{ width: 34, height: 34, background: "var(--gold)", color: "#fff" }}
@@ -656,7 +656,7 @@ function ChatHistoryModal({
 // ── Chat header ────────────────────────────────────────────
 function ChatHeader({ buddy }: { buddy?: any }) {
   const { chips, noData } = useDataSources();
-  const { sessions, activeSessionId, activeBuddyId, enableCrossSessionMemory, loadSessionMessages, deleteSession, renameSession } = useChatStore();
+  const { sessions, activeSessionId, activeBuddyId, enableCrossSessionMemory, loadSessionMessages, deleteSession, renameSession, setMobileView } = useChatStore();
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState("");
@@ -679,9 +679,16 @@ function ChatHeader({ buddy }: { buddy?: any }) {
   return (
     <>
       <div
-        className="flex items-center gap-3 px-5 py-[12px] flex-shrink-0"
+        className="flex items-center gap-2 sm:gap-3 px-3 sm:px-5 py-[12px] flex-shrink-0"
         style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}
       >
+        <button
+          onClick={() => setMobileView("list")}
+          className="md:hidden flex items-center justify-center w-8 h-8 rounded-full flex-shrink-0 mr-1 transition-colors hover:bg-white/10"
+          style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "var(--text)" }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
         <div
           className="flex items-center justify-center flex-shrink-0 rounded-[10px] text-[18px] overflow-hidden"
           style={{
@@ -935,11 +942,15 @@ export function MessageThread() {
     const hasGoals = (contextData?.activeGoals?.length ?? 0) > 0;
     const hasCategories = (contextData?.topCategories?.length ?? 0) > 0;
 
+    const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
+
     if (!hasEntries && !hasGoals && !hasCategories) {
       const emptyMessage: ChatMessage = {
         id: `proactive-${Date.now()}`,
         role: "ai",
-        content: `📊 **DataBank Review by ${buddyName}:**\nYou currently have **0 connected bank transactions** and **0 active goals** in your account.\n\nTo unlock personalized spending charts, budget analytics, and automated goal recommendations, click **DataBank** in the sidebar to sync your Gmail account or upload a bank statement!`,
+        content: isMobile
+          ? `📊 **DataBank Review by ${buddyName}:**\nYou currently have **0 transactions** and **0 active goals**.\n\nTo unlock charts, analytics, and advice, click **DataBank** to sync your account or upload a statement!`
+          : `📊 **DataBank Review by ${buddyName}:**\nYou currently have **0 connected bank transactions** and **0 active goals** in your account.\n\nTo unlock personalized spending charts, budget analytics, and automated goal recommendations, click **DataBank** in the sidebar to sync your Gmail account or upload a bank statement!`,
         time,
         showActions: true,
       };
@@ -973,7 +984,9 @@ export function MessageThread() {
     const proactiveMessage: ChatMessage = {
       id: `proactive-${Date.now()}`,
       role: "ai",
-      content: `📊 **Real-Time DataBank Review by ${buddyName}:**\nBased on your connected transactions and active records:\n• **Monthly Income**: ₦${totalIncomeNaira}\n• **Monthly Outflow**: ₦${totalExpensesNaira}\n• **Savings Rate**: ${savingsRatePct}%\n• **Active Goals**: ${contextData.activeGoals?.length || 0} active target(s)\n\n${contextData.topCategories?.length ? `Your largest spending category is **${contextData.topCategories[0].category}** (${contextData.topCategories[0].percentage}% of outflow).` : ""} Let's optimize your financial plan!`,
+      content: isMobile
+        ? `📊 **DataBank Review by ${buddyName}:**\n• **Income**: ₦${totalIncomeNaira} | **Outflow**: ₦${totalExpensesNaira}\n• **Savings Rate**: ${savingsRatePct}% | **Goals**: ${contextData.activeGoals?.length || 0}\n\nLet's optimize your financial plan!`
+        : `📊 **Real-Time DataBank Review by ${buddyName}:**\nBased on your connected transactions and active records:\n• **Monthly Income**: ₦${totalIncomeNaira}\n• **Monthly Outflow**: ₦${totalExpensesNaira}\n• **Savings Rate**: ${savingsRatePct}%\n• **Active Goals**: ${contextData.activeGoals?.length || 0} active target(s)\n\n${contextData.topCategories?.length ? `Your largest spending category is **${contextData.topCategories[0].category}** (${contextData.topCategories[0].percentage}% of outflow).` : ""} Let's optimize your financial plan!`,
       time,
       showActions: true,
       insightHighlight: {
@@ -985,7 +998,7 @@ export function MessageThread() {
         bars,
       } : undefined,
       goalCardData,
-      goalCardOpen: !!goalCardData,
+      goalCardOpen: !isMobile && !!goalCardData,
     };
 
     addMessage(activeBuddyId, proactiveMessage);
@@ -997,7 +1010,7 @@ export function MessageThread() {
     <>
       <ChatHeader buddy={buddy} />
       <div
-        className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-[18px]"
+        className="flex-1 overflow-y-auto px-3 sm:px-5 py-4 sm:py-5 flex flex-col gap-[14px] sm:gap-[18px]"
         style={{ background: "var(--bg)", scrollbarWidth: "thin", scrollbarColor: "var(--border) transparent" }}
       >
         <AnimatePresence initial={false}>
@@ -1127,7 +1140,7 @@ export function MessageThread() {
 
 // ── Group thread ───────────────────────────────────────────
 export function GroupMessageThread() {
-  const { activeGroupId, groupThreads } = useChatStore();
+  const { activeGroupId, groupThreads, setMobileView } = useChatStore();
   const messages = groupThreads[activeGroupId] ?? [];
   const bottomRef = useRef<HTMLDivElement>(null);
   const { chips: groupChips, noData: groupNoData } = useDataSources();
@@ -1144,12 +1157,19 @@ export function GroupMessageThread() {
   const avatarIds = threadBuddyIds.length > 0 ? threadBuddyIds : (groupDef?.buddyIds ?? []);
 
   return (
-    <>
-      {/* Group header */}
+    <div className="flex flex-col h-full bg-[var(--bg)]">
+      {/* Header */}
       <div
-        className="flex items-center gap-3 px-5 py-[14px] flex-shrink-0"
+        className="flex items-center gap-2 sm:gap-3 px-3 sm:px-5 py-[12px] flex-shrink-0"
         style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}
       >
+        <button
+          onClick={() => setMobileView("list")}
+          className="md:hidden flex items-center justify-center w-8 h-8 rounded-full flex-shrink-0 mr-1 transition-colors hover:bg-white/10"
+          style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "var(--text)" }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
         {/* Stacked avatars */}
         <div className="flex items-center flex-shrink-0" style={{ marginRight: 4 }}>
           {avatarIds.slice(0, 3).map((bid, i) => {
@@ -1211,7 +1231,7 @@ export function GroupMessageThread() {
 
       {/* Messages */}
       <div
-        className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-[18px]"
+        className="flex-1 overflow-y-auto px-3 sm:px-5 py-4 sm:py-5 flex flex-col gap-[14px] sm:gap-[18px]"
         style={{ background: "var(--bg)", scrollbarWidth: "thin", scrollbarColor: "var(--border) transparent" }}
       >
         <AnimatePresence initial={false}>
@@ -1262,6 +1282,6 @@ export function GroupMessageThread() {
         )}
         <div ref={bottomRef} />
       </div>
-    </>
+    </div>
   );
 }

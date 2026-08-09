@@ -187,15 +187,45 @@ export default function MarketplacePage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center flex-1 min-h-[400px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-t-2 border-[var(--green)]"></div>
-        <p className="mt-4 text-[12px]" style={{ color: "var(--muted)" }}>Loading Finance Buddies...</p>
+      <div className="px-3 py-6 sm:px-6 lg:px-8 w-full">
+        {/* Skeleton hero */}
+        <div
+          className="rounded-[20px] mb-8 animate-pulse"
+          style={{ height: 160, background: "var(--card)", border: "1px solid var(--border)" }}
+        />
+        {/* Skeleton filter chips */}
+        <div className="flex gap-2 mb-6">
+          {[80, 90, 110, 80, 70, 90].map((w, i) => (
+            <div
+              key={i}
+              className="rounded-full animate-pulse"
+              style={{ width: w, height: 32, background: "var(--card)" }}
+            />
+          ))}
+        </div>
+        {/* Skeleton buddy cards grid — 2 cols on mobile, auto-fill on desktop */}
+        <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3 sm:gap-5">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div
+              key={i}
+              className="rounded-[16px] overflow-hidden animate-pulse"
+              style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+            >
+              <div style={{ height: 64, background: "var(--border)" }} />
+              <div className="p-3">
+                <div className="rounded mb-2" style={{ height: 12, width: "60%", background: "var(--border)" }} />
+                <div className="rounded mb-3" style={{ height: 10, width: "80%", background: "var(--border)" }} />
+                <div className="rounded" style={{ height: 28, background: "var(--border)" }} />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="px-4 py-6 sm:px-6 lg:px-8 w-full">
+    <div className="px-3 py-6 sm:px-6 lg:px-8 w-full">
       {/* Celebrity Hero */}
       <CelebrityHero />
 
@@ -263,12 +293,9 @@ export default function MarketplacePage() {
         </div>
       )}
 
-      {/* Unified merged buddies grid */}
+      {/* Unified merged buddies grid — 2 cols on mobile, auto-fill on desktop */}
       {allMergedBuddies.length > 0 ? (
-        <div
-          className="grid gap-5 mb-8"
-          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}
-        >
+        <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3 sm:gap-5 mb-8">
           {filteredArchetypes.map((buddy) => (
             <BuddyCard key={buddy.id} buddy={buddy} />
           ))}

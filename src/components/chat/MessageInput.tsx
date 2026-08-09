@@ -292,7 +292,7 @@ export function MessageInput() {
 
   return (
     <div
-      className="flex-shrink-0 px-5 py-[14px]"
+      className="flex-shrink-0 px-3 sm:px-5 py-[12px] sm:py-[14px]"
       style={{ background: "var(--card)", borderTop: "1px solid var(--border)" }}
     >
       {/* Suggestion chips */}

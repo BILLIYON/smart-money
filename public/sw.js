@@ -1,5 +1,5 @@
-// Smart Money Service Worker
-const CACHE_NAME = "smart-money-v1";
+// Smart Money Service Worker v2
+const CACHE_NAME = "smart-money-v2";
 const STATIC_ASSETS = [
   "/",
   "/marketplace",

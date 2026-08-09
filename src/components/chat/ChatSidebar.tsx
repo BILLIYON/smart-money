@@ -121,6 +121,7 @@ export function ChatSidebar() {
     loadRecentHistoryForBuddy,
     communityBuddies,
     setCommunityBuddies,
+    setMobileView,
   } = useChatStore();
 
   const [ready, setReady] = useState(false);
@@ -156,14 +157,18 @@ export function ChatSidebar() {
     setActiveBuddyId(id);
     initThread(id, []);
     loadRecentHistoryForBuddy(id);
+    setMobileView("chat");
+  }
+
+  function selectGroup(id: string) {
+    setActiveSessionId(id);
+    setMobileView("chat");
   }
 
   return (
     <div
-      className="flex flex-col flex-shrink-0 overflow-hidden"
+      className="flex flex-col h-full overflow-hidden w-full md:w-[320px] lg:w-[380px]"
       style={{
-        width: 260,
-        borderRight: "1px solid var(--border)",
         background: "var(--card)",
       }}
     >
@@ -263,6 +268,7 @@ export function ChatSidebar() {
                         onClick={() => {
                           setActiveSession(sess.id);
                           loadSessionMessages(sess.id);
+                          setMobileView("chat");
                         }}
                         className={`group flex items-center justify-between px-2 py-[5px] rounded-[6px] cursor-pointer text-[11px] mb-[2px] transition-all`}
                         style={{

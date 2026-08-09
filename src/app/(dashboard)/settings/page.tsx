@@ -1159,6 +1159,67 @@ export default function SettingsPage() {
           );
         })}
 
+        {/* Social Links */}
+        <div style={{ borderTop: "1px solid var(--border)", marginTop: 16, paddingTop: 12 }}>
+          <div style={{ padding: "4px 20px 8px", fontSize: 10, fontWeight: 600, letterSpacing: ".6px", textTransform: "uppercase", color: "var(--muted)" }}>
+            Community
+          </div>
+          <a
+            href="https://wa.me/2348000000000"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "10px 20px",
+              fontSize: 13,
+              color: "var(--muted)",
+              cursor: "pointer",
+              transition: "all .15s",
+              textDecoration: "none",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLAnchorElement).style.color = "#25D366";
+              (e.currentTarget as HTMLAnchorElement).style.background = "rgba(37,211,102,.05)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLAnchorElement).style.color = "var(--muted)";
+              (e.currentTarget as HTMLAnchorElement).style.background = "transparent";
+            }}
+          >
+            <span style={{ fontSize: 15, width: 18, textAlign: "center" }}>💬</span>
+            WhatsApp Community
+          </a>
+          <a
+            href="https://instagram.com/smartmoneyapp"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "10px 20px",
+              fontSize: 13,
+              color: "var(--muted)",
+              cursor: "pointer",
+              transition: "all .15s",
+              textDecoration: "none",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLAnchorElement).style.color = "#E1306C";
+              (e.currentTarget as HTMLAnchorElement).style.background = "rgba(225,48,108,.05)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLAnchorElement).style.color = "var(--muted)";
+              (e.currentTarget as HTMLAnchorElement).style.background = "transparent";
+            }}
+          >
+            <span style={{ fontSize: 15, width: 18, textAlign: "center" }}>📸</span>
+            Follow on Instagram
+          </a>
+        </div>
+
         {/* Log Out Button */}
         <div
           onClick={async () => {

@@ -18,7 +18,12 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json(buddies);
+    return NextResponse.json(buddies, {
+      headers: {
+        // Cache in browser for 30s, serve stale for up to 60s while revalidating in background
+        "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
+      },
+    });
   } catch (err) {
     console.error("[GET /api/studio]", err);
     return NextResponse.json([], { status: 500 });
