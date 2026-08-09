@@ -311,7 +311,10 @@ function GmailCard() {
                 }))
               );
             }
-          } catch (e) {
+          } catch (e: any) {
+            if (e.message?.includes("key mismatch") || e.message?.includes("re-authenticate") || e.message?.includes("DECRYPTION_FAILED")) {
+              throw e;
+            }
             console.error("Failed to parse progress line:", e);
           }
         }
@@ -319,7 +322,14 @@ function GmailCard() {
       await loadStatus();
       await useDatabankStore.getState().loadContext();
     } catch (err: any) {
-      setSyncMsg(err.message || "Sync failed. Try again.");
+      if (err.message?.includes("key mismatch") || err.message?.includes("re-authenticate") || err.message?.includes("DECRYPTION_FAILED")) {
+        popup.error(
+          "Re-authentication Required", 
+          "Your Gmail session tokens cannot be decrypted (likely due to an encryption key change). Please click the Disconnect button, then connect your Gmail account again to refresh your credentials."
+        );
+      } else {
+        setSyncMsg(err.message || "Sync failed. Try again.");
+      }
     } finally {
       setSyncing(false);
       setSyncProgress(null);
