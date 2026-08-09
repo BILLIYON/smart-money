@@ -119,11 +119,12 @@ export function ChatSidebar() {
     loadSessions,
     loadSessionMessages,
     loadRecentHistoryForBuddy,
+    communityBuddies,
+    setCommunityBuddies,
   } = useChatStore();
 
   const [ready, setReady] = useState(false);
   const [savedExpanded, setSavedExpanded] = useState(true);
-  const [communityBuddies, setCommunityBuddies] = useState<Buddy[]>([]);
 
   useEffect(() => {
     loadSessions();

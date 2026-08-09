@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { useDatabankStore } from "./databankStore";
+import { type Buddy } from "@/lib/buddies";
 
 function extractJsonPayload(content: string, tagPrefix: string): { jsonStr: string | null; fullMatch: string | null } {
   const tagIndex = content.indexOf(tagPrefix);
@@ -427,6 +428,10 @@ type ChatStore = {
   setHasConnectedDatabank: (v: boolean) => void;
   showDatabankNudge: boolean;
   setShowDatabankNudge: (v: boolean) => void;
+
+  // Community / Dynamic Buddies
+  communityBuddies: Buddy[];
+  setCommunityBuddies: (buddies: Buddy[]) => void;
 };
 
 function patchMsg(msgs: ChatMessage[], msgId: string, patch: Partial<ChatMessage>): ChatMessage[] {
@@ -790,4 +795,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   setHasConnectedDatabank: (v) => set({ hasConnectedDatabank: v }),
   showDatabankNudge: false,
   setShowDatabankNudge: (v) => set({ showDatabankNudge: v }),
+
+  communityBuddies: [],
+  setCommunityBuddies: (buddies) => set({ communityBuddies: buddies }),
 }));

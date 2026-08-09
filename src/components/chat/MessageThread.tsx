@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useChatStore, GROUPS, type ChatMessage, type GoalCardData } from "@/store/chatStore";
-import { getBuddy } from "@/lib/buddies";
+import { getBuddy, ALL_BUDDIES, type Buddy } from "@/lib/buddies";
 import { InChatGoalCard } from "./InChatGoalCard";
 import { InChatAgentCard } from "./InChatAgentCard";
 import { InChatDatabankWriteCard } from "./InChatDatabankWriteCard";
@@ -888,9 +888,16 @@ export function MessageThread() {
     addMessage,
     signalAlerts,
     dismissSignalAlert,
+    communityBuddies,
   } = useChatStore();
 
-  const buddy = getBuddy(activeBuddyId);
+  const staticIds = new Set(ALL_BUDDIES.map((b) => b.id));
+  const ALL_BUDDY_LIST = [
+    ...ALL_BUDDIES,
+    ...communityBuddies.filter((b) => !staticIds.has(b.id)),
+  ];
+  const buddy = ALL_BUDDY_LIST.find((b) => b.id === activeBuddyId)
+    ?? getBuddy(activeBuddyId);
   const messages = threads[activeBuddyId] ?? [];
   const bottomRef = useRef<HTMLDivElement>(null);
   const showNudge = messages.length === 0 && !hasConnectedDatabank && !showDatabankNudge;

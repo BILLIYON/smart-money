@@ -2,7 +2,7 @@
 
 import { useRef, useState, useCallback, useEffect } from "react";
 import { useChatStore, GROUPS } from "@/store/chatStore";
-import { getBuddy } from "@/lib/buddies";
+import { getBuddy, ALL_BUDDIES } from "@/lib/buddies";
 import { createClient } from "@/lib/supabase/client";
 
 const INVESTING_SUGGESTIONS = [
@@ -62,6 +62,7 @@ export function MessageInput() {
     isStreaming, setStreaming,
     pendingInput, clearPendingInput,
     suggestions, setSuggestions,
+    communityBuddies,
   } = useChatStore();
 
   const [input, setInput] = useState("");
@@ -103,7 +104,13 @@ export function MessageInput() {
   }, [getGuestMessageCount]);
 
   const isGroup = chatMode === "group";
-  const buddy = getBuddy(activeBuddyId);
+  const staticIds = new Set(ALL_BUDDIES.map((b) => b.id));
+  const ALL_BUDDY_LIST = [
+    ...ALL_BUDDIES,
+    ...communityBuddies.filter((b) => !staticIds.has(b.id)),
+  ];
+  const buddy = ALL_BUDDY_LIST.find((b) => b.id === activeBuddyId)
+    ?? getBuddy(activeBuddyId);
 
   // Buddies available for @ mention in the active group
   const groupDef = GROUPS.find((g) => g.id === activeGroupId);
