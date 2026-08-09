@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createServiceSupabaseClient } from "@/lib/supabase-server";
 import { processSignalAlert, type SignalPayload } from "@/lib/ai";
-import { getBuddy } from "@/lib/buddies";
+import { getBuddy, type Buddy, type BuddyCategory } from "@/lib/buddies";
+import { getCommunityBuddyById } from "@/lib/db";
 
 /**
  * External signal providers POST to this endpoint.
@@ -99,7 +100,45 @@ export async function POST(req: Request) {
           if (!session) return;
 
           const activeBuddyId = session.buddy_ids?.[0];
-          const activeBuddy = activeBuddyId ? getBuddy(activeBuddyId) : null;
+          let activeBuddy: Buddy | null = null;
+          if (activeBuddyId) {
+            const dbRow = await getCommunityBuddyById(activeBuddyId);
+            if (dbRow) {
+              const rawModel = (dbRow.model ?? "").toLowerCase();
+              const model: Buddy["model"] =
+                rawModel.includes("groq") || rawModel.includes("llama") ? "Groq" :
+                rawModel.includes("gpt") ? "GPT-4" :
+                rawModel.includes("gemini") ? "Gemini" :
+                "Claude";
+              activeBuddy = {
+                id: dbRow.id,
+                name: dbRow.name,
+                tag: dbRow.tag ?? "",
+                desc: dbRow.description ?? "",
+                price: dbRow.price_note ?? (dbRow.price === "free" ? "Free" : `₦${Number(dbRow.custom_price ?? 0).toLocaleString()}/mo`),
+                priceNote: dbRow.price_note ?? "",
+                badge: dbRow.price === "free" ? "Free" : `₦${Number(dbRow.custom_price ?? 0).toLocaleString()}/mo`,
+                badgeType: dbRow.price === "free" ? "free" : "pro",
+                bannerColor: dbRow.banner_color ?? "linear-gradient(135deg,#0B1E3D,#1A3A6E)",
+                avatarBg: dbRow.avatar_bg ?? "#1A3A6E",
+                avatarContent: dbRow.avatar_content ?? "🎯",
+                avatarIsSerif: dbRow.avatar_is_serif ?? false,
+                model,
+                modelColor: "#7B68EE",
+                rating: "New",
+                reviewCount: "0",
+                isFanSim: dbRow.is_fan_sim ?? false,
+                disclaimer: dbRow.disclaimer ?? undefined,
+                categories: (dbRow.categories ?? []) as BuddyCategory[],
+                philosophy: dbRow.philosophy ?? "",
+                samples: [],
+                reviews: [],
+                includes: [],
+              };
+            } else {
+              activeBuddy = getBuddy(activeBuddyId) ?? null;
+            }
+          }
           if (!activeBuddy) return;
 
           const { relevant, message } = await processSignalAlert({

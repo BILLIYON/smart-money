@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { isImageAvatar } from "@/lib/utils";
 
 type DataChip = { label: string; highlight?: string };
 
@@ -43,7 +44,7 @@ export function SignalAlertCard({
     >
       {/* Buddy avatar */}
       <div
-        className="flex items-center justify-center flex-shrink-0 rounded-[10px] text-[16px]"
+        className="flex items-center justify-center flex-shrink-0 rounded-[10px] text-[16px] overflow-hidden"
         style={{
           width: 34, height: 34,
           background: buddyBg,
@@ -52,7 +53,11 @@ export function SignalAlertCard({
             : {}),
         }}
       >
-        {buddyAv}
+        {isImageAvatar(buddyAv) ? (
+          <img src={buddyAv} alt="avatar" className="w-full h-full object-cover" />
+        ) : (
+          buddyAv
+        )}
       </div>
 
       {/* Card */}

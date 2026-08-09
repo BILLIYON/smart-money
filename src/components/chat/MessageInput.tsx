@@ -2,7 +2,8 @@
 
 import { useRef, useState, useCallback, useEffect } from "react";
 import { useChatStore, GROUPS } from "@/store/chatStore";
-import { getBuddy, ALL_BUDDIES } from "@/lib/buddies";
+import { getBuddy, ALL_BUDDIES, type Buddy } from "@/lib/buddies";
+import { isImageAvatar } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 
 const INVESTING_SUGGESTIONS = [
@@ -104,17 +105,17 @@ export function MessageInput() {
   }, [getGuestMessageCount]);
 
   const isGroup = chatMode === "group";
-  const staticIds = new Set(ALL_BUDDIES.map((b) => b.id));
+  const dbIds = new Set(communityBuddies.map((b) => b.id));
   const ALL_BUDDY_LIST = [
-    ...ALL_BUDDIES,
-    ...communityBuddies.filter((b) => !staticIds.has(b.id)),
+    ...communityBuddies,
+    ...ALL_BUDDIES.filter((b) => !dbIds.has(b.id)),
   ];
   const buddy = ALL_BUDDY_LIST.find((b) => b.id === activeBuddyId)
     ?? getBuddy(activeBuddyId);
 
   // Buddies available for @ mention in the active group
   const groupDef = GROUPS.find((g) => g.id === activeGroupId);
-  const mentionBuddies = (groupDef?.buddyIds ?? []).map((id) => getBuddy(id)).filter(Boolean) as NonNullable<ReturnType<typeof getBuddy>>[];
+  const mentionBuddies = (groupDef?.buddyIds ?? []).map((id) => ALL_BUDDY_LIST.find((b) => b.id === id) ?? getBuddy(id)).filter(Boolean) as Buddy[];
 
   // Populate input when "Discuss first" pre-fills it from an agent card
   useEffect(() => {
@@ -351,7 +352,7 @@ export function MessageInput() {
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
             >
               <div
-                className="flex items-center justify-center flex-shrink-0 rounded-[8px]"
+                className="flex items-center justify-center flex-shrink-0 rounded-[8px] overflow-hidden"
                 style={{
                   width: 26, height: 26,
                   background: b.avatarBg,
@@ -359,7 +360,11 @@ export function MessageInput() {
                   ...(b.avatarIsSerif ? { fontFamily: "var(--font-dm-serif)", color: "rgba(255,255,255,.9)" } : {}),
                 }}
               >
-                {b.avatarContent}
+                {isImageAvatar(b.avatarContent) ? (
+                  <img src={b.avatarContent} alt="avatar" className="w-full h-full object-cover" />
+                ) : (
+                  b.avatarContent
+                )}
               </div>
               <span className="text-[12px] font-medium" style={{ color: "var(--text)" }}>{b.name}</span>
             </button>

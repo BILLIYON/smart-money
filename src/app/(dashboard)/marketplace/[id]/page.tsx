@@ -21,12 +21,10 @@ export default async function BuddyProfilePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  let buddy = getBuddy(id);
+  let buddy: Buddy | undefined;
 
-  if (!buddy) {
-    const dbRow = await getCommunityBuddyById(id);
-    if (!dbRow) notFound();
-
+  const dbRow = await getCommunityBuddyById(id);
+  if (dbRow) {
     const rawModel = (dbRow.model ?? "").toLowerCase();
     const modelName: Buddy["model"] =
       rawModel.includes("groq") || rawModel.includes("llama") ? "Groq" :
@@ -63,7 +61,11 @@ export default async function BuddyProfilePage({
       reviews: [],
       includes: dbRow.includes ?? [],
     };
+  } else {
+    buddy = getBuddy(id);
   }
+
+  if (!buddy) notFound();
 
   return <BuddyProfile buddy={buddy} />;
 }

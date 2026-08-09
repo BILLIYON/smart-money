@@ -6,6 +6,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useChatStore, GROUPS, type ChatMessage, type GoalCardData } from "@/store/chatStore";
 import { getBuddy, ALL_BUDDIES, type Buddy } from "@/lib/buddies";
+import { isImageAvatar } from "@/lib/utils";
 import { InChatGoalCard } from "./InChatGoalCard";
 import { InChatAgentCard } from "./InChatAgentCard";
 import { InChatDatabankWriteCard } from "./InChatDatabankWriteCard";
@@ -342,7 +343,7 @@ function AiMessage({
     <div className="flex gap-[10px]" style={{ maxWidth: "80%" }}>
       {/* Avatar */}
       <div
-        className="flex items-center justify-center flex-shrink-0 rounded-[10px]"
+        className="flex items-center justify-center flex-shrink-0 rounded-[10px] overflow-hidden"
         style={{
           width: 34, height: 34,
           background: avatarBg,
@@ -350,7 +351,11 @@ function AiMessage({
           ...(avatarIsSerif ? { fontFamily: "var(--font-dm-serif)", color: "rgba(255,255,255,.9)" } : {}),
         }}
       >
-        {avatarContent}
+        {isImageAvatar(avatarContent) ? (
+          <img src={avatarContent} alt="avatar" className="w-full h-full object-cover" />
+        ) : (
+          avatarContent
+        )}
       </div>
 
       <div className="min-w-0">
@@ -687,7 +692,11 @@ function ChatHeader({ buddy }: { buddy?: any }) {
             ...(buddy?.avatarIsSerif ? { fontFamily: "var(--font-dm-serif)", color: "rgba(255,255,255,.9)" } : {}),
           }}
         >
-          {buddy?.avatarContent ?? "🤖"}
+          {isImageAvatar(buddy?.avatarContent) ? (
+            <img src={buddy.avatarContent} alt="avatar" className="w-full h-full object-cover" />
+          ) : (
+            buddy?.avatarContent ?? "🤖"
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -891,10 +900,10 @@ export function MessageThread() {
     communityBuddies,
   } = useChatStore();
 
-  const staticIds = new Set(ALL_BUDDIES.map((b) => b.id));
+  const dbIds = new Set(communityBuddies.map((b) => b.id));
   const ALL_BUDDY_LIST = [
-    ...ALL_BUDDIES,
-    ...communityBuddies.filter((b) => !staticIds.has(b.id)),
+    ...communityBuddies,
+    ...ALL_BUDDIES.filter((b) => !dbIds.has(b.id)),
   ];
   const buddy = ALL_BUDDY_LIST.find((b) => b.id === activeBuddyId)
     ?? getBuddy(activeBuddyId);
@@ -1087,7 +1096,13 @@ export function MessageThread() {
               />
             )}
             <div className="text-center">
-              <div className="text-[32px] mb-3">{buddy?.avatarContent ?? "💬"}</div>
+              {isImageAvatar(buddy?.avatarContent) ? (
+                <div className="flex items-center justify-center rounded-[10px] overflow-hidden mb-3 mx-auto" style={{ width: 64, height: 64, background: buddy?.avatarBg ?? "var(--navy)" }}>
+                  <img src={buddy?.avatarContent} alt="avatar" className="w-full h-full object-cover" />
+                </div>
+              ) : (
+                <div className="text-[32px] mb-3">{buddy?.avatarContent ?? "💬"}</div>
+              )}
               <div className="text-[14px] font-semibold mb-1" style={{ color: "var(--text)" }}>
                 Start a conversation with {buddy?.name ?? "your buddy"}
               </div>
@@ -1142,7 +1157,7 @@ export function GroupMessageThread() {
             return (
               <div
                 key={bid}
-                className="flex items-center justify-center rounded-[8px]"
+                className="flex items-center justify-center rounded-[8px] overflow-hidden"
                 style={{
                   width: 30, height: 30,
                   background: av.bg,
@@ -1154,7 +1169,11 @@ export function GroupMessageThread() {
                   position: "relative",
                 }}
               >
-                {av.content}
+                {isImageAvatar(av.content) ? (
+                  <img src={av.content} alt="avatar" className="w-full h-full object-cover" />
+                ) : (
+                  av.content
+                )}
               </div>
             );
           })}

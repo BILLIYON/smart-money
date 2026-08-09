@@ -140,11 +140,11 @@ export function ChatSidebar() {
     return () => clearTimeout(t);
   }, []);
 
-  // Combined list: static first, then community (no duplicates)
-  const staticIds = new Set(STATIC_BUDDY_LIST.map((b) => b.id));
+  // Overwrite static buddies with database counterparts when loaded
+  const dbIds = new Set(communityBuddies.map((b) => b.id));
   const ALL_BUDDY_LIST: Buddy[] = [
-    ...STATIC_BUDDY_LIST,
-    ...communityBuddies.filter((b) => !staticIds.has(b.id)),
+    ...communityBuddies,
+    ...STATIC_BUDDY_LIST.filter((b) => !dbIds.has(b.id)),
   ];
 
   // Resolve active buddy from combined list (handles DB buddies)

@@ -346,45 +346,53 @@ export async function sendMessage(params: {
 }): Promise<ReadableStream<Uint8Array>> {
   const { buddyId, messages, databankContext, model: modelOverride, crossSessionMemory } = params;
 
-  let buddy = getBuddy(buddyId);
+  const MODEL_COLOR: Record<string, string> = {
+    Claude: "#7B68EE",
+    "GPT-4": "#10A37F",
+    Gemini: "#4285F4",
+    Groq: "#F55036",
+  };
+
+  let buddy: Buddy | undefined;
+  const dbRow = await getCommunityBuddyById(buddyId);
+  if (dbRow) {
+    const rawModel = (dbRow.model ?? "").toLowerCase();
+    const model: Buddy["model"] =
+      rawModel.includes("groq") || rawModel.includes("llama") ? "Groq" :
+      rawModel.includes("gpt") ? "GPT-4" :
+      rawModel.includes("gemini") ? "Gemini" :
+      "Claude";
+    buddy = {
+      id: dbRow.id,
+      name: dbRow.name,
+      tag: dbRow.tag ?? "",
+      desc: dbRow.description ?? "",
+      price: dbRow.price_note ?? (dbRow.price === "free" ? "Free" : `₦${Number(dbRow.custom_price ?? 0).toLocaleString()}/mo`),
+      priceNote: dbRow.price_note ?? "",
+      badge: dbRow.price === "free" ? "Free" : `₦${Number(dbRow.custom_price ?? 0).toLocaleString()}/mo`,
+      badgeType: dbRow.price === "free" ? "free" : "pro",
+      bannerColor: dbRow.banner_color ?? "linear-gradient(135deg,#0B1E3D,#1A3A6E)",
+      avatarBg: dbRow.avatar_bg ?? "#1A3A6E",
+      avatarContent: dbRow.avatar_content ?? "🎯",
+      avatarIsSerif: dbRow.avatar_is_serif ?? false,
+      model,
+      modelColor: MODEL_COLOR[model] ?? "#7B68EE",
+      rating: "New",
+      reviewCount: "0",
+      isFanSim: dbRow.is_fan_sim ?? false,
+      disclaimer: dbRow.disclaimer ?? undefined,
+      categories: (dbRow.categories ?? []) as Buddy["categories"],
+      philosophy: dbRow.philosophy ?? "",
+      samples: [],
+      reviews: [],
+      includes: [],
+    };
+  } else {
+    buddy = getBuddy(buddyId);
+  }
+
   if (!buddy) {
-    // Fallback: try to load from DB (community/creator-submitted buddies)
-    const dbRow = await getCommunityBuddyById(buddyId);
-    if (dbRow) {
-      const rawModel = (dbRow.model ?? "").toLowerCase();
-      const model: Buddy["model"] =
-        rawModel.includes("groq") || rawModel.includes("llama") ? "Groq" :
-        rawModel.includes("gpt") ? "GPT-4" :
-        rawModel.includes("gemini") ? "Gemini" :
-        "Claude";
-      buddy = {
-        id: dbRow.id,
-        name: dbRow.name,
-        tag: dbRow.tag ?? "",
-        desc: dbRow.description ?? "",
-        price: "Free",
-        priceNote: "",
-        badge: "Free",
-        badgeType: "free",
-        bannerColor: dbRow.banner_color ?? "",
-        avatarBg: dbRow.avatar_bg ?? "",
-        avatarContent: dbRow.avatar_content ?? "🤖",
-        avatarIsSerif: dbRow.avatar_is_serif ?? false,
-        model,
-        modelColor: "#7B68EE",
-        rating: "New",
-        reviewCount: "0",
-        isFanSim: dbRow.is_fan_sim ?? false,
-        disclaimer: dbRow.disclaimer ?? undefined,
-        categories: (dbRow.categories ?? []) as Buddy["categories"],
-        philosophy: dbRow.philosophy ?? "",
-        samples: [],
-        reviews: [],
-        includes: [],
-      };
-    } else {
-      throw new Error(`Unknown buddy: ${buddyId}`);
-    }
+    throw new Error(`Unknown buddy: ${buddyId}`);
   }
 
   const contextStr = formatDatabankContext(databankContext);

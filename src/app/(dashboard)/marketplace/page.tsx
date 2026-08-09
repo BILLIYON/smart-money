@@ -69,6 +69,7 @@ export default function MarketplacePage() {
   const [activeFilter, setActiveFilter] = useState<string>("All");
   const [communityBuddies, setCommunityBuddies] = useState<Buddy[]>([]);
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
   const searchQuery = useBuddyStore((s) => s.searchQuery);
 
   useEffect(() => {
@@ -79,31 +80,29 @@ export default function MarketplacePage() {
       .then(([rows, ids]: [CommunityBuddyRow[], string[]]) => {
         setCommunityBuddies(rows.map(rowToBuddy));
         setHiddenIds(new Set(ids));
+        setLoading(false);
       })
-      .catch(() => {});
+      .catch(() => {
+        setLoading(false);
+      });
   }, []);
 
-  // Use DB buddies when available so Admin edits/deletions take immediate effect
+  // Use DB buddies exclusively so Admin edits/deletions take immediate effect
   const { visibleArchetypes, visibleCelebs, extraCommunity } = useMemo(() => {
-    if (communityBuddies.length > 0) {
-      const activeFromDb = communityBuddies.filter((b) => !hiddenIds.has(b.id));
-      const builtInIds = new Set([...ARCHETYPE_BUDDIES.map((b) => b.id), ...CELEBRITY_BUDDIES.map((b) => b.id)]);
+    const activeFromDb = communityBuddies.filter((b) => !hiddenIds.has(b.id));
+    const builtInIds = new Set([
+      "contrarian", "closer", "academic", "lagos", "architect",
+      "buffett", "kiyosaki", "cardone", "ramsey", "lynch", "trump"
+    ]);
 
-      const archetypes = activeFromDb.filter((b) => !b.isFanSim && builtInIds.has(b.id));
-      const celebs = activeFromDb.filter((b) => b.isFanSim && builtInIds.has(b.id));
-      const extra = activeFromDb.filter((b) => !builtInIds.has(b.id));
-
-      return {
-        visibleArchetypes: archetypes,
-        visibleCelebs: celebs,
-        extraCommunity: extra,
-      };
-    }
+    const archetypes = activeFromDb.filter((b) => !b.isFanSim && builtInIds.has(b.id));
+    const celebs = activeFromDb.filter((b) => b.isFanSim && builtInIds.has(b.id));
+    const extra = activeFromDb.filter((b) => !builtInIds.has(b.id));
 
     return {
-      visibleArchetypes: ARCHETYPE_BUDDIES.filter((b) => !hiddenIds.has(b.id)),
-      visibleCelebs: CELEBRITY_BUDDIES.filter((b) => !hiddenIds.has(b.id)),
-      extraCommunity: [],
+      visibleArchetypes: archetypes,
+      visibleCelebs: celebs,
+      extraCommunity: extra,
     };
   }, [communityBuddies, hiddenIds]);
 
@@ -185,6 +184,15 @@ export default function MarketplacePage() {
 
   // Merged grid: archetypes first, then celebs, then community
   const allMergedBuddies = [...filteredArchetypes, ...filteredCelebs, ...filteredCommunity];
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center flex-1 min-h-[400px]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-t-2 border-[var(--green)]"></div>
+        <p className="mt-4 text-[12px]" style={{ color: "var(--muted)" }}>Loading Finance Buddies...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8 w-full">
