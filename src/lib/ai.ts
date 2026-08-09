@@ -736,84 +736,81 @@ export async function askAIWithEngine(prompt: string, aiEngine = "groq"): Promis
 
   // 1. Groq (Llama 3.3 70B Versatile)
   if (engine === "groq" || engine === "llama" || engine === "groq-llama") {
-    if (process.env.GROQ_API_KEY) {
-      try {
-        console.log("[AI Gmail Parser] Calling user-selected engine: Groq (llama-3.3-70b-versatile)");
-        const response = await groq().chat.completions.create({
-          model: "llama-3.3-70b-versatile",
-          max_tokens: 1024,
-          messages: [{ role: "user", content: prompt }],
-        });
-        return response.choices[0]?.message?.content || "";
-      } catch (err) {
-        console.error("[AI Gmail Parser] Groq Llama completion error:", err);
-      }
+    if (!process.env.GROQ_API_KEY) {
+      throw new Error("Groq API key is not configured in environment variables.");
     }
-  }
-
-  // 2. Google Gemini
-  if (engine === "gemini" || engine === "google") {
-    if (process.env.GOOGLE_AI_API_KEY) {
-      try {
-        console.log("[AI Gmail Parser] Calling user-selected engine: Gemini (gemini-2.0-flash)");
-        const model = gemini().getGenerativeModel({ model: "gemini-2.0-flash" });
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        return response.text();
-      } catch (err) {
-        console.error("[AI Gmail Parser] Gemini completion error:", err);
-      }
-    }
-  }
-
-  // 3. Anthropic Claude
-  if (engine === "claude" || engine === "anthropic") {
-    if (process.env.ANTHROPIC_API_KEY && !depletedKeys.claude) {
-      try {
-        console.log("[AI Gmail Parser] Calling user-selected engine: Anthropic (claude-3-5-haiku-latest)");
-        const response = await anthropic().messages.create({
-          model: "claude-3-5-haiku-latest",
-          max_tokens: 512,
-          messages: [{ role: "user", content: prompt }],
-        });
-        return response.content[0].type === "text" ? response.content[0].text : "";
-      } catch (err) {
-        console.error("[AI Gmail Parser] Anthropic completion error:", err);
-      }
-    }
-  }
-
-  // 4. OpenAI
-  if (engine === "openai" || engine === "gpt") {
-    if (process.env.OPENAI_API_KEY && !depletedKeys.gpt4) {
-      try {
-        console.log("[AI Gmail Parser] Calling user-selected engine: OpenAI (gpt-4o-mini)");
-        const response = await openai().chat.completions.create({
-          model: "gpt-4o-mini",
-          max_tokens: 512,
-          messages: [{ role: "user", content: prompt }],
-        });
-        return response.choices[0]?.message?.content || "";
-      } catch (err) {
-        console.error("[AI Gmail Parser] OpenAI completion error:", err);
-      }
-    }
-  }
-
-  // Fallback to Groq Llama if available, then Gemini
-  console.log(`[AI Gmail Parser] Engine '${engine}' fallback triggered. Trying Groq Llama...`);
-  if (process.env.GROQ_API_KEY) {
     try {
+      console.log("[AI Gmail Parser] Calling user-selected engine: Groq (llama-3.3-70b-versatile)");
       const response = await groq().chat.completions.create({
         model: "llama-3.3-70b-versatile",
         max_tokens: 1024,
         messages: [{ role: "user", content: prompt }],
       });
       return response.choices[0]?.message?.content || "";
-    } catch (e) {}
+    } catch (err: any) {
+      throw new Error(`Groq Llama execution failed: ${err.message || err}`);
+    }
   }
 
-  return askAI(prompt);
+  // 2. Google Gemini
+  if (engine === "gemini" || engine === "google") {
+    if (!process.env.GOOGLE_AI_API_KEY) {
+      throw new Error("Google AI (Gemini) API key is not configured in environment variables.");
+    }
+    try {
+      console.log("[AI Gmail Parser] Calling user-selected engine: Gemini (gemini-2.0-flash)");
+      const model = gemini().getGenerativeModel({ model: "gemini-2.0-flash" });
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return response.text();
+    } catch (err: any) {
+      throw new Error(`Gemini execution failed: ${err.message || err}`);
+    }
+  }
+
+  // 3. Anthropic Claude
+  if (engine === "claude" || engine === "anthropic") {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      throw new Error("Anthropic API key is not configured in environment variables.");
+    }
+    if (depletedKeys.claude) {
+      throw new Error("Anthropic API key quota is depleted.");
+    }
+    try {
+      console.log("[AI Gmail Parser] Calling user-selected engine: Anthropic (claude-3-5-haiku-latest)");
+      const response = await anthropic().messages.create({
+        model: "claude-3-5-haiku-latest",
+        max_tokens: 512,
+        messages: [{ role: "user", content: prompt }],
+      });
+      return response.content[0].type === "text" ? response.content[0].text : "";
+    } catch (err: any) {
+      throw new Error(`Anthropic Claude execution failed: ${err.message || err}`);
+    }
+  }
+
+  // 4. OpenAI
+  if (engine === "openai" || engine === "gpt") {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error("OpenAI API key is not configured in environment variables.");
+    }
+    if (depletedKeys.gpt4) {
+      throw new Error("OpenAI API key quota is depleted.");
+    }
+    try {
+      console.log("[AI Gmail Parser] Calling user-selected engine: OpenAI (gpt-4o-mini)");
+      const response = await openai().chat.completions.create({
+        model: "gpt-4o-mini",
+        max_tokens: 512,
+        messages: [{ role: "user", content: prompt }],
+      });
+      return response.choices[0]?.message?.content || "";
+    } catch (err: any) {
+      throw new Error(`OpenAI execution failed: ${err.message || err}`);
+    }
+  }
+
+  throw new Error(`Unknown or unsupported AI engine: ${aiEngine}`);
 }
 
 export async function extractFinancialDataFromEmail(

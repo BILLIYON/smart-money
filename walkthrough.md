@@ -1,16 +1,14 @@
-# Walkthrough of Gmail Sync Connection Resolution
+# Walkthrough of AI Model Fallback Removal
 
-We have verified the cause of the Gmail sync getting stuck at 100% and added error handling to guide you through the resolution:
+We have successfully disabled the automatic model fallback mechanism for Gmail transaction parsing:
 
-## Root Cause of Issue
-- The sync process loads to 100% and fails to retrieve any transactions due to a **decryption key mismatch** on your Gmail session tokens in the database.
-- This happens because the `ENCRYPTION_KEY` in your `.env.local` was changed or is different from the key used when your Gmail account was originally connected. As a result, the backend cannot decrypt your Gmail OAuth credentials to query the Gmail API.
+## Changes Implemented
 
-## Improvements Added
-1. **Interactive Warning Popup**:
-   - Updated the sync error handler in [page.tsx](file:///c:/Users/USER/smart-money/src/app/(dashboard)/databank/page.tsx) to catch decryption and authentication errors.
-   - If an encryption key mismatch is detected, it will display a persistent error dialog asking you to disconnect and reconnect your Gmail account to re-authenticate with the current key.
-2. **Local Compilation & Hot-Reload**:
-   - Verified that all changes compile successfully.
-   - Reverted temporary API mocks so your routes remain completely secure.
-   - Next.js has hot-reloaded the changes on your local environment (`http://localhost:3000`).
+1. **Fallback Removal in askAIWithEngine**:
+   - Modified `askAIWithEngine` in [ai.ts](file:///c:/Users/USER/smart-money/src/lib/ai.ts) to strictly execute only the user-selected model engine (Groq, Gemini, Claude, or OpenAI).
+   - Removed the default fallback loop at the end of the function that would revert to Groq Llama or Gemini on failure.
+   - Now, if the selected engine's API call fails or if the corresponding environment key is not configured, it will immediately raise a detailed `Error` stating the issue.
+
+2. **Verification & Local Compilation**:
+   - Verified that the codebase compiles with absolutely zero typecheck errors.
+   - Deployed the changes onto your local environment where they are hot-reloaded and active.
