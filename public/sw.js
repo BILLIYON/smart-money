@@ -33,13 +33,29 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Network-only: API routes, Supabase, auth
+  // Network-only: API routes, Supabase, Webpack HMR
   if (
     url.pathname.startsWith("/api/") ||
     url.hostname.includes("supabase.co") ||
-    url.pathname.startsWith("/_next/")
+    url.pathname.includes("webpack-hmr")
   ) {
     event.respondWith(fetch(request));
+    return;
+  }
+
+  // Cache-first: Next.js static assets (JS, CSS, fonts)
+  if (url.pathname.startsWith("/_next/static/")) {
+    event.respondWith(
+      caches.match(request).then(
+        (cached) =>
+          cached ??
+          fetch(request).then((res) => {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+            return res;
+          })
+      )
+    );
     return;
   }
 
