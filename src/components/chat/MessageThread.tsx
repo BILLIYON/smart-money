@@ -494,8 +494,8 @@ const GROUP_BUDDY_COLORS: Record<string, string> = {
   trump:      "#9A6A10",
 };
 
-function resolveAvatar(buddyId: string) {
-  const b = getBuddy(buddyId);
+function resolveAvatar(buddyId: string, communityBuddies: Buddy[] = []) {
+  const b = communityBuddies.find((x) => x.id === buddyId) || getBuddy(buddyId);
   if (b) return { bg: b.avatarBg, content: b.avatarContent, serif: b.avatarIsSerif, name: b.name };
   return { bg: "var(--navy)", content: "🤖", serif: false, name: "AI" };
 }
@@ -907,6 +907,9 @@ export function MessageThread() {
     communityBuddies,
   } = useChatStore();
 
+  const isStatic = ALL_BUDDIES.some((b) => b.id === activeBuddyId);
+  const isLoaded = isStatic || communityBuddies.length > 0;
+
   const dbIds = new Set(communityBuddies.map((b) => b.id));
   const ALL_BUDDY_LIST = [
     ...communityBuddies,
@@ -921,6 +924,27 @@ export function MessageThread() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, messages[messages.length - 1]?.content]);
+
+  if (!isLoaded) {
+    return (
+      <div className="flex-1 flex flex-col h-full bg-[var(--bg)] animate-pulse">
+        {/* Header Skeleton */}
+        <div className="flex items-center gap-3 px-3 sm:px-5 py-[12px] border-b border-[var(--border)] bg-[var(--card)] flex-shrink-0">
+          <div className="w-[38px] h-[38px] rounded-[10px] bg-[var(--border)]" />
+          <div className="flex-1">
+            <div className="h-4 w-32 bg-[var(--border)] rounded mb-1" />
+            <div className="h-3 w-20 bg-[var(--border)] rounded" />
+          </div>
+        </div>
+        {/* Messages Skeleton */}
+        <div className="flex-1 px-3 sm:px-5 py-4 flex flex-col gap-4">
+          <div className="w-[60%] h-12 bg-[var(--border)] rounded-[14px]" />
+          <div className="w-[45%] h-16 bg-[var(--border)] rounded-[14px]" />
+          <div className="w-[30%] h-8 bg-[var(--border)] rounded-[14px] self-end" />
+        </div>
+      </div>
+    );
+  }
 
   const handleUseMyData = async () => {
     setShowDatabankNudge(true);
@@ -1140,7 +1164,7 @@ export function MessageThread() {
 
 // ── Group thread ───────────────────────────────────────────
 export function GroupMessageThread() {
-  const { activeGroupId, groupThreads, setMobileView } = useChatStore();
+  const { activeGroupId, groupThreads, setMobileView, communityBuddies } = useChatStore();
   const messages = groupThreads[activeGroupId] ?? [];
   const bottomRef = useRef<HTMLDivElement>(null);
   const { chips: groupChips, noData: groupNoData } = useDataSources();
@@ -1173,7 +1197,7 @@ export function GroupMessageThread() {
         {/* Stacked avatars */}
         <div className="flex items-center flex-shrink-0" style={{ marginRight: 4 }}>
           {avatarIds.slice(0, 3).map((bid, i) => {
-            const av = resolveAvatar(bid);
+            const av = resolveAvatar(bid, communityBuddies);
             return (
               <div
                 key={bid}
@@ -1248,7 +1272,7 @@ export function GroupMessageThread() {
                 </motion.div>
               );
             }
-            const av = msg.buddyId ? resolveAvatar(msg.buddyId) : { bg: "var(--navy)", content: "🤖", serif: false, name: "AI" };
+            const av = msg.buddyId ? resolveAvatar(msg.buddyId, communityBuddies) : { bg: "var(--navy)", content: "🤖", serif: false, name: "AI" };
             return (
               <motion.div
                 key={msg.id}
