@@ -35,6 +35,16 @@ function groq() {
   if (!_groq) _groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
   return _groq;
 }
+let _nvidia: OpenAI | null = null;
+function nvidia() {
+  if (!_nvidia) {
+    _nvidia = new OpenAI({
+      apiKey: process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY,
+      baseURL: "https://integrate.api.nvidia.com/v1",
+    });
+  }
+  return _nvidia;
+}
 
 const EXPIRED_ANTHROPIC_KEY = "sk-ant-api03-" + "tV8IIfCoTEjkRgQxGdjnNpaI51oNMhVG1pHN0dSVYXpGWz5yXqoI066Q" + "1JHbNjkxnGojfFn5_JyxAcDwWOP-ow-JherggAA";
 const EXPIRED_OPENAI_KEY = "sk-proj-AgLUeGbL2ic-" + "Dz4lutdMnozm8Qsx3poJx4p6s5irF6tOKTIqgvKI4esTB-C6-2x01" + "crmyD6-UIT3BlbkFJAVAY6ofAr7itBWlyp-Xtdq9v9-a8PE5tJuQk3cT3t1hf_8TkHYwaF8JraJAcUawSwYoMOpdnUA";
@@ -253,10 +263,12 @@ function formatDatabankContext(ctx: DatabankContext): string {
   return lines.length > 0 ? lines.join("\n") : "No DataBank data connected yet.";
 }
 
-/** Normalise the model field from buddies.ts ("Claude" | "GPT-4" | "Gemini" | "Groq") */
-function resolveModel(buddy: Buddy, override?: "claude" | "gpt4" | "gemini" | "groq"): "claude" | "gpt4" | "gemini" | "groq" {
+/** Normalise the model field from buddies.ts ("Claude" | "GPT-4" | "Gemini" | "Groq" | "NVIDIA" | "Gemma") */
+function resolveModel(buddy: Buddy, override?: "claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma"): "claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma" {
   if (override) return override;
-  const m = buddy.model.toLowerCase();
+  const m = (buddy.model || "").toLowerCase();
+  if (m.includes("gemma")) return "gemma";
+  if (m.includes("nvidia") || m.includes("nim") || m.includes("nemotron")) return "nvidia";
   if (m.includes("groq") || m.includes("llama")) return "groq";
   if (m.includes("gpt")) return "gpt4";
   if (m.includes("gemini")) return "gemini";
@@ -341,7 +353,7 @@ export async function sendMessage(params: {
   buddyId: string;
   messages: Message[];
   databankContext: DatabankContext;
-  model?: "claude" | "gpt4" | "gemini" | "groq";
+  model?: "claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma";
   crossSessionMemory?: string;
 }): Promise<ReadableStream<Uint8Array>> {
   const { buddyId, messages, databankContext, model: modelOverride, crossSessionMemory } = params;
@@ -351,6 +363,8 @@ export async function sendMessage(params: {
     "GPT-4": "#10A37F",
     Gemini: "#4285F4",
     Groq: "#F55036",
+    NVIDIA: "#76B900",
+    Gemma: "#76B900",
   };
 
   let buddy: Buddy | undefined;
@@ -358,6 +372,8 @@ export async function sendMessage(params: {
   if (dbRow) {
     const rawModel = (dbRow.model ?? "").toLowerCase();
     const model: Buddy["model"] =
+      rawModel.includes("gemma") ? "Gemma" :
+      rawModel.includes("nvidia") || rawModel.includes("nim") ? "NVIDIA" :
       rawModel.includes("groq") || rawModel.includes("llama") ? "Groq" :
       rawModel.includes("gpt") ? "GPT-4" :
       rawModel.includes("gemini") ? "Gemini" :
@@ -400,9 +416,15 @@ export async function sendMessage(params: {
   const resolvedModel = resolveModel(buddy, modelOverride);
 
   // Define order of fallback prioritizing active keys
-  const modelsToTry: Array<"claude" | "gpt4" | "gemini" | "groq"> = [];
+  const modelsToTry: Array<"claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma"> = [];
 
-  if (resolvedModel === "groq" && process.env.GROQ_API_KEY) {
+  const hasNvidiaKey = Boolean(process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY);
+
+  if (resolvedModel === "gemma" && hasNvidiaKey) {
+    modelsToTry.push("gemma");
+  } else if (resolvedModel === "nvidia" && hasNvidiaKey) {
+    modelsToTry.push("nvidia");
+  } else if (resolvedModel === "groq" && process.env.GROQ_API_KEY) {
     modelsToTry.push("groq");
   } else if (resolvedModel === "claude" && !depletedKeys.claude) {
     modelsToTry.push("claude");
@@ -412,7 +434,13 @@ export async function sendMessage(params: {
     modelsToTry.push("gemini");
   }
 
-  // Add Groq / Gemini as high-priority fallbacks
+  // Add NVIDIA Gemma / NIM & Groq / Gemini as high-priority fallbacks
+  if (hasNvidiaKey && !modelsToTry.includes("gemma")) {
+    modelsToTry.push("gemma");
+  }
+  if (hasNvidiaKey && !modelsToTry.includes("nvidia")) {
+    modelsToTry.push("nvidia");
+  }
   if (process.env.GROQ_API_KEY && !modelsToTry.includes("groq")) {
     modelsToTry.push("groq");
   }
@@ -436,7 +464,11 @@ export async function sendMessage(params: {
   for (const modelName of modelsToTry) {
     try {
       console.log(`[AI] Attempting stream with model: ${modelName}`);
-      if (modelName === "groq") {
+      if (modelName === "gemma") {
+        return await streamNvidia(system, messages, "google/gemma-2-27b-it");
+      } else if (modelName === "nvidia") {
+        return await streamNvidia(system, messages, "meta/llama-3.3-70b-instruct");
+      } else if (modelName === "groq") {
         return await streamGroq(system, messages);
       } else if (modelName === "claude") {
         return await streamClaude(system, messages);
@@ -550,6 +582,34 @@ async function streamGemini(
   });
 }
 
+// ── NVIDIA Build (Gemma 2 27B / Llama 3.3 70B NIM) ───────────
+async function streamNvidia(
+  system: string,
+  messages: Message[],
+  modelName = "google/gemma-2-27b-it"
+): Promise<ReadableStream<Uint8Array>> {
+  const response = await nvidia().chat.completions.create({
+    model: modelName,
+    messages: [{ role: "system", content: system }, ...messages],
+    temperature: 0.6,
+    max_tokens: 1024,
+    stream: true,
+  });
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for await (const chunk of response) {
+          const text = chunk.choices[0]?.delta?.content ?? "";
+          if (text) controller.enqueue(new TextEncoder().encode(text));
+        }
+      } finally {
+        controller.close();
+      }
+    },
+  });
+}
+
 // ── Groq (Llama 3.3 70B) ──────────────────────────────────
 async function streamGroq(
   system: string,
@@ -597,6 +657,24 @@ export async function sendGroupMessage(params: {
 // ════════════════════════════════════════════════════════════
 
 async function askAI(prompt: string, fallbackModel = "claude-3-5-haiku-latest"): Promise<string> {
+  // Strategy 0: NVIDIA Build (Gemma 2 27B / Llama 3.3 70B)
+  const nvidiaKey = process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY;
+  if (nvidiaKey) {
+    try {
+      console.log("[AI] Attempting completion with NVIDIA Build: google/gemma-2-27b-it");
+      const response = await nvidia().chat.completions.create({
+        model: "google/gemma-2-27b-it",
+        max_tokens: 1024,
+        temperature: 0.4,
+        messages: [{ role: "user", content: prompt }],
+      });
+      const text = response.choices[0]?.message?.content || "";
+      if (text) return text;
+    } catch (err) {
+      console.error("[AI] NVIDIA completion failed, trying Groq fallback:", err);
+    }
+  }
+
   // Strategy 1: Groq (Llama 3.3 70B Versatile)
   if (process.env.GROQ_API_KEY) {
     try {
@@ -741,6 +819,29 @@ Respond with valid JSON only — no markdown, no explanation outside the JSON:
 
 export async function askAIWithEngine(prompt: string, aiEngine = "groq"): Promise<string> {
   const engine = (aiEngine || "groq").toLowerCase();
+
+  // 0. NVIDIA Build API (Gemma 2 27B or Llama 3.3 70B)
+  if (engine.includes("nvidia") || engine.includes("gemma") || engine.includes("nim")) {
+    const nvidiaKey = process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY;
+    if (!nvidiaKey) {
+      throw new Error("NVIDIA Build API key (NVIDIA_API_KEY) is not configured in environment variables.");
+    }
+    const model = engine.includes("llama") || engine.includes("agent") 
+      ? "meta/llama-3.3-70b-instruct" 
+      : "google/gemma-2-27b-it";
+    try {
+      console.log(`[AI Engine] Calling NVIDIA Build API (${model})`);
+      const response = await nvidia().chat.completions.create({
+        model,
+        max_tokens: 1024,
+        temperature: 0.2,
+        messages: [{ role: "user", content: prompt }],
+      });
+      return response.choices[0]?.message?.content || "";
+    } catch (err: any) {
+      throw new Error(`NVIDIA Build execution failed: ${err.message || err}`);
+    }
+  }
 
   // 1. Groq (Llama 3.3 70B Versatile)
   if (engine === "groq" || engine === "llama" || engine === "groq-llama") {

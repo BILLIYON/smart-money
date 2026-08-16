@@ -161,7 +161,7 @@ export function ChatSidebar() {
   }
 
   function selectGroup(id: string) {
-    setActiveSessionId(id);
+    setActiveSession(id);
     setMobileView("chat");
   }
 

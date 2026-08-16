@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
@@ -6,6 +7,17 @@ let _anthropic: Anthropic | null = null;
 function getAnthropic() {
   if (!_anthropic) _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   return _anthropic;
+}
+
+let _nvidia: OpenAI | null = null;
+function getNvidia() {
+  if (!_nvidia) {
+    _nvidia = new OpenAI({
+      apiKey: process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY,
+      baseURL: "https://integrate.api.nvidia.com/v1",
+    });
+  }
+  return _nvidia;
 }
 
 let _gemini: GoogleGenerativeAI | null = null;
@@ -72,6 +84,42 @@ export async function POST(req: Request) {
     .filter(Boolean)
     .join("\n");
 
+  const selectedModel = (config.model || "").toLowerCase();
+  const hasNvidiaKey = Boolean(process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY);
+
+  // If NVIDIA / Gemma selected and key available, stream directly from NVIDIA NIM
+  if ((selectedModel.includes("nvidia") || selectedModel.includes("gemma")) && hasNvidiaKey) {
+    const modelName = selectedModel.includes("gemma") ? "google/gemma-2-27b-it" : "meta/llama-3.3-70b-instruct";
+    try {
+      const response = await getNvidia().chat.completions.create({
+        model: modelName,
+        messages: [{ role: "system", content: system }, ...messages],
+        temperature: 0.6,
+        max_tokens: 256,
+        stream: true,
+      });
+
+      const readable = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          try {
+            for await (const chunk of response) {
+              const text = chunk.choices[0]?.delta?.content ?? "";
+              if (text) controller.enqueue(new TextEncoder().encode(text));
+            }
+          } finally {
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(readable, {
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
+    } catch (nErr) {
+      console.warn("[/api/chat/preview] NVIDIA stream failed, falling back:", nErr);
+    }
+  }
+
   try {
     const stream = await getAnthropic().messages.create({
       model: "claude-3-5-sonnet-20241022",
@@ -102,7 +150,38 @@ export async function POST(req: Request) {
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   } catch (e) {
-    console.warn("[/api/chat/preview] Anthropic failed, falling back to Gemini:", e);
+    console.warn("[/api/chat/preview] Anthropic failed, trying NVIDIA/Gemini fallbacks:", e);
+
+    if (hasNvidiaKey) {
+      try {
+        const response = await getNvidia().chat.completions.create({
+          model: "google/gemma-2-27b-it",
+          messages: [{ role: "system", content: system }, ...messages],
+          temperature: 0.6,
+          max_tokens: 256,
+          stream: true,
+        });
+
+        const readable = new ReadableStream<Uint8Array>({
+          async start(controller) {
+            try {
+              for await (const chunk of response) {
+                const text = chunk.choices[0]?.delta?.content ?? "";
+                if (text) controller.enqueue(new TextEncoder().encode(text));
+              }
+            } finally {
+              controller.close();
+            }
+          },
+        });
+
+        return new Response(readable, {
+          headers: { "Content-Type": "text/plain; charset=utf-8" },
+        });
+      } catch (nvidiaErr) {
+        console.warn("[/api/chat/preview] NVIDIA fallback failed:", nvidiaErr);
+      }
+    }
     
     try {
       const model = getGemini().getGenerativeModel({

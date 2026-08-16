@@ -30,7 +30,7 @@ type StudioConfig = {
   signaturePhrase: string;
   willNotAdviseOn: string;
   // ④ AI Model
-  model: "Claude" | "GPT-4" | "Gemini" | "Groq";
+  model: "Claude" | "GPT-4" | "Gemini" | "Groq" | "NVIDIA" | "Gemma";
   // ⑤ Notifications
   triggers: boolean[];
   maxNotifs: number;
@@ -258,10 +258,12 @@ export default function StudioPage() {
       .then((res) => {
         if (res.buddy) {
           const b = res.buddy;
-          let modelName = "Claude";
+          let modelName: StudioConfig["model"] = "Claude";
           if (b.ai_model) {
             const m = b.ai_model.toLowerCase();
-            if (m.includes("gpt")) modelName = "GPT-4";
+            if (m.includes("gemma")) modelName = "Gemma";
+            else if (m.includes("nvidia") || m.includes("nim")) modelName = "NVIDIA";
+            else if (m.includes("gpt")) modelName = "GPT-4";
             else if (m.includes("gemini")) modelName = "Gemini";
             else if (m.includes("groq")) modelName = "Groq";
           }
@@ -498,6 +500,8 @@ export default function StudioPage() {
   ];
 
   const models: { id: StudioConfig["model"]; label: string; sub: string }[] = [
+    { id: "Gemma", label: "Gemma (NVIDIA)", sub: "Gemma 2 27B · NVIDIA Build" },
+    { id: "NVIDIA", label: "NVIDIA NIM", sub: "Llama 3.3 70B · Agentic" },
     { id: "Claude", label: "Claude", sub: "Nuanced · Balanced" },
     { id: "GPT-4", label: "GPT-4", sub: "Direct · Bold" },
     { id: "Gemini", label: "Gemini", sub: "Live · Web-aware" },
@@ -999,14 +1003,14 @@ export default function StudioPage() {
               <div className="text-[12px] mb-4" style={{ color: "var(--muted)", lineHeight: 1.6 }}>
                 Choose the underlying AI model. Each has a distinct reasoning style — match it to the persona you&apos;re building.
               </div>
-              <div className="flex gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {models.map((m) => {
                   const sel = config.model === m.id;
                   return (
                     <button
                       key={m.id}
                       onClick={() => setConfig((c) => ({ ...c, model: m.id }))}
-                      className="flex-1 py-3 px-2 rounded-[10px] text-center cursor-pointer transition-all duration-150"
+                      className="py-3 px-2 rounded-[10px] text-center cursor-pointer transition-all duration-150"
                       style={{
                         border: sel ? "2px solid var(--green)" : "1px solid var(--border)",
                         background: sel ? "rgba(0,196,140,.05)" : "transparent",

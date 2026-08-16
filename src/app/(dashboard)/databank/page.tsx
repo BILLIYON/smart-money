@@ -575,6 +575,26 @@ function GmailCard() {
             </p>
           </div>
 
+          {/* AI Engine Selection */}
+          <div>
+            <label className="font-semibold block mb-1" style={{ color: "var(--text)" }}>AI Parser Engine</label>
+            <select
+              value={aiEngine}
+              onChange={(e) => setAiEngine(e.target.value)}
+              className="w-full p-[8px] rounded-[8px] border text-[12px] outline-none mb-1"
+              style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)" }}
+            >
+              <option value="gemma">✨ Gemma 2 27B (NVIDIA Build)</option>
+              <option value="nvidia">🚀 Llama 3.3 70B (NVIDIA NIM)</option>
+              <option value="groq">⚡ Llama 3.3 70B (Groq)</option>
+              <option value="gemini">🌐 Gemini 2.0 Flash (Google)</option>
+              <option value="claude">🧠 Claude 3.5 Haiku (Anthropic)</option>
+            </select>
+            <p className="text-[10px]" style={{ color: "var(--muted)", lineHeight: 1.4 }}>
+              Select the LLM backend for alert categorization and transaction parsing.
+            </p>
+          </div>
+
           {/* Preset Filters */}
           <div>
             <div className="flex items-center justify-between mb-1">

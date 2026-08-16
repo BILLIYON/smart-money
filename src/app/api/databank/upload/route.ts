@@ -251,6 +251,31 @@ IMPORTANT: Extract every single transaction row visible in the statement.`;
     return [];
   };
 
+  // Strategy 0: NVIDIA Build API (Gemma 2 27B / Llama 3.3 70B NIM)
+  const nvidiaKey = process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY;
+  if (nvidiaKey && (preferredEngine?.includes("nvidia") || preferredEngine?.includes("gemma") || !process.env.GROQ_API_KEY)) {
+    try {
+      const nvidiaClient = new OpenAI({
+        apiKey: nvidiaKey,
+        baseURL: "https://integrate.api.nvidia.com/v1",
+      });
+      const modelName = preferredEngine?.includes("gemma") ? "google/gemma-2-27b-it" : "meta/llama-3.3-70b-instruct";
+      const response = await nvidiaClient.chat.completions.create({
+        model: modelName,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 4096,
+        temperature: 0.2,
+      });
+      const results = parseAIResponse(response.choices[0]?.message?.content || "");
+      if (results.length > 0) {
+        console.log(`[/api/databank/upload] NVIDIA NIM (${modelName}) extracted ${results.length} transactions`);
+        return results;
+      }
+    } catch (err) {
+      console.warn("[/api/databank/upload] NVIDIA NIM API extraction warning:", err);
+    }
+  }
+
   // Strategy 1: Groq API (Llama 3.3 70B Versatile or Llama 3.1 8B Instant)
   try {
     const groqKey = process.env.GROQ_API_KEY;
