@@ -13,19 +13,30 @@ const BANK_PATTERNS: Array<{ id: string; label: string; pattern: RegExp }> = [
   { id: "kuda", label: "Kuda Bank", pattern: /\bkuda\b/i },
   { id: "palmpay", label: "PalmPay", pattern: /\bpalmpay\b/i },
   { id: "moniepoint", label: "Moniepoint", pattern: /\bmoniepoint\b/i },
-  { id: "gtbank", label: "GTBank", pattern: /\b(?:gtbank|gtb|guaranty\s*trust)\b/i },
+  { id: "gtbank", label: "GTBank", pattern: /\b(?:gtbank|gtb|guaranty\s*trust|gtco)\b/i },
   { id: "zenith", label: "Zenith Bank", pattern: /\bzenith\b/i },
-  { id: "access", label: "Access Bank", pattern: /\baccess\s*bank\b|\baccessbank\b/i },
+  { id: "access", label: "Access Bank", pattern: /\baccess\s*bank\b|\baccessbank\b|\baccess\s*more\b/i },
   { id: "uba", label: "UBA", pattern: /\buba\b|united\s*bank\s*for\s*africa/i },
-  { id: "firstbank", label: "First Bank", pattern: /\bfirst\s*bank\b|\bfirstbank\b/i },
+  { id: "firstbank", label: "First Bank", pattern: /\bfirst\s*bank\b|\bfirstbank\b|\bfirstmonie\b/i },
   { id: "stanbic", label: "Stanbic IBTC", pattern: /\bstanbic\b/i },
+  { id: "fcmb", label: "FCMB", pattern: /\bfcmb\b|first\s*city\s*monument\s*bank/i },
   { id: "fidelity", label: "Fidelity Bank", pattern: /\bfidelity\b/i },
   { id: "union", label: "Union Bank", pattern: /\bunion\s*bank\b/i },
-  { id: "wema", label: "Wema Bank", pattern: /\bwema\b/i },
+  { id: "wema", label: "Wema Bank", pattern: /\bwema\b|\balat\b/i },
   { id: "providus", label: "Providus Bank", pattern: /\bprovidus\b/i },
+  { id: "sterling", label: "Sterling Bank", pattern: /\bsterling\b/i },
+  { id: "polaris", label: "Polaris Bank", pattern: /\bpolaris\b/i },
+  { id: "keystone", label: "Keystone Bank", pattern: /\bkeystone\b/i },
+  { id: "unity", label: "Unity Bank", pattern: /\bunity\s*bank\b/i },
+  { id: "jaiz", label: "Jaiz Bank", pattern: /\bjaiz\b/i },
+  { id: "taj", label: "TAJBank", pattern: /\btaj\s*bank\b|\btajbank\b/i },
   { id: "carbon", label: "Carbon", pattern: /\bcarbon\b|\bsparkle\b/i },
-  { id: "flutterwave", label: "Flutterwave", pattern: /\bflutterwave\b/i },
+  { id: "flutterwave", label: "Flutterwave", pattern: /\bflutterwave\b|\bbarter\b/i },
   { id: "paystack", label: "Paystack", pattern: /\bpaystack\b/i },
+  { id: "squad", label: "Squad", pattern: /\bsquad\b/i },
+  { id: "chipper", label: "Chipper Cash", pattern: /\bchipper\s*cash\b/i },
+  { id: "remita", label: "Remita", pattern: /\bremita\b/i },
+  { id: "interswitch", label: "Interswitch", pattern: /\binterswitch\b|\bquickteller\b/i },
 ];
 
 function normalizeText(text: string): string {
@@ -44,21 +55,22 @@ function parseMoneyToken(raw: string): number | null {
 }
 
 /**
- * Parse a money amount near the match, skipping values that look like balances.
+ * Check if a matched number token is actually a balance rather than a transaction amount.
+ * Looks strictly in the 35-character preceding window.
  */
 function isNearBalanceKeyword(text: string, index: number): boolean {
   const windowStart = Math.max(0, index - 40);
-  const window = text.slice(windowStart, index + 10).toLowerCase();
-  return /(?:available|avail|acct|account|current|ledger|closing|opening)?\s*(?:balance|bal)\b/.test(window)
-    || /\bbal(?:ance)?\b/.test(window);
+  const lookBehind = text.slice(windowStart, index).toLowerCase();
+  return /(?:available|avail|current|ledger|closing|opening|acct|account)?\s*(?:balance|bal)\s*[:\s\-=]*$/i.test(lookBehind)
+    || /\b(?:balance|bal)\s*[:\s\-=]*$/i.test(lookBehind);
 }
 
 function extractAmount(text: string): number | null {
-  // Priority 1: explicit transaction amount labels used by Nigerian banks
+  // Priority 1: Explicit transaction amount labels used by Nigerian banking & fintech emails
   const labeledPatterns = [
-    /(?:amt|amount|debited|credited|paid|sum|value|txn\s*amt|transaction\s*amount)[:\s]*(?:of\s*)?(?:NGN|₦|N(?=[\d\s,])|USD|\$)?\s*([\d,]+\.?\d*)/gi,
-    /(?:NGN|₦)\s*([\d,]+\.?\d*)/gi,
-    /(?:debited|credited|paid|sent|received|transferred)\s+(?:with\s+)?(?:NGN|₦|N(?=[\d\s,]))\s*([\d,]+\.?\d*)/gi,
+    /(?:txn\s*amt|trans\s*amt|transaction\s*amount|total\s*amount|amount(?:\s*\([^\)]+\))?|debited|credited|paid|sum|value|transferred|received)[:\s\-=]*(?:of\s*)?(?:NGN|₦|N(?=[\d\s,])|USD|\$)?\s*([\d,]+\.?\d*)/gi,
+    /(?:credit\s*alert|debit\s*alert|transfer\s*alert)[:\s\-=]*(?:NGN|₦|N(?=[\d\s,]))?\s*([\d,]+\.?\d*)/gi,
+    /(?:debited|credited|paid|sent|received|transferred)\s+(?:with\s+)?(?:NGN|₦|N(?=[\d\s,]))?\s*([\d,]+\.?\d*)/gi,
   ];
 
   for (const pattern of labeledPatterns) {
@@ -67,20 +79,20 @@ function extractAmount(text: string): number | null {
     while ((match = pattern.exec(text)) !== null) {
       if (isNearBalanceKeyword(text, match.index)) continue;
       const amount = parseMoneyToken(match[1]);
-      if (amount !== null) return amount;
+      if (amount !== null && amount > 0) return amount;
     }
   }
 
-  // Priority 2: currency-prefixed amounts (skip balance context)
-  const currencyPattern = /(?:NGN|₦|\$|£|€)\s*([\d,]+\.\d{2}|[\d,]{3,})/gi;
+  // Priority 2: Currency-prefixed amounts (NGN 5,000.00 or ₦5,000.00)
+  const currencyPattern = /(?:NGN|₦)\s*([\d,]+\.?\d*)/gi;
   let match: RegExpExecArray | null;
   while ((match = currencyPattern.exec(text)) !== null) {
     if (isNearBalanceKeyword(text, match.index)) continue;
     const amount = parseMoneyToken(match[1]);
-    if (amount !== null) return amount;
+    if (amount !== null && amount > 0) return amount;
   }
 
-  // Priority 3: bare decimal money amounts (xx.xx) away from balance keywords
+  // Priority 3: Bare decimal money amounts (xx.xx) away from balance keywords
   const decimalPattern = /\b([\d,]+\.\d{2})\b/g;
   while ((match = decimalPattern.exec(text)) !== null) {
     if (isNearBalanceKeyword(text, match.index)) continue;
@@ -93,10 +105,8 @@ function extractAmount(text: string): number | null {
 
 function extractBalance(text: string): number | null {
   const patterns = [
-    /(?:available|avail(?:able)?)\s*(?:balance|bal)[:\s]*(?:is\s*)?([NGN₦$£€N\s]*[\d,]+\.?\d*)/i,
-    /(?:acct|account|current|ledger|closing)\s*(?:balance|bal)[:\s]*(?:is\s*)?([NGN₦$£€N\s]*[\d,]+\.?\d*)/i,
-    /(?:balance|bal)[:\s]*(?:is\s*)?([NGN₦$£€N\s]*[\d,]+\.?\d*)/i,
-    /(?:bal|balance)\s+(?:NGN|₦|N)\s*([\d,]+\.?\d*)/i,
+    /(?:available|avail(?:able)?|current|ledger|closing|opening|acct|account)?\s*(?:balance|bal)[:\s\-=]*(?:is\s*)?([NGN₦$£€N\s]*[\d,]+\.?\d*)/i,
+    /(?:bal|balance)\s*[:\s\-=]+\s*(?:NGN|₦|N)?\s*([\d,]+\.?\d*)/i,
   ];
 
   for (const pattern of patterns) {
@@ -111,14 +121,14 @@ function extractBalance(text: string): number | null {
 
 function extractDescription(text: string, from: string, bank?: string): string {
   const descMatch = text.match(
-    /(?:Desc|Description|Remarks|Narration|Merchant|To|From|Beneficiary)[:\s]+([^,\.\n]{2,60})/i
+    /(?:Desc|Description|Remarks|Narration|Merchant|To|From|Beneficiary|Recipient|Sender|Paid to|Received from|Details)[:\s\-=]+([^,\.\n]{2,80})/i
   );
   if (descMatch?.[1]?.trim()) {
-    return descMatch[1].trim().slice(0, 60);
+    return descMatch[1].trim().slice(0, 80);
   }
-  if (bank) return bank;
+  if (bank) return `${bank} Alert`;
   if (from) {
-    return from.split("<")[0].replace(/"/g, "").trim().slice(0, 40) || "Transaction";
+    return from.split("<")[0].replace(/"/g, "").trim().slice(0, 50) || "Transaction";
   }
   return "Transaction";
 }
@@ -150,6 +160,9 @@ function inferEntryType(text: string): "income" | "expense" {
     "money received",
     "you received",
     "payment received",
+    "top-up",
+    "topup",
+    "wallet topup",
   ];
 
   const expenseIndicators = [
@@ -168,14 +181,17 @@ function inferEntryType(text: string): "income" | "expense" {
     "you sent",
     "you paid",
     "money sent",
+    "fee",
+    "charge",
+    "outflow",
   ];
 
   // Subject-level signals win when both sides match (common in bank templates)
-  const subjectFirst = text.slice(0, Math.min(120, text.length)).toLowerCase();
-  if (/credit\s*alert|credited|salary\s*credit|money\s*received|you\s*received/.test(subjectFirst)) {
+  const subjectFirst = text.slice(0, Math.min(140, text.length)).toLowerCase();
+  if (/credit\s*alert|credited|salary\s*credit|money\s*received|you\s*received|payment\s*received/.test(subjectFirst)) {
     return "income";
   }
-  if (/debit\s*alert|debited|money\s*sent|you\s*sent|you\s*paid|pos\s*purchase/.test(subjectFirst)) {
+  if (/debit\s*alert|debited|money\s*sent|you\s*sent|you\s*paid|pos\s*purchase|payment\s*to/.test(subjectFirst)) {
     return "expense";
   }
 
@@ -199,10 +215,12 @@ function inferCategory(text: string, entryType: "income" | "expense", bank?: str
   }
 
   if (/(uber|bolt|indrive|transport|flight|ride|ride-hailing)/.test(normalized)) return "Transport";
-  if (/(netflix|spotify|apple|amazon prime|subscription|dstv|gotv|showmax)/.test(normalized)) return "Subscriptions";
-  if (/(food|restaurant|pizza|kfc|chicken republic|eat|chow|sweet sensation)/.test(normalized)) return "Food & Dining";
+  if (/(netflix|spotify|apple|amazon prime|subscription|dstv|gotv|showmax|youtube)/.test(normalized)) return "Subscriptions";
+  if (/(food|restaurant|pizza|kfc|chicken republic|eat|chow|sweet sensation|bukka|grill)/.test(normalized)) return "Food & Dining";
   if (/(mtn|airtel|glo|9mobile|data|airtime|recharge)/.test(normalized)) return "Phone & Data";
-  if (/(shoprite|spar|supermarket|mall|store|buy|market)/.test(normalized)) return "Shopping";
+  if (/(shoprite|spar|supermarket|mall|store|buy|market|hubmart|jumia|konga)/.test(normalized)) return "Shopping";
+  if (/(electricity|ikedc|ekedc|aedc|phed|eedc|water|waste|utility|utilities|bill)/.test(normalized)) return "Utilities";
+  if (/(hospital|pharmacy|drugs|health|clinic|medplus|healthplus)/.test(normalized)) return "Healthcare";
   if (bank) return bank;
   return "General Expense";
 }
@@ -212,7 +230,7 @@ function inferCategory(text: string, entryType: "income" | "expense", bank?: str
  * Marketing and newsletters are ignored.
  */
 function isTransactionEmail(text: string): boolean {
-  return /(debit|credit|transaction|transfer|receipt|payment|alert|credited|debited|paid|sent|received|purchase|pos|invoice|bill)/i.test(
+  return /(debit|credit|transaction|transfer|receipt|payment|alert|credited|debited|paid|sent|received|purchase|pos|invoice|bill|topup|top-up|recharge|withdrawal|deposit|inflow|outflow)/i.test(
     text
   );
 }
@@ -244,3 +262,4 @@ export function parseFinancialEmailData(
     account_balance,
   };
 }
+

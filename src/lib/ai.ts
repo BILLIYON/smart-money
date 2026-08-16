@@ -936,7 +936,7 @@ export async function extractFinancialDataFromEmail(
   aiEngine = "groq",
   options?: { enableFallback?: boolean; fallbackEngine?: string }
 ) {
-  // ── 1. LIGHTWEIGHT SEARCH MODE (Next.js regex extraction + selected AI cleaning/verification) ──
+  // ── 1. LIGHTWEIGHT SEARCH MODE (Next.js regex extraction + optional selected AI cleaning/verification) ──
   if (syncMode === "lightweight") {
     try {
       // First programmatically extract data using fast local regex parser (0 tokens, ultra-fast)
@@ -946,8 +946,9 @@ export async function extractFinancialDataFromEmail(
         return null;
       }
 
-      // Use selected AI engine (default: Groq Llama) to verify, clean and categorize the parsed details
-      const prompt = `You are a financial verification agent for Smart Money. Verify and clean this programmatically extracted bank alert details.
+      // Try AI refinement if model is reachable, but NEVER drop the transaction if AI fails
+      try {
+        const prompt = `You are a financial verification agent for Smart Money. Verify and clean this programmatically extracted bank alert details.
 
 ${aiPrompt ? `CUSTOM EXTRACTION PARAMETERS / USER INSTRUCTIONS:\n- ${aiPrompt}\n` : ""}
 
@@ -976,25 +977,36 @@ Clean and output the transaction into a valid JSON object matching this structur
 If it is not a real transaction, return:
 { "is_transaction": false }`;
 
-      const raw = await askAIWithEngine(prompt, aiEngine, options);
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (parsed.is_transaction && typeof parsed.amount_naira === "number") {
-          console.log(`[Gmail Lightweight Sync (${aiEngine})] Cleaned transaction: ₦${parsed.amount_naira} (${parsed.description})`);
-          return {
-            amount: parsed.amount_naira,
-            description: String(parsed.description || data.description || "Gmail Transaction").slice(0, 120),
-            entry_type: parsed.entry_type === "income" ? ("income" as const) : ("expense" as const),
-            category: String(parsed.category || data.category || "other"),
-            bank: parsed.bank ? String(parsed.bank) : data.bank,
-            provider: parsed.bank ? String(parsed.bank) : data.provider,
-            account_balance: typeof parsed.account_balance === "number" ? parsed.account_balance : data.account_balance,
-          };
+        const raw = await askAIWithEngine(prompt, aiEngine, options);
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (parsed.is_transaction === false) {
+            console.log(`[Gmail Lightweight Sync] Filtered non-transaction alert: "${subject}"`);
+            return null;
+          }
+          if (typeof parsed.amount_naira === "number" && parsed.amount_naira > 0) {
+            console.log(`[Gmail Lightweight Sync (${aiEngine})] Cleaned transaction: ₦${parsed.amount_naira} (${parsed.description})`);
+            return {
+              amount: parsed.amount_naira,
+              description: String(parsed.description || data.description || "Gmail Transaction").slice(0, 120),
+              entry_type: parsed.entry_type === "income" ? ("income" as const) : ("expense" as const),
+              category: String(parsed.category || data.category || "other"),
+              bank: parsed.bank ? String(parsed.bank) : data.bank,
+              provider: parsed.bank ? String(parsed.bank) : data.provider,
+              account_balance: typeof parsed.account_balance === "number" ? parsed.account_balance : data.account_balance,
+            };
+          }
         }
+      } catch (aiErr: any) {
+        console.log(`[Gmail Lightweight Sync] AI cleaning skipped (${aiErr?.message || aiErr}). Using Next.js parsed data directly.`);
       }
+
+      // 100% reliable zero-token local extracted data
+      return data;
     } catch (err) {
-      console.warn("[extractFinancialDataFromEmail] Lightweight sync cleaning error:", err);
+      console.warn("[extractFinancialDataFromEmail] Lightweight sync error:", err);
+      return null;
     }
   }
 

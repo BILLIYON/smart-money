@@ -159,7 +159,7 @@ function stripHtml(html: string): string {
     .replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, " ")
     .replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, " ")
     .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|tr|li|h[1-6])>/gi, "\n")
+    .replace(/<\/(p|div|tr|li|h[1-6]|td|th)>/gi, " \n ")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")
@@ -362,6 +362,8 @@ export async function syncGmailForUser(
   const customQuery = metadata.custom_query || "";
   const aiPrompt = metadata.ai_prompt || "";
   const aiEngine = metadata.ai_engine || "groq";
+  const enableFallback = metadata.enable_fallback !== undefined ? Boolean(metadata.enable_fallback) : true;
+  const fallbackEngine = metadata.fallback_engine || "groq";
 
   try {
     // 1. Mark as syncing
@@ -467,7 +469,15 @@ export async function syncGmailForUser(
           if (filterRules) {
             combinedPrompt += `\nStrict filter instructions: Ignore/exclude any transaction matching these filter rules: ${filterRules}`;
           }
-          const data = await extractFinancialDataFromEmail(cleanBody, email.subject, email.from, syncMode, combinedPrompt, aiEngine);
+          const data = await extractFinancialDataFromEmail(
+            cleanBody,
+            email.subject,
+            email.from,
+            syncMode,
+            combinedPrompt,
+            aiEngine,
+            { enableFallback, fallbackEngine }
+          );
           if (!data) return null;
 
           // Apply strict preset filter rules
