@@ -817,19 +817,23 @@ Respond with valid JSON only — no markdown, no explanation outside the JSON:
 // 6. extractFinancialDataFromEmail — AI-powered Gmail parsing
 // ════════════════════════════════════════════════════════════
 
-export async function askAIWithEngine(prompt: string, aiEngine = "groq"): Promise<string> {
-  const engine = (aiEngine || "groq").toLowerCase();
+export async function askAIWithEngine(
+  prompt: string,
+  aiEngine = "groq",
+  options?: { enableFallback?: boolean; fallbackEngine?: string }
+): Promise<string> {
+  const executeSingle = async (engineName: string): Promise<string> => {
+    const engine = (engineName || "groq").toLowerCase();
 
-  // 0. NVIDIA Build API (Gemma 2 27B or Llama 3.3 70B)
-  if (engine.includes("nvidia") || engine.includes("gemma") || engine.includes("nim")) {
-    const nvidiaKey = process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY;
-    if (!nvidiaKey) {
-      throw new Error("NVIDIA Build API key (NVIDIA_API_KEY) is not configured in environment variables.");
-    }
-    const model = engine.includes("llama") || engine.includes("agent") 
-      ? "meta/llama-3.3-70b-instruct" 
-      : "google/gemma-2-27b-it";
-    try {
+    // 0. NVIDIA Build API (Gemma 2 27B or Llama 3.3 70B)
+    if (engine.includes("nvidia") || engine.includes("gemma") || engine.includes("nim")) {
+      const nvidiaKey = process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY;
+      if (!nvidiaKey) {
+        throw new Error("NVIDIA Build API key (NVIDIA_API_KEY) is not configured in environment variables.");
+      }
+      const model = engine.includes("llama") || engine.includes("agent") 
+        ? "meta/llama-3.3-70b-instruct" 
+        : "google/gemma-2-27b-it";
       console.log(`[AI Engine] Calling NVIDIA Build API (${model})`);
       const response = await nvidia().chat.completions.create({
         model,
@@ -838,88 +842,89 @@ export async function askAIWithEngine(prompt: string, aiEngine = "groq"): Promis
         messages: [{ role: "user", content: prompt }],
       });
       return response.choices[0]?.message?.content || "";
-    } catch (err: any) {
-      throw new Error(`NVIDIA Build execution failed: ${err.message || err}`);
     }
-  }
 
-  // 1. Groq (Llama 3.3 70B Versatile)
-  if (engine === "groq" || engine === "llama" || engine === "groq-llama") {
-    if (!process.env.GROQ_API_KEY) {
-      throw new Error("Groq API key is not configured in environment variables.");
-    }
-    try {
-      console.log("[AI Gmail Parser] Calling user-selected engine: Groq (llama-3.3-70b-versatile)");
+    // 1. Groq (Llama 3.3 70B Versatile or 3.1 8B Instant)
+    if (engine.includes("groq") || engine.includes("llama")) {
+      if (!process.env.GROQ_API_KEY) {
+        throw new Error("Groq API key is not configured in environment variables.");
+      }
+      const modelName = engine.includes("8b") ? "llama-3.1-8b-instant" : "llama-3.3-70b-versatile";
+      console.log(`[AI Engine] Calling Groq (${modelName})`);
       const response = await groq().chat.completions.create({
-        model: "llama-3.3-70b-versatile",
+        model: modelName,
         max_tokens: 1024,
         messages: [{ role: "user", content: prompt }],
       });
       return response.choices[0]?.message?.content || "";
-    } catch (err: any) {
-      throw new Error(`Groq Llama execution failed: ${err.message || err}`);
     }
-  }
 
-  // 2. Google Gemini
-  if (engine === "gemini" || engine === "google") {
-    if (!process.env.GOOGLE_AI_API_KEY) {
-      throw new Error("Google AI (Gemini) API key is not configured in environment variables.");
-    }
-    try {
-      console.log("[AI Gmail Parser] Calling user-selected engine: Gemini (gemini-2.0-flash)");
+    // 2. Google Gemini
+    if (engine.includes("gemini") || engine.includes("google")) {
+      if (!process.env.GOOGLE_AI_API_KEY) {
+        throw new Error("Google AI (Gemini) API key is not configured in environment variables.");
+      }
+      console.log("[AI Engine] Calling Gemini (gemini-2.0-flash)");
       const model = gemini().getGenerativeModel({ model: "gemini-2.0-flash" });
       const result = await model.generateContent(prompt);
       const response = await result.response;
       return response.text();
-    } catch (err: any) {
-      throw new Error(`Gemini execution failed: ${err.message || err}`);
     }
-  }
 
-  // 3. Anthropic Claude
-  if (engine === "claude" || engine === "anthropic") {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      throw new Error("Anthropic API key is not configured in environment variables.");
-    }
-    if (depletedKeys.claude) {
-      throw new Error("Anthropic API key quota is depleted.");
-    }
-    try {
-      console.log("[AI Gmail Parser] Calling user-selected engine: Anthropic (claude-3-5-haiku-latest)");
+    // 3. Anthropic Claude
+    if (engine.includes("claude") || engine.includes("anthropic")) {
+      if (!process.env.ANTHROPIC_API_KEY) {
+        throw new Error("Anthropic API key is not configured in environment variables.");
+      }
+      if (depletedKeys.claude) {
+        throw new Error("Anthropic API key quota is depleted.");
+      }
+      console.log("[AI Engine] Calling Anthropic (claude-3-5-sonnet-20241022)");
       const response = await anthropic().messages.create({
-        model: "claude-3-5-haiku-latest",
+        model: "claude-3-5-sonnet-20241022",
         max_tokens: 512,
         messages: [{ role: "user", content: prompt }],
       });
       return response.content[0].type === "text" ? response.content[0].text : "";
-    } catch (err: any) {
-      throw new Error(`Anthropic Claude execution failed: ${err.message || err}`);
     }
-  }
 
-  // 4. OpenAI
-  if (engine === "openai" || engine === "gpt") {
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error("OpenAI API key is not configured in environment variables.");
-    }
-    if (depletedKeys.gpt4) {
-      throw new Error("OpenAI API key quota is depleted.");
-    }
-    try {
-      console.log("[AI Gmail Parser] Calling user-selected engine: OpenAI (gpt-4o-mini)");
+    // 4. OpenAI
+    if (engine.includes("openai") || engine.includes("gpt")) {
+      if (!process.env.OPENAI_API_KEY) {
+        throw new Error("OpenAI API key is not configured in environment variables.");
+      }
+      if (depletedKeys.gpt4) {
+        throw new Error("OpenAI API key quota is depleted.");
+      }
+      console.log("[AI Engine] Calling OpenAI (gpt-4o-mini)");
       const response = await openai().chat.completions.create({
         model: "gpt-4o-mini",
         max_tokens: 512,
         messages: [{ role: "user", content: prompt }],
       });
       return response.choices[0]?.message?.content || "";
-    } catch (err: any) {
-      throw new Error(`OpenAI execution failed: ${err.message || err}`);
     }
-  }
 
-  throw new Error(`Unknown or unsupported AI engine: ${aiEngine}`);
+    throw new Error(`Unknown or unsupported AI engine: ${engineName}`);
+  };
+
+  try {
+    return await executeSingle(aiEngine);
+  } catch (primaryErr: any) {
+    // If fallback is explicitly disabled, do NOT failover — throw error immediately
+    if (options?.enableFallback === false) {
+      console.warn(`[AI Engine] Primary engine ${aiEngine} failed and auto-fallback is DISABLED:`, primaryErr?.message || primaryErr);
+      throw primaryErr;
+    }
+
+    // If fallback is enabled, failover ONLY to designated fallback engine
+    const fallback = options?.fallbackEngine || (aiEngine.includes("groq") ? "gemini" : "groq-70b");
+    if (fallback && fallback !== aiEngine) {
+      console.warn(`[AI Engine] Primary engine ${aiEngine} failed. Executing designated fallback (${fallback}):`, primaryErr?.message || primaryErr);
+      return await executeSingle(fallback);
+    }
+    throw primaryErr;
+  }
 }
 
 export async function extractFinancialDataFromEmail(
@@ -928,7 +933,8 @@ export async function extractFinancialDataFromEmail(
   from: string,
   syncMode: "lightweight" | "deep" = "lightweight",
   aiPrompt = "",
-  aiEngine = "groq"
+  aiEngine = "groq",
+  options?: { enableFallback?: boolean; fallbackEngine?: string }
 ) {
   // ── 1. LIGHTWEIGHT SEARCH MODE (Next.js regex extraction + selected AI cleaning/verification) ──
   if (syncMode === "lightweight") {
@@ -970,7 +976,7 @@ Clean and output the transaction into a valid JSON object matching this structur
 If it is not a real transaction, return:
 { "is_transaction": false }`;
 
-      const raw = await askAIWithEngine(prompt, aiEngine);
+      const raw = await askAIWithEngine(prompt, aiEngine, options);
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
@@ -1018,7 +1024,7 @@ If it IS a transaction alert, extract the details into a valid JSON object match
 }`;
 
   try {
-    const raw = await askAIWithEngine(prompt, aiEngine);
+    const raw = await askAIWithEngine(prompt, aiEngine, options);
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);

@@ -195,12 +195,20 @@ function ProfileTab() {
   const [riskTolerance, setRiskTolerance] = useState("Moderate (balanced growth)");
 
   const [aiEngine, setAiEngine] = useState("groq-70b");
+  const [enableFallback, setEnableFallback] = useState(true);
+  const [fallbackEngine, setFallbackEngine] = useState("groq-70b");
 
   useEffect(() => {
     loadProfile().then(() => setLoading(false));
     if (typeof window !== "undefined") {
       const savedEngine = localStorage.getItem("databank_ai_engine") || "groq-70b";
+      const savedFallbackToggle = localStorage.getItem("databank_enable_fallback");
+      const savedFallbackEngine = localStorage.getItem("databank_fallback_engine") || "groq-70b";
       setAiEngine(savedEngine);
+      if (savedFallbackToggle !== null) {
+        setEnableFallback(savedFallbackToggle === "true");
+      }
+      setFallbackEngine(savedFallbackEngine);
     }
   }, [loadProfile]);
 
@@ -479,60 +487,170 @@ function ProfileTab() {
               <option value="ZAR">South African Rand (R)</option>
             </select>
           </div>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: "var(--green2)",
-                textTransform: "uppercase",
-                letterSpacing: ".5px",
-                marginBottom: 6,
-              }}
-            >
-              ⚡ AI Intelligence & DataBank Engine
+          <div style={{ gridColumn: "1 / -1", padding: "16px", borderRadius: "12px", background: "var(--card)", border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "14px" }}>
+            <div>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: "var(--text)",
+                  textTransform: "uppercase",
+                  letterSpacing: ".5px",
+                  marginBottom: 6,
+                }}
+              >
+                ⚡ Primary AI Intelligence &amp; DataBank Engine
+              </div>
+              <select
+                value={aiEngine}
+                onChange={async (e) => {
+                  const val = e.target.value;
+                  setAiEngine(val);
+                  if (typeof window !== "undefined") {
+                    localStorage.setItem("databank_ai_engine", val);
+                  }
+                  try {
+                    await fetch("/api/databank/gmail/settings", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ ai_engine: val, enable_fallback: enableFallback, fallback_engine: fallbackEngine }),
+                    });
+                  } catch (err) {}
+                  popup.success("Primary AI Engine Set", `Primary provider set to ${e.target.selectedOptions[0].text}`);
+                }}
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  border: "1px solid rgba(0,196,140,0.35)",
+                  borderRadius: 8,
+                  fontFamily: "inherit",
+                  fontSize: 13,
+                  color: "var(--text)",
+                  background: "var(--bg)",
+                  outline: "none",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                <option value="gemma">✨ Gemma 2 27B (NVIDIA Build API · Fast Reasoning)</option>
+                <option value="nvidia">🚀 Llama 3.3 70B (NVIDIA NIM · High-Precision Agentic)</option>
+                <option value="groq-70b">⚡ Groq Llama 3.3 70B Versatile (Fast Agentic Reasoning)</option>
+                <option value="groq-8b">⚡ Groq Llama 3.1 8B Instant (Sub-100ms Speed)</option>
+                <option value="claude">🧠 Anthropic Claude 3.5 Sonnet (Deep Document Analysis)</option>
+                <option value="gemini">🔮 Google Gemini 2.0 Flash (Multimodal Processing)</option>
+                <option value="gpt4o">🤖 OpenAI GPT-4o Mini (Standard GPT Model)</option>
+              </select>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+                The main AI model that processes your bank statements, Gmail sync, agentic actions, and finance council.
+              </div>
             </div>
-            <select
-              value={aiEngine}
-              onChange={async (e) => {
-                const val = e.target.value;
-                setAiEngine(val);
-                if (typeof window !== "undefined") {
-                  localStorage.setItem("databank_ai_engine", val);
-                }
-                try {
-                  await fetch("/api/databank/gmail/settings", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ ai_engine: val }),
-                  });
-                } catch (err) {}
-                popup.success("AI Engine Selected", `Switched primary AI provider to ${e.target.selectedOptions[0].text}`);
-              }}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                border: "1px solid rgba(0,196,140,0.35)",
-                borderRadius: 8,
-                fontFamily: "inherit",
-                fontSize: 13,
-                color: "var(--text)",
-                background: "var(--card)",
-                outline: "none",
-                cursor: "pointer",
-                fontWeight: 600,
-              }}
-            >
-              <option value="gemma">✨ Gemma 2 27B (NVIDIA Build API · Fast Reasoning)</option>
-              <option value="nvidia">🚀 Llama 3.3 70B (NVIDIA NIM · High-Precision Agentic)</option>
-              <option value="groq-70b">⚡ Groq Llama 3.3 70B Versatile (Fast Agentic Reasoning)</option>
-              <option value="groq-8b">⚡ Groq Llama 3.1 8B Instant (Sub-100ms Speed)</option>
-              <option value="claude">🧠 Anthropic Claude 3.5 Sonnet (Deep Document Analysis)</option>
-              <option value="gemini">🔮 Google Gemini 2.0 Flash (Multimodal Processing)</option>
-              <option value="gpt4o">🤖 OpenAI GPT-4o Mini (Standard GPT Model)</option>
-            </select>
-            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
-              Select which AI Provider powers your DataBank PDF statement parsing, agentic actions, and finance council.
+
+            {/* Fallback Toggle Switch */}
+            <div style={{ borderTop: "1px solid var(--border)", paddingTop: "14px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+                    🛡️ Auto-Fallback Protection
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                    {enableFallback
+                      ? "Enabled: Automatically failover to backup model if primary provider is unavailable."
+                      : "Disabled: Strictly query primary model only. No silent switching."}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const next = !enableFallback;
+                    setEnableFallback(next);
+                    if (typeof window !== "undefined") {
+                      localStorage.setItem("databank_enable_fallback", String(next));
+                    }
+                    try {
+                      await fetch("/api/databank/gmail/settings", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ ai_engine: aiEngine, enable_fallback: next, fallback_engine: fallbackEngine }),
+                      });
+                    } catch (err) {}
+                    popup.success("Fallback Setting Saved", next ? "Auto-fallback enabled" : "Strict primary model mode activated");
+                  }}
+                  style={{
+                    position: "relative",
+                    width: 44,
+                    height: 24,
+                    borderRadius: 12,
+                    background: enableFallback ? "var(--green)" : "var(--border)",
+                    border: "none",
+                    cursor: "pointer",
+                    transition: "background .2s",
+                    flexShrink: 0,
+                  }}
+                  aria-label="Toggle Auto-Fallback"
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 3,
+                      left: enableFallback ? 23 : 3,
+                      width: 18,
+                      height: 18,
+                      borderRadius: "50%",
+                      background: "#fff",
+                      transition: "left .2s",
+                      boxShadow: "0 1px 3px rgba(0,0,0,.2)",
+                    }}
+                  />
+                </button>
+              </div>
+
+              {/* Fallback Engine Selector (Visible when fallback is ON) */}
+              {enableFallback && (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 4 }}>
+                    Fallback Backup Provider
+                  </div>
+                  <select
+                    value={fallbackEngine}
+                    onChange={async (e) => {
+                      const val = e.target.value;
+                      setFallbackEngine(val);
+                      if (typeof window !== "undefined") {
+                        localStorage.setItem("databank_fallback_engine", val);
+                      }
+                      try {
+                        await fetch("/api/databank/gmail/settings", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ ai_engine: aiEngine, enable_fallback: enableFallback, fallback_engine: val }),
+                        });
+                      } catch (err) {}
+                      popup.success("Fallback Engine Set", `Backup provider set to ${e.target.selectedOptions[0].text}`);
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "8px 12px",
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      fontFamily: "inherit",
+                      fontSize: 12,
+                      color: "var(--text)",
+                      background: "var(--bg)",
+                      outline: "none",
+                      cursor: "pointer",
+                      fontWeight: 500,
+                    }}
+                  >
+                    <option value="groq-70b">⚡ Groq Llama 3.3 70B Versatile (Fast &amp; Reliable)</option>
+                    <option value="groq-8b">⚡ Groq Llama 3.1 8B Instant (Sub-100ms Speed)</option>
+                    <option value="gemini">🔮 Google Gemini 2.0 Flash (Multimodal Backup)</option>
+                    <option value="gemma">✨ Gemma 2 27B (NVIDIA Build)</option>
+                    <option value="nvidia">🚀 Llama 3.3 70B (NVIDIA NIM)</option>
+                    <option value="claude">🧠 Anthropic Claude 3.5 Sonnet</option>
+                    <option value="gpt4o">🤖 OpenAI GPT-4o Mini</option>
+                  </select>
+                </div>
+              )}
             </div>
           </div>
           <div>

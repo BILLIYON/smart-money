@@ -127,6 +127,8 @@ function GmailCard() {
   const [showSettings, setShowSettings] = useState(true);
   const [syncMode, setSyncMode] = useState<"lightweight" | "deep">("lightweight");
   const [aiEngine, setAiEngine] = useState<string>("groq");
+  const [enableFallback, setEnableFallback] = useState<boolean>(true);
+  const [fallbackEngine, setFallbackEngine] = useState<string>("groq");
   const [presetFilter, setPresetFilter] = useState<string>("all");
   
   // Custom presets list
@@ -147,6 +149,12 @@ function GmailCard() {
       if (data.metadata) {
         setSyncMode(data.metadata.sync_mode || "lightweight");
         setAiEngine(data.metadata.ai_engine || "groq");
+        if (data.metadata.enable_fallback !== undefined) {
+          setEnableFallback(Boolean(data.metadata.enable_fallback));
+        }
+        if (data.metadata.fallback_engine) {
+          setFallbackEngine(data.metadata.fallback_engine);
+        }
         const activePreset = data.metadata.preset_filter || "all";
         setPresetFilter(activePreset);
         
@@ -227,6 +235,8 @@ function GmailCard() {
         body: JSON.stringify({
           sync_mode: syncMode,
           ai_engine: aiEngine,
+          enable_fallback: enableFallback,
+          fallback_engine: fallbackEngine,
           preset_filter: presetFilter,
           presets: presets,
         }),
@@ -576,13 +586,13 @@ function GmailCard() {
           </div>
 
           {/* AI Engine Selection */}
-          <div>
-            <label className="font-semibold block mb-1" style={{ color: "var(--text)" }}>AI Parser Engine</label>
+          <div className="p-2.5 rounded-[8px] border" style={{ background: "var(--card)", borderColor: "var(--border)" }}>
+            <label className="font-semibold block mb-1 text-[11px]" style={{ color: "var(--text)" }}>Primary AI Parser Engine</label>
             <select
               value={aiEngine}
               onChange={(e) => setAiEngine(e.target.value)}
-              className="w-full p-[8px] rounded-[8px] border text-[12px] outline-none mb-1"
-              style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)" }}
+              className="w-full p-[8px] rounded-[8px] border text-[12px] outline-none mb-1.5"
+              style={{ background: "var(--bg)", color: "var(--text)", borderColor: "var(--border)" }}
             >
               <option value="gemma">✨ Gemma 2 27B (NVIDIA Build)</option>
               <option value="nvidia">🚀 Llama 3.3 70B (NVIDIA NIM)</option>
@@ -590,9 +600,63 @@ function GmailCard() {
               <option value="gemini">🌐 Gemini 2.0 Flash (Google)</option>
               <option value="claude">🧠 Claude 3.5 Haiku (Anthropic)</option>
             </select>
-            <p className="text-[10px]" style={{ color: "var(--muted)", lineHeight: 1.4 }}>
-              Select the LLM backend for alert categorization and transaction parsing.
-            </p>
+
+            {/* Auto-Fallback Toggle */}
+            <div className="flex items-center justify-between pt-2 mt-1 border-t" style={{ borderColor: "var(--border)" }}>
+              <div>
+                <span className="text-[11px] font-semibold block" style={{ color: "var(--text)" }}>🛡️ Auto-Fallback</span>
+                <span className="text-[9px]" style={{ color: "var(--muted)" }}>
+                  {enableFallback ? "Failover to backup model on error" : "Strict mode: no backup model"}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEnableFallback(!enableFallback)}
+                className="relative cursor-pointer flex-shrink-0"
+                style={{
+                  width: 36,
+                  height: 20,
+                  borderRadius: 10,
+                  background: enableFallback ? "var(--green)" : "var(--border)",
+                  border: "none",
+                  transition: "background .2s",
+                }}
+              >
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 2,
+                    left: enableFallback ? 18 : 2,
+                    width: 16,
+                    height: 16,
+                    borderRadius: "50%",
+                    background: "#fff",
+                    transition: "left .2s",
+                  }}
+                />
+              </button>
+            </div>
+
+            {/* Fallback Engine Selector (when enabled) */}
+            {enableFallback && (
+              <div className="mt-2 pt-2 border-t" style={{ borderColor: "var(--border)" }}>
+                <label className="text-[10px] font-semibold block mb-1 uppercase tracking-[.4px]" style={{ color: "var(--muted)" }}>
+                  Backup Provider
+                </label>
+                <select
+                  value={fallbackEngine}
+                  onChange={(e) => setFallbackEngine(e.target.value)}
+                  className="w-full p-[6px] rounded-[6px] border text-[11px] outline-none"
+                  style={{ background: "var(--bg)", color: "var(--text)", borderColor: "var(--border)" }}
+                >
+                  <option value="groq">⚡ Groq Llama 3.3 70B (Fast Backup)</option>
+                  <option value="gemini">🌐 Gemini 2.0 Flash (Multimodal)</option>
+                  <option value="gemma">✨ Gemma 2 27B (NVIDIA Build)</option>
+                  <option value="nvidia">🚀 Llama 3.3 70B (NVIDIA NIM)</option>
+                  <option value="claude">🧠 Claude 3.5 Haiku</option>
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Preset Filters */}

@@ -187,57 +187,46 @@ import OpenAI from "openai";
 
 export const maxDuration = 60;
 
-/** AI Fallback Parser supporting Groq (Llama 3.3 70B / 3.1 8B), Claude 3.5 Sonnet, Gemini 2.0 Flash & OpenAI */
-async function parsePdfWithAI(pdfText: string, preferredEngine?: string, rawBuffer?: Buffer): Promise<ParsedTransaction[]> {
+/** AI Fallback Parser supporting configurable Primary Engine and explicit Fallback control */
+async function parsePdfWithAI(
+  pdfText: string,
+  preferredEngine = "nvidia",
+  rawBuffer?: Buffer,
+  options?: { enableFallback?: boolean; fallbackEngine?: string }
+): Promise<ParsedTransaction[]> {
   const hasText = pdfText && pdfText.trim().length > 50;
 
-  // NOTE: We ask for amounts in NAIRA (not kobo) because LLMs reliably return
-  // naira values. We then multiply by 100 ourselves to convert to kobo for DB storage.
   const textPrompt = `Extract ALL bank transaction entries from this bank statement. Return ONLY a valid JSON array with no extra text:
 [
   {
     "description": "narration or details of transaction",
     "amount_naira": number (POSITIVE for credits/deposits/income, NEGATIVE for debits/withdrawals/expenses. Use the actual naira value from the statement e.g. 50000 for ₦50,000 credit, -15000 for ₦15,000 debit),
     "date": "YYYY-MM-DD",
-    "category": "income" | "transport" | "food" | "subscriptions" | "transfer" | "utilities" | "other"
+    "category": "Food|Transport|Utilities|Income|Transfer|Entertainment|Healthcare|Education|Shopping|Investment|Personal Care|Other"
   }
 ]
-IMPORTANT: Every entry in the statement must appear. Do NOT skip any transaction.
-Bank Statement Text:
-${pdfText.slice(0, 25000)}`;
 
-  const pdfPrompt = `Extract ALL bank transaction entries from this Nigerian bank statement PDF. Return ONLY a valid JSON array:
-[
-  {
-    "description": "narration or details",
-    "amount_naira": number (POSITIVE for credits/deposits, NEGATIVE for debits/withdrawals. Use actual naira value e.g. 50000 for ₦50,000),
-    "date": "YYYY-MM-DD",
-    "category": "income" | "transport" | "food" | "subscriptions" | "transfer" | "utilities" | "other"
-  }
-]
-IMPORTANT: Extract every single transaction row visible in the statement.`;
+Statement text:
+${pdfText.slice(0, 14000)}`;
+
+  const pdfPrompt = `You are a Nigerian banking statement parser. Extract ALL transaction records from this attached bank statement.
+Return ONLY a valid JSON array of objects with keys: "description" (string), "amount_naira" (number: positive for credits, negative for debits), "date" (YYYY-MM-DD), "category" (string). No markdown, no commentary.`;
 
   const prompt = hasText ? textPrompt : pdfPrompt;
 
-  // Parse AI JSON response — amounts come back in naira, we convert to kobo (*100)
   const parseAIResponse = (text: string): ParsedTransaction[] => {
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) return [];
     try {
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map((item) => {
-          // Support both amount_naira (new) and amount (legacy kobo fallback)
-          let amountKobo: number;
-          if (item.amount_naira !== undefined) {
-            // AI returned naira — convert to kobo
-            amountKobo = Math.round(Number(item.amount_naira) * 100);
-          } else {
-            // Legacy: AI returned raw amount — detect if it looks like naira or kobo
-            const raw = Math.round(Number(item.amount) || 0);
-            // If the absolute value is small (< 50000) it's likely naira, not kobo
-            // ₦500 naira = 50000 kobo. If raw < 50000, assume naira and convert.
-            amountKobo = Math.abs(raw) < 50000 ? raw * 100 : raw;
+      const match = text.match(/\[[\s\S]*\]/);
+      if (match) {
+        const raw = JSON.parse(match[0]);
+        if (!Array.isArray(raw)) return [];
+        return raw.map((item: any) => {
+          let amountKobo = 0;
+          if (typeof item.amount_naira === "number") {
+            amountKobo = Math.round(item.amount_naira * 100);
+          } else if (typeof item.amount === "number") {
+            const rawAmt = item.amount;
+            amountKobo = Math.abs(rawAmt) < 50000 ? Math.round(rawAmt * 100) : Math.round(rawAmt);
           }
           return {
             description: String(item.description || "Bank Transaction").slice(0, 120),
@@ -251,15 +240,20 @@ IMPORTANT: Extract every single transaction row visible in the statement.`;
     return [];
   };
 
-  // Strategy 0: NVIDIA Build API (Gemma 2 27B / Llama 3.3 70B NIM)
-  const nvidiaKey = process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY;
-  if (nvidiaKey && (preferredEngine?.includes("nvidia") || preferredEngine?.includes("gemma") || !process.env.GROQ_API_KEY)) {
-    try {
+  const executeEngine = async (engineName: string): Promise<ParsedTransaction[]> => {
+    const engine = (engineName || "nvidia").toLowerCase();
+
+    // 1. NVIDIA Build / NIM API (Gemma 2 27B / Llama 3.3 70B)
+    if (engine.includes("nvidia") || engine.includes("gemma") || engine.includes("nim")) {
+      const nvidiaKey = process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY;
+      if (!nvidiaKey) {
+        throw new Error("NVIDIA Build API key (NVIDIA_API_KEY) is not configured in environment variables.");
+      }
       const nvidiaClient = new OpenAI({
         apiKey: nvidiaKey,
         baseURL: "https://integrate.api.nvidia.com/v1",
       });
-      const modelName = preferredEngine?.includes("gemma") ? "google/gemma-2-27b-it" : "meta/llama-3.3-70b-instruct";
+      const modelName = engine.includes("gemma") ? "google/gemma-2-27b-it" : "meta/llama-3.3-70b-instruct";
       const response = await nvidiaClient.chat.completions.create({
         model: modelName,
         messages: [{ role: "user", content: prompt }],
@@ -271,17 +265,17 @@ IMPORTANT: Extract every single transaction row visible in the statement.`;
         console.log(`[/api/databank/upload] NVIDIA NIM (${modelName}) extracted ${results.length} transactions`);
         return results;
       }
-    } catch (err) {
-      console.warn("[/api/databank/upload] NVIDIA NIM API extraction warning:", err);
+      return [];
     }
-  }
 
-  // Strategy 1: Groq API (Llama 3.3 70B Versatile or Llama 3.1 8B Instant)
-  try {
-    const groqKey = process.env.GROQ_API_KEY;
-    if (groqKey) {
+    // 2. Groq (Llama 3.3 70B / 3.1 8B)
+    if (engine.includes("groq") || engine.includes("llama")) {
+      const groqKey = process.env.GROQ_API_KEY;
+      if (!groqKey) {
+        throw new Error("Groq API key is not configured in environment variables.");
+      }
       const groq = new Groq({ apiKey: groqKey });
-      const modelName = preferredEngine === "groq-8b" ? "llama-3.1-8b-instant" : "llama-3.3-70b-versatile";
+      const modelName = engine.includes("8b") ? "llama-3.1-8b-instant" : "llama-3.3-70b-versatile";
       const response = await groq.chat.completions.create({
         model: modelName,
         messages: [{ role: "user", content: prompt }],
@@ -292,23 +286,21 @@ IMPORTANT: Extract every single transaction row visible in the statement.`;
         console.log(`[/api/databank/upload] Groq (${modelName}) extracted ${results.length} transactions`);
         return results;
       }
+      return [];
     }
-  } catch (err) {
-    console.warn("[/api/databank/upload] Groq API extraction warning:", err);
-  }
 
-  // Strategy 2: Anthropic Claude 3.5 Sonnet API
-  // If PDF text is available, send as text. If not, send the PDF as base64 via vision.
-  try {
-    const claudeKey = process.env.ANTHROPIC_API_KEY;
-    if (claudeKey) {
+    // 3. Anthropic Claude 3.5 Sonnet
+    if (engine.includes("claude") || engine.includes("anthropic")) {
+      const claudeKey = process.env.ANTHROPIC_API_KEY;
+      if (!claudeKey) {
+        throw new Error("Anthropic API key is not configured in environment variables.");
+      }
       const anthropic = new Anthropic({ apiKey: claudeKey });
       let messageContent: Anthropic.MessageParam["content"];
 
       if (hasText) {
         messageContent = prompt;
       } else if (rawBuffer) {
-        // Use Claude's document API with base64 PDF
         messageContent = [
           {
             type: "document" as const,
@@ -318,10 +310,7 @@ IMPORTANT: Extract every single transaction row visible in the statement.`;
               data: rawBuffer.toString("base64"),
             },
           },
-          {
-            type: "text" as const,
-            text: pdfPrompt,
-          },
+          { type: "text" as const, text: pdfPrompt },
         ];
       } else {
         messageContent = prompt;
@@ -338,36 +327,26 @@ IMPORTANT: Extract every single transaction row visible in the statement.`;
         console.log(`[/api/databank/upload] Claude extracted ${results.length} transactions`);
         return results;
       }
+      return [];
     }
-  } catch (err) {
-    console.warn("[/api/databank/upload] Claude API extraction warning:", err);
-  }
 
-  // Strategy 3: Google Gemini 2.0 Flash (with File API for PDFs)
-  try {
-    const geminiKey = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
-    if (geminiKey) {
+    // 4. Google Gemini 2.0 Flash
+    if (engine.includes("gemini") || engine.includes("google")) {
+      const geminiKey = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
+      if (!geminiKey) {
+        throw new Error("Google AI (Gemini) API key is not configured in environment variables.");
+      }
       const genAI = new GoogleGenerativeAI(geminiKey);
-      // Use gemini-2.0-flash (gemini-1.5-flash is deprecated/404)
       const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
       let geminiContent: Parameters<typeof model.generateContent>[0];
-
       if (!hasText && rawBuffer) {
-        // Use inline PDF data with Gemini's multimodal support
         geminiContent = {
           contents: [{
             role: "user",
             parts: [
-              {
-                inlineData: {
-                  mimeType: "application/pdf",
-                  data: rawBuffer.toString("base64"),
-                },
-              },
-              {
-                text: pdfPrompt,
-              },
+              { inlineData: { mimeType: "application/pdf", data: rawBuffer.toString("base64") } },
+              { text: pdfPrompt },
             ],
           }],
         };
@@ -382,15 +361,15 @@ IMPORTANT: Extract every single transaction row visible in the statement.`;
         console.log(`[/api/databank/upload] Gemini extracted ${results.length} transactions`);
         return results;
       }
+      return [];
     }
-  } catch (err) {
-    console.warn("[/api/databank/upload] Gemini API extraction fallback warning:", err);
-  }
 
-  // Strategy 4: OpenAI API Fallback (text only — skip if quota error likely)
-  try {
-    const openaiKey = process.env.OPENAI_API_KEY;
-    if (openaiKey && hasText) {
+    // 5. OpenAI
+    if (engine.includes("openai") || engine.includes("gpt")) {
+      const openaiKey = process.env.OPENAI_API_KEY;
+      if (!openaiKey) {
+        throw new Error("OpenAI API key is not configured in environment variables.");
+      }
       const client = new OpenAI({ apiKey: openaiKey });
       const response = await client.chat.completions.create({
         model: "gpt-4o-mini",
@@ -402,9 +381,38 @@ IMPORTANT: Extract every single transaction row visible in the statement.`;
         console.log(`[/api/databank/upload] OpenAI extracted ${results.length} transactions`);
         return results;
       }
+      return [];
     }
-  } catch (err) {
-    console.warn("[/api/databank/upload] OpenAI API extraction fallback warning:", err);
+
+    throw new Error(`Unsupported AI engine: ${engineName}`);
+  };
+
+  // Try primary requested engine
+  try {
+    const results = await executeEngine(preferredEngine);
+    if (results.length > 0) return results;
+  } catch (primaryErr: any) {
+    console.warn(`[/api/databank/upload] Primary AI engine (${preferredEngine}) error:`, primaryErr?.message || primaryErr);
+    if (options?.enableFallback === false) {
+      throw primaryErr;
+    }
+  }
+
+  // If fallback is explicitly disabled, do NOT failover
+  if (options?.enableFallback === false) {
+    return [];
+  }
+
+  // If fallback is enabled, try designated fallback engine
+  const fallback = options?.fallbackEngine || (preferredEngine.includes("groq") ? "gemini" : "groq-70b");
+  if (fallback && fallback !== preferredEngine) {
+    try {
+      console.log(`[/api/databank/upload] Executing designated fallback AI engine (${fallback})`);
+      const fallbackResults = await executeEngine(fallback);
+      if (fallbackResults.length > 0) return fallbackResults;
+    } catch (fbErr: any) {
+      console.warn(`[/api/databank/upload] Fallback AI engine (${fallback}) error:`, fbErr?.message || fbErr);
+    }
   }
 
   return [];
@@ -578,9 +586,11 @@ export async function POST(req: Request) {
       // Tier 4 (AI): Always fire AI if regex found 0 results.
       // Pass raw buffer as base64 so Gemini File API / Claude can read the actual PDF bytes.
       if (!transactions.length) {
-        const preferredEngine = (formData.get("aiEngine") as string) || "claude";
-        console.log(`[/api/databank/upload] Triggering AI PDF Parser (${preferredEngine}). pdfText length: ${pdfText.length}`);
-        transactions = await parsePdfWithAI(pdfText, preferredEngine, buffer);
+        const preferredEngine = (formData.get("aiEngine") as string) || "nvidia";
+        const enableFallback = formData.get("enableFallback") !== "false";
+        const fallbackEngine = (formData.get("fallbackEngine") as string) || "groq-70b";
+        console.log(`[/api/databank/upload] Triggering AI PDF Parser (Primary: ${preferredEngine}, Fallback: ${enableFallback ? fallbackEngine : "DISABLED"}). pdfText length: ${pdfText.length}`);
+        transactions = await parsePdfWithAI(pdfText, preferredEngine, buffer, { enableFallback, fallbackEngine });
       }
     } else if (fileName.endsWith(".csv")) {
       const text = buffer.toString("utf-8");
