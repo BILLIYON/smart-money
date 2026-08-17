@@ -253,7 +253,7 @@ Return ONLY a valid JSON array of objects with keys: "description" (string), "am
         apiKey: nvidiaKey,
         baseURL: "https://integrate.api.nvidia.com/v1",
       });
-      const modelName = engine.includes("gemma") ? "google/gemma-2-27b-it" : "meta/llama-3.3-70b-instruct";
+      const modelName = engine.includes("gemma") ? "google/gemma-4-31b-it" : "meta/llama-3.3-70b-instruct";
       const response = await nvidiaClient.chat.completions.create({
         model: modelName,
         messages: [{ role: "user", content: prompt }],

@@ -89,7 +89,7 @@ export async function POST(req: Request) {
 
   // If NVIDIA / Gemma selected and key available, stream directly from NVIDIA NIM
   if ((selectedModel.includes("nvidia") || selectedModel.includes("gemma")) && hasNvidiaKey) {
-    const modelName = selectedModel.includes("gemma") ? "google/gemma-2-27b-it" : "meta/llama-3.3-70b-instruct";
+    const modelName = selectedModel.includes("gemma") ? "google/gemma-4-31b-it" : "meta/llama-3.3-70b-instruct";
     try {
       const response = await getNvidia().chat.completions.create({
         model: modelName,
@@ -155,7 +155,7 @@ export async function POST(req: Request) {
     if (hasNvidiaKey) {
       try {
         const response = await getNvidia().chat.completions.create({
-          model: "google/gemma-2-27b-it",
+          model: "google/gemma-4-31b-it",
           messages: [{ role: "system", content: system }, ...messages],
           temperature: 0.6,
           max_tokens: 256,

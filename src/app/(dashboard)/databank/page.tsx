@@ -594,7 +594,7 @@ function GmailCard() {
               className="w-full p-[8px] rounded-[8px] border text-[12px] outline-none mb-1.5"
               style={{ background: "var(--bg)", color: "var(--text)", borderColor: "var(--border)" }}
             >
-              <option value="gemma">✨ Gemma 2 27B (NVIDIA Build)</option>
+              <option value="gemma">✨ Gemma 4 31B (NVIDIA Build)</option>
               <option value="nvidia">🚀 Llama 3.3 70B (NVIDIA NIM)</option>
               <option value="groq">⚡ Llama 3.3 70B (Groq)</option>
               <option value="gemini">🌐 Gemini 2.0 Flash (Google)</option>
@@ -651,7 +651,7 @@ function GmailCard() {
                 >
                   <option value="groq">⚡ Groq Llama 3.3 70B (Fast Backup)</option>
                   <option value="gemini">🌐 Gemini 2.0 Flash (Multimodal)</option>
-                  <option value="gemma">✨ Gemma 2 27B (NVIDIA Build)</option>
+                  <option value="gemma">✨ Gemma 4 31B (NVIDIA Build)</option>
                   <option value="nvidia">🚀 Llama 3.3 70B (NVIDIA NIM)</option>
                   <option value="claude">🧠 Claude 3.5 Haiku</option>
                 </select>

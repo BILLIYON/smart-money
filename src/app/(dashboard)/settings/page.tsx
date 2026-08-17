@@ -532,7 +532,7 @@ function ProfileTab() {
                   fontWeight: 600,
                 }}
               >
-                <option value="gemma">✨ Gemma 2 27B (NVIDIA Build API · Fast Reasoning)</option>
+                <option value="gemma">✨ Gemma 4 31B (NVIDIA Build API · Frontier Reasoning)</option>
                 <option value="nvidia">🚀 Llama 3.3 70B (NVIDIA NIM · High-Precision Agentic)</option>
                 <option value="groq-70b">⚡ Groq Llama 3.3 70B Versatile (Fast Agentic Reasoning)</option>
                 <option value="groq-8b">⚡ Groq Llama 3.1 8B Instant (Sub-100ms Speed)</option>
@@ -644,7 +644,7 @@ function ProfileTab() {
                     <option value="groq-70b">⚡ Groq Llama 3.3 70B Versatile (Fast &amp; Reliable)</option>
                     <option value="groq-8b">⚡ Groq Llama 3.1 8B Instant (Sub-100ms Speed)</option>
                     <option value="gemini">🔮 Google Gemini 2.0 Flash (Multimodal Backup)</option>
-                    <option value="gemma">✨ Gemma 2 27B (NVIDIA Build)</option>
+                    <option value="gemma">✨ Gemma 4 31B (NVIDIA Build)</option>
                     <option value="nvidia">🚀 Llama 3.3 70B (NVIDIA NIM)</option>
                     <option value="claude">🧠 Anthropic Claude 3.5 Sonnet</option>
                     <option value="gpt4o">🤖 OpenAI GPT-4o Mini</option>

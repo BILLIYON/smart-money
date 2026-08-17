@@ -465,7 +465,7 @@ export async function sendMessage(params: {
     try {
       console.log(`[AI] Attempting stream with model: ${modelName}`);
       if (modelName === "gemma") {
-        return await streamNvidia(system, messages, "google/gemma-2-27b-it");
+        return await streamNvidia(system, messages, "google/gemma-4-31b-it");
       } else if (modelName === "nvidia") {
         return await streamNvidia(system, messages, "meta/llama-3.3-70b-instruct");
       } else if (modelName === "groq") {
@@ -556,7 +556,7 @@ async function streamGemini(
   messages: Message[]
 ): Promise<ReadableStream<Uint8Array>> {
   const model = gemini().getGenerativeModel({
-    model: "gemini-2.5-flash",
+    model: "gemini-2.0-flash",
     systemInstruction: system,
   });
 
@@ -582,11 +582,11 @@ async function streamGemini(
   });
 }
 
-// ── NVIDIA Build (Gemma 2 27B / Llama 3.3 70B NIM) ───────────
+// ── NVIDIA Build (Gemma 4 31B / Llama 3.3 70B NIM) ───────────
 async function streamNvidia(
   system: string,
   messages: Message[],
-  modelName = "google/gemma-2-27b-it"
+  modelName = "google/gemma-4-31b-it"
 ): Promise<ReadableStream<Uint8Array>> {
   const response = await nvidia().chat.completions.create({
     model: modelName,
@@ -657,13 +657,13 @@ export async function sendGroupMessage(params: {
 // ════════════════════════════════════════════════════════════
 
 async function askAI(prompt: string, fallbackModel = "claude-3-5-haiku-latest"): Promise<string> {
-  // Strategy 0: NVIDIA Build (Gemma 2 27B / Llama 3.3 70B)
+  // Strategy 0: NVIDIA Build (Gemma 4 31B / Llama 3.3 70B)
   const nvidiaKey = process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY;
   if (nvidiaKey) {
     try {
-      console.log("[AI] Attempting completion with NVIDIA Build: google/gemma-2-27b-it");
+      console.log("[AI] Attempting completion with NVIDIA Build: google/gemma-4-31b-it");
       const response = await nvidia().chat.completions.create({
-        model: "google/gemma-2-27b-it",
+        model: "google/gemma-4-31b-it",
         max_tokens: 1024,
         temperature: 0.4,
         messages: [{ role: "user", content: prompt }],
@@ -825,7 +825,7 @@ export async function askAIWithEngine(
   const executeSingle = async (engineName: string): Promise<string> => {
     const engine = (engineName || "groq").toLowerCase();
 
-    // 0. NVIDIA Build API (Gemma 2 27B or Llama 3.3 70B)
+    // 0. NVIDIA Build API (Gemma 4 31B or Llama 3.3 70B)
     if (engine.includes("nvidia") || engine.includes("gemma") || engine.includes("nim")) {
       const nvidiaKey = process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY;
       if (!nvidiaKey) {
@@ -833,7 +833,7 @@ export async function askAIWithEngine(
       }
       const model = engine.includes("llama") || engine.includes("agent") 
         ? "meta/llama-3.3-70b-instruct" 
-        : "google/gemma-2-27b-it";
+        : "google/gemma-4-31b-it";
       console.log(`[AI Engine] Calling NVIDIA Build API (${model})`);
       const response = await nvidia().chat.completions.create({
         model,
