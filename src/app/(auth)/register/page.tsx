@@ -61,29 +61,33 @@ function RegisterForm() {
 
     setLoading(true);
 
-    const { data, error: authError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: fullName },
-        emailRedirectTo: `${location.origin}/auth/callback`,
-      },
-    });
+    try {
+      const { data, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: fullName },
+          emailRedirectTo: `${location.origin}/auth/callback`,
+        },
+      });
 
-    if (authError) {
-      setError(authError.message);
-      setLoading(false);
-      return;
-    }
+      if (authError) {
+        setError(authError.message);
+        setLoading(false);
+        return;
+      }
 
-    // Supabase may require email confirmation — check if session was created
-    if (data.session) {
-      // Auto-confirmed (e.g. email auth disabled in Supabase settings)
-      router.push("/");
-      router.refresh();
-    } else {
-      // Email confirmation required — show success state
-      setSuccess(true);
+      // Supabase may require email confirmation — check if session was created
+      if (data.session) {
+        const next = searchParams.get("next") ?? "/";
+        router.push(next);
+        router.refresh();
+      } else {
+        setSuccess(true);
+        setLoading(false);
+      }
+    } catch (err: any) {
+      setError(err?.message || "Unable to connect to authentication server. Please check your internet connection.");
       setLoading(false);
     }
   }

@@ -226,6 +226,11 @@ function cleanQueryForGmail(query: string): string {
 }
 
 function parseQueryToFilter(query: string): string {
+  if (!query || !query.trim()) return "";
+  
+  // If query contains complex Gmail syntax like subject:(...) or OR clauses, don't generate include filters from every term
+  const hasComplexSyntax = /\bOR\b|subject:|\(|"/i.test(query);
+
   const includes: string[] = [];
   const excludes: string[] = [];
   
@@ -260,7 +265,7 @@ function parseQueryToFilter(query: string): string {
         }
         skipNext = true;
       }
-    } else {
+    } else if (!hasComplexSyntax) {
       const val = current.replace(/["()]/g, "").trim().toLowerCase();
       if (val && val !== "or" && val !== "and" && !val.includes("subject:") && !val.includes("from:") && !val.includes("to:") && !val.includes("label:") && !val.includes("has:")) {
         includes.push(val);
@@ -386,9 +391,14 @@ export async function syncGmailForUser(
     const presets = (metadata.presets || DEFAULT_PRESETS) as Array<{ id: string; label: string; query: string; filter: string }>;
     const activePreset = presets.find((p) => p.id === presetFilter) || presets.find((p) => p.id === "all") || presets[0];
 
-    const rawQuery = activePreset ? activePreset.query : DEFAULT_PRESETS[0].query;
-    const { query: cleanedTerms, filter: aiFilterRules } = await translateNaturalLanguageQuery(rawQuery, aiEngine);
-    const filterRules = aiFilterRules || (activePreset ? activePreset.filter : "");
+    let cleanedTerms = activePreset ? activePreset.query : DEFAULT_PRESETS[0].query;
+    let filterRules = activePreset ? activePreset.filter : "";
+
+    if (customQuery && customQuery.trim()) {
+      const { query: translatedQuery, filter: aiFilterRules } = await translateNaturalLanguageQuery(customQuery, aiEngine);
+      cleanedTerms = translatedQuery || cleanedTerms;
+      filterRules = aiFilterRules || filterRules;
+    }
 
     const lastSyncDate = new Date(lastSync * 1000).toISOString().split("T")[0];
     const queries = [
@@ -482,37 +492,42 @@ export async function syncGmailForUser(
 
           // Apply strict preset filter rules
           if (filterRules) {
-            const rules = filterRules.split(",").map((r) => r.trim().toLowerCase());
-            let isMatch = true;
-            const bankName = (data.bank || data.provider || "").toLowerCase();
-            const desc = (data.description || "").toLowerCase();
-            const subjectLower = email.subject.toLowerCase();
-            const bodyLower = cleanBody.toLowerCase();
+            const rules = filterRules.split(",").map((r) => r.trim().toLowerCase()).filter(Boolean);
+            if (rules.length > 0) {
+              const bankName = (data.bank || data.provider || "").toLowerCase();
+              const desc = (data.description || "").toLowerCase();
+              const subjectLower = email.subject.toLowerCase();
+              const bodyLower = cleanBody.toLowerCase();
 
-            for (const rule of rules) {
-              if (rule.startsWith("exclude:")) {
-                const target = rule.substring(8).trim();
-                if (target && (bankName.includes(target) || desc.includes(target) || subjectLower.includes(target) || bodyLower.includes(target))) {
-                  isMatch = false;
-                  break;
-                }
-              } else if (rule.startsWith("include:")) {
-                const target = rule.substring(8).trim();
-                if (target && (!bankName.includes(target) && !desc.includes(target) && !subjectLower.includes(target) && !bodyLower.includes(target))) {
-                  isMatch = false;
-                  break;
-                }
-              } else {
-                if (rule && !bankName.includes(rule) && !desc.includes(rule) && !subjectLower.includes(rule) && !bodyLower.includes(rule)) {
-                  isMatch = false;
-                  break;
+              const matchTarget = (target: string) =>
+                target && (bankName.includes(target) || desc.includes(target) || subjectLower.includes(target) || bodyLower.includes(target));
+
+              const excludeRules = rules.filter((r) => r.startsWith("exclude:"));
+              const includeRules = rules.filter((r) => !r.startsWith("exclude:"));
+
+              // Reject if any exclude rule matches
+              const hasExcludeMatch = excludeRules.some((r) => {
+                const target = r.startsWith("exclude:") ? r.substring(8).trim() : r;
+                return matchTarget(target);
+              });
+
+              if (hasExcludeMatch) {
+                console.log(`[Gmail Sync] Excluded transaction from "${email.subject}" due to exclude rule in: ${filterRules}`);
+                return null;
+              }
+
+              // Require at least one include rule to match if include rules exist (OR logic)
+              if (includeRules.length > 0) {
+                const hasIncludeMatch = includeRules.some((r) => {
+                  const target = r.startsWith("include:") ? r.substring(8).trim() : r;
+                  return matchTarget(target);
+                });
+
+                if (!hasIncludeMatch) {
+                  console.log(`[Gmail Sync] Strictly filtered out transaction from "${email.subject}" due to rule: ${filterRules}`);
+                  return null;
                 }
               }
-            }
-
-            if (!isMatch) {
-              console.log(`[Gmail Sync] Strictly filtered out transaction from "${email.subject}" due to rule: ${filterRules}`);
-              return null;
             }
           }
 

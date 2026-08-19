@@ -556,7 +556,7 @@ async function streamGemini(
   messages: Message[]
 ): Promise<ReadableStream<Uint8Array>> {
   const model = gemini().getGenerativeModel({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.5-flash",
     systemInstruction: system,
   });
 
@@ -705,9 +705,9 @@ async function askAI(prompt: string, fallbackModel = "claude-3-5-haiku-latest"):
     }
   }
 
-  // Strategy 3: Google Gemini 2.0 Flash (was 1.5-flash/2.5-flash)
-  console.log("[AI] Attempting completion with Gemini: gemini-2.0-flash");
-  const model = gemini().getGenerativeModel({ model: "gemini-2.0-flash" });
+  // Strategy 3: Google Gemini 2.5 Flash
+  console.log("[AI] Attempting completion with Gemini: gemini-2.5-flash");
+  const model = gemini().getGenerativeModel({ model: "gemini-2.5-flash" });
   const result = await model.generateContent(prompt);
   const response = await result.response;
   return response.text();
@@ -864,8 +864,8 @@ export async function askAIWithEngine(
       if (!process.env.GOOGLE_AI_API_KEY) {
         throw new Error("Google AI (Gemini) API key is not configured in environment variables.");
       }
-      console.log("[AI Engine] Calling Gemini (gemini-2.0-flash)");
-      const model = gemini().getGenerativeModel({ model: "gemini-2.0-flash" });
+      console.log("[AI Engine] Calling Gemini (gemini-2.5-flash)");
+      const model = gemini().getGenerativeModel({ model: "gemini-2.5-flash" });
       const result = await model.generateContent(prompt);
       const response = await result.response;
       return response.text();

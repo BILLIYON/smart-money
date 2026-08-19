@@ -53,6 +53,11 @@ const DEFAULT_PRESETS = [
 ];
 
 function parseQueryToFilter(query: string): string {
+  if (!query || !query.trim()) return "";
+  
+  // If query contains complex Gmail syntax like subject:(...) or OR clauses, don't generate include filters from every term
+  const hasComplexSyntax = /\bOR\b|subject:|\(|"/i.test(query);
+
   const includes: string[] = [];
   const excludes: string[] = [];
   
@@ -89,7 +94,7 @@ function parseQueryToFilter(query: string): string {
         }
         skipNext = true;
       }
-    } else {
+    } else if (!hasComplexSyntax) {
       const val = current.replace(/["()]/g, "").trim().toLowerCase();
       if (val && val !== "or" && val !== "and" && !val.includes("subject:") && !val.includes("from:") && !val.includes("to:") && !val.includes("label:") && !val.includes("has:")) {
         includes.push(val);

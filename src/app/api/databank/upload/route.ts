@@ -337,7 +337,7 @@ Return ONLY a valid JSON array of objects with keys: "description" (string), "am
         throw new Error("Google AI (Gemini) API key is not configured in environment variables.");
       }
       const genAI = new GoogleGenerativeAI(geminiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       let geminiContent: Parameters<typeof model.generateContent>[0];
       if (!hasText && rawBuffer) {

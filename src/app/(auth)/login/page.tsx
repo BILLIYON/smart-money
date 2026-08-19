@@ -47,20 +47,25 @@ function LoginForm() {
     setError(null);
     setLoading(true);
 
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (authError) {
-      setError(authError.message);
+      if (authError) {
+        setError(authError.message);
+        setLoading(false);
+        return;
+      }
+
+      const next = searchParams.get("next") ?? "/";
+      router.push(next);
+      router.refresh();
+    } catch (err: any) {
+      setError(err?.message || "Unable to connect to authentication server. Please check your internet connection.");
       setLoading(false);
-      return;
     }
-
-    const next = searchParams.get("next") ?? "/";
-    router.push(next);
-    router.refresh();
   }
 
   function handleGoogle() {
