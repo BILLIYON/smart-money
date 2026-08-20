@@ -1,12 +1,11 @@
-import { getBuddy, ALL_BUDDIES, type Buddy, type BuddyCategory } from "@/lib/buddies";
+import { getBuddy, type Buddy, type BuddyCategory } from "@/lib/buddies";
 import { BuddyProfile } from "@/components/buddy/BuddyProfile";
 import { notFound } from "next/navigation";
-import { getCommunityBuddyById } from "@/lib/db";
+import { getApprovedCommunityBuddies, getCommunityBuddyById } from "@/lib/db";
 
-// Pre-render pages for hardcoded buddies at build time;
-// dynamicParams = true lets DB buddies be rendered on-demand (SSR)
-export function generateStaticParams() {
-  return ALL_BUDDIES.map((b) => ({ id: b.id }));
+export async function generateStaticParams() {
+  const buddies = await getApprovedCommunityBuddies();
+  return buddies.map((b) => ({ id: b.id }));
 }
 export const dynamicParams = true;
 

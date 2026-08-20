@@ -105,17 +105,12 @@ export function MessageInput() {
   }, [getGuestMessageCount]);
 
   const isGroup = chatMode === "group";
-  const dbIds = new Set(communityBuddies.map((b) => b.id));
-  const ALL_BUDDY_LIST = [
-    ...communityBuddies,
-    ...ALL_BUDDIES.filter((b) => !dbIds.has(b.id)),
-  ];
-  const buddy = ALL_BUDDY_LIST.find((b) => b.id === activeBuddyId)
-    ?? getBuddy(activeBuddyId);
+  const ALL_BUDDY_LIST = communityBuddies;
+  const buddy = ALL_BUDDY_LIST.find((b) => b.id === activeBuddyId) ?? ALL_BUDDY_LIST[0];
 
   // Buddies available for @ mention in the active group
   const groupDef = GROUPS.find((g) => g.id === activeGroupId);
-  const mentionBuddies = (groupDef?.buddyIds ?? []).map((id) => ALL_BUDDY_LIST.find((b) => b.id === id) ?? getBuddy(id)).filter(Boolean) as Buddy[];
+  const mentionBuddies = (groupDef?.buddyIds ?? []).map((id) => ALL_BUDDY_LIST.find((b) => b.id === id)).filter(Boolean) as Buddy[];
 
   // Populate input when "Discuss first" pre-fills it from an agent card
   useEffect(() => {

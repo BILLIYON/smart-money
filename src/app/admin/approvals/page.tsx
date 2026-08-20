@@ -1,199 +1,174 @@
-import { getPendingBuddies } from "@/lib/db";
-import { BuddyApprovalActions } from "@/components/admin/BuddyApprovalActions";
-import { isImageAvatar } from "@/lib/utils";
+import { Pool } from "pg";
+import { revalidatePath } from "next/cache";
 
 export const metadata = { title: "Buddy Approvals · Admin · Smart Money" };
+export const dynamic = "force-dynamic";
 
-function Avatar({
-  bg,
-  content,
-  name,
-}: {
-  bg: string | null;
-  content: string | null;
-  name: string;
-}) {
-  const initials = name
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-  return (
-    <div
-      style={{
-        width: 52,
-        height: 52,
-        borderRadius: 14,
-        background: bg ?? "#132952",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: isImageAvatar(content) ? 14 : 22,
-        fontWeight: 700,
-        color: "#ffffff",
-        flexShrink: 0,
-        overflow: "hidden",
-      }}
-    >
-      {isImageAvatar(content) ? (
-        <img src={content!} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-      ) : (
-        content ?? initials
-      )}
-    </div>
-  );
+const localPool = new Pool({
+  connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+});
+
+async function handleStatusChange(formData: FormData) {
+  "use server";
+  const buddyId = formData.get("buddyId") as string;
+  const newStatus = formData.get("status") as string;
+  const revisionNote = formData.get("revisionNote") as string;
+
+  if (buddyId && newStatus) {
+    await localPool.query(
+      `UPDATE buddies SET status = $1, rejection_reason = $2 WHERE id = $3;`,
+      [newStatus, revisionNote || null, buddyId]
+    );
+    revalidatePath("/admin/approvals");
+  }
 }
 
-function fmt(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-export default async function BuddyApprovalsPage() {
-  const buddies = await getPendingBuddies();
+export default async function AdminApprovalsPage() {
+  const { rows: buddies } = await localPool.query(`
+    SELECT id, name, tag, description, philosophy, price_monthly, ai_model, status, rejection_reason, created_at
+    FROM buddies
+    ORDER BY created_at DESC;
+  `);
 
   return (
-    <div>
-      <h1 style={{ fontSize: 22, fontWeight: 700, color: "#0B1E3D", marginBottom: 6 }}>
-        Buddy Approvals & Review Queue
-      </h1>
-      <p style={{ fontSize: 14, color: "#6B7A99", marginBottom: 24 }}>
-        {buddies.length > 0
-          ? `${buddies.length} submission${buddies.length !== 1 ? "s" : ""} in review queue.`
-          : "All caught up."}
-      </p>
-
-      {buddies.length === 0 ? (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "80px 24px",
-            background: "#ffffff",
-            borderRadius: 16,
-            boxShadow: "0 1px 4px rgba(11,30,61,.06)",
-          }}
-        >
-          <div style={{ fontSize: 40, marginBottom: 16 }}>✦</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "#0B1E3D", marginBottom: 6 }}>
-            No pending submissions
-          </div>
-          <div style={{ fontSize: 13, color: "#6B7A99" }}>
-            New buddy submissions and revision requests will appear here.
-          </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #334155", paddingBottom: 16 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#F8FAFC", margin: 0 }}>
+            Buddy Submissions Moderation
+          </h1>
+          <p style={{ fontSize: 13, color: "#94A3B8", margin: "4px 0 0" }}>
+            Review, publish, or request revisions for AI Finance Buddy submissions.
+          </p>
         </div>
-      ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))",
-            gap: 20,
-          }}
-        >
-          {buddies.map((buddy) => (
-            <div
-              key={buddy.id}
-              style={{
-                background: "#ffffff",
-                borderRadius: 16,
-                padding: 20,
-                boxShadow: "0 1px 4px rgba(11,30,61,.06)",
-                display: "flex",
-                flexDirection: "column",
-                border: "1px solid #E2E7F0",
-              }}
-            >
-              {/* Header */}
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                <Avatar bg={buddy.avatar_bg} content={buddy.avatar_content} name={buddy.name} />
-                <div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: "#0B1E3D" }}>
-                    {buddy.name}
-                  </div>
-                  {buddy.tag && (
-                    <span
-                      style={{
-                        display: "inline-block",
-                        fontSize: 10,
-                        fontWeight: 600,
-                        padding: "2px 8px",
-                        borderRadius: 12,
-                        background: "rgba(0,196,140,.1)",
-                        color: "#00A677",
-                        marginTop: 4,
-                      }}
-                    >
-                      {buddy.tag}
-                    </span>
-                  )}
-                </div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "#94A3B8", background: "#1E293B", border: "1px solid #334155", padding: "6px 12px", borderRadius: 6 }}>
+          {buddies.length} Total Buddies
+        </div>
+      </div>
+
+      {/* Buddies Grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
+        {buddies.map((buddy) => (
+          <div
+            key={buddy.id}
+            style={{
+              background: "#1E293B",
+              border: buddy.status === "pending" ? "1px solid #F59E0B" : "1px solid #334155",
+              borderRadius: 8,
+              padding: 20,
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              gap: 16,
+            }}
+          >
+            <div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 4, background: buddy.status === "live" ? "rgba(16,185,129,0.1)" : buddy.status === "pending" ? "rgba(245,158,11,0.1)" : "rgba(239,68,68,0.1)", color: buddy.status === "live" ? "#10B981" : buddy.status === "pending" ? "#F59E0B" : "#EF4444", textTransform: "uppercase" }}>
+                  Status: {buddy.status}
+                </span>
+                <span style={{ fontSize: 11, color: "#64748B" }}>
+                  Model: {buddy.ai_model}
+                </span>
               </div>
 
-              {/* Description & Philosophy */}
-              {buddy.description && (
-                <div style={{ fontSize: 12, color: "#475569", marginBottom: 8, lineHeight: 1.4 }}>
-                  {buddy.description}
-                </div>
-              )}
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: "#F8FAFC", margin: "0 0 4px" }}>
+                {buddy.name}
+              </h3>
+              <div style={{ fontSize: 12, color: "#10B981", fontWeight: 500, marginBottom: 8 }}>
+                {buddy.tag}
+              </div>
 
-              {buddy.philosophy && (
-                <div
+              <p style={{ fontSize: 13, color: "#94A3B8", lineHeight: 1.5, margin: "0 0 10px" }}>
+                {buddy.description}
+              </p>
+
+              <div style={{ fontSize: 11, color: "#64748B", background: "#0F172A", border: "1px solid #334155", padding: 8, borderRadius: 6, fontStyle: "italic" }}>
+                "{buddy.philosophy}"
+              </div>
+            </div>
+
+            {/* Form */}
+            <form action={handleStatusChange} style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 12, borderTop: "1px solid #334155" }}>
+              <input type="hidden" name="buddyId" value={buddy.id} />
+              
+              <input
+                type="text"
+                name="revisionNote"
+                placeholder="Optional revision note..."
+                defaultValue={buddy.rejection_reason || ""}
+                style={{
+                  background: "#0F172A",
+                  border: "1px solid #334155",
+                  borderRadius: 6,
+                  padding: "6px 10px",
+                  color: "#F8FAFC",
+                  fontSize: 12,
+                  outline: "none",
+                }}
+              />
+
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  type="submit"
+                  name="status"
+                  value="live"
                   style={{
-                    fontSize: 11,
-                    color: "#0B1E3D",
-                    background: "#F8FAFC",
-                    padding: "8px 10px",
-                    borderRadius: 8,
-                    marginBottom: 12,
-                    borderLeft: "3px solid #00C48C",
+                    flex: 1,
+                    padding: "6px",
+                    background: "rgba(16,185,129,0.15)",
+                    border: "1px solid #10B981",
+                    borderRadius: 6,
+                    color: "#10B981",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
                   }}
                 >
-                  <strong style={{ color: "#64748B" }}>Philosophy: </strong>
-                  &quot;{buddy.philosophy}&quot;
-                </div>
-              )}
+                  Approve Live
+                </button>
 
-              {/* Meta information */}
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 4,
-                  marginTop: "auto",
-                  paddingTop: 10,
-                  borderTop: "1px solid #E2E7F0",
-                  fontSize: 11,
-                  color: "#64748B",
-                }}
-              >
-                <div>
-                  <strong style={{ color: "#0B1E3D" }}>AI Model: </strong>
-                  {(buddy.ai_model || "claude").toUpperCase()} ·{" "}
-                  <strong style={{ color: "#0B1E3D" }}>Price: </strong>
-                  {buddy.price_monthly ? `₦${(buddy.price_monthly / 100).toLocaleString()}/mo` : "Free"}
-                </div>
-                <div>
-                  <strong style={{ color: "#0B1E3D" }}>Creator: </strong>
-                  {buddy.creator_email ?? "Community Creator"}
-                </div>
-                <div>
-                  <strong style={{ color: "#0B1E3D" }}>Submitted: </strong>
-                  {fmt(buddy.created_at)}
-                </div>
+                <button
+                  type="submit"
+                  name="status"
+                  value="review"
+                  style={{
+                    padding: "6px 10px",
+                    background: "#0F172A",
+                    border: "1px solid #334155",
+                    borderRadius: 6,
+                    color: "#F59E0B",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                  }}
+                >
+                  Request Edits
+                </button>
+
+                <button
+                  type="submit"
+                  name="status"
+                  value="draft"
+                  style={{
+                    padding: "6px 10px",
+                    background: "#0F172A",
+                    border: "1px solid #334155",
+                    borderRadius: 6,
+                    color: "#EF4444",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                  }}
+                >
+                  Reject
+                </button>
               </div>
-
-              {/* Approval Actions component */}
-              <BuddyApprovalActions buddy={buddy} />
-            </div>
-          ))}
-        </div>
-      )}
+            </form>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

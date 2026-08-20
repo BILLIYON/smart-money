@@ -4,8 +4,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ALL_BUDDIES, getBuddy } from "@/lib/buddies";
+import { useBuddyStore } from "@/store/buddyStore";
 import { useCompareStore } from "@/store/compareStore";
+import { isImageAvatar } from "@/lib/utils";
 
 // ── Types ──────────────────────────────────────────────────
 type ColState = {
@@ -24,11 +25,12 @@ function BuddyAvatar({
   buddyId: string;
   size?: number;
 }) {
-  const b = getBuddy(buddyId);
+  const allBuddies = useBuddyStore((s) => s.allBuddies);
+  const b = allBuddies.find((x) => x.id === buddyId);
   if (!b) return null;
   return (
     <div
-      className="flex items-center justify-center flex-shrink-0 rounded-[10px]"
+      className="flex items-center justify-center flex-shrink-0 rounded-[10px] overflow-hidden"
       style={{
         width: size,
         height: size,
@@ -39,7 +41,11 @@ function BuddyAvatar({
           : {}),
       }}
     >
-      {b.avatarContent}
+      {isImageAvatar(b.avatarContent) ? (
+        <img src={b.avatarContent} alt={b.name} className="w-full h-full object-cover" />
+      ) : (
+        b.avatarContent
+      )}
     </div>
   );
 }
@@ -56,7 +62,8 @@ function BuddySelect({
   exclude: string;
   label: string;
 }) {
-  const buddy = getBuddy(value);
+  const allBuddies = useBuddyStore((s) => s.allBuddies);
+  const buddy = allBuddies.find((x) => x.id === value);
 
   return (
     <div className="flex-1 min-w-0">
@@ -82,7 +89,7 @@ function BuddySelect({
               fontFamily: "var(--font-sora)",
             }}
           >
-            {ALL_BUDDIES.filter((b) => b.id !== exclude).map((b) => (
+            {allBuddies.filter((b) => b.id !== exclude).map((b) => (
               <option
                 key={b.id}
                 value={b.id}

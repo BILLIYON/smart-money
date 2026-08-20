@@ -3,13 +3,13 @@
  * Never query Supabase inline in components or pages.
  */
 import { createClient } from "@supabase/supabase-js";
-
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+import { Pool } from "pg";
+import { dbCache } from "@/lib/cache";
 
 // Server-side client (service role when available, anon key as fallback)
 function getClient() {
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? anonKey;
+  const url = process.env.LOCAL_DB_URL || "http://127.0.0.1:3001";
+  const key = "anon";
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
@@ -49,28 +49,33 @@ export async function isAdmin(userId: string): Promise<boolean> {
 // ── Admin queries ──────────────────────────────────────────
 
 export async function getAdminStats() {
-  const db = getClient();
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
+  return dbCache.getOrFetch("admin:stats", async () => {
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+    });
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
 
-  const [
-    { count: totalUsers },
-    { count: activeBuddies },
-    { count: pendingApprovals },
-    { count: messagesToday },
-  ] = await Promise.all([
-    db.from("users").select("*", { count: "exact", head: true }),
-    db.from("buddies").select("*", { count: "exact", head: true }).eq("status", "live"),
-    db.from("buddies").select("*", { count: "exact", head: true }).eq("status", "pending"),
-    db.from("messages").select("*", { count: "exact", head: true }).gte("created_at", todayStart.toISOString()),
-  ]);
+    const [
+      { rows: uRows },
+      { rows: bRows },
+      { rows: pRows },
+      { rows: mRows },
+    ] = await Promise.all([
+      pool.query("SELECT count(*) FROM users;"),
+      pool.query("SELECT count(*) FROM buddies WHERE status = 'live';"),
+      pool.query("SELECT count(*) FROM buddies WHERE status = 'pending';"),
+      pool.query("SELECT count(*) FROM messages WHERE created_at >= $1;", [todayStart.toISOString()]),
+    ]);
+    await pool.end();
 
-  return {
-    totalUsers: totalUsers ?? 0,
-    activeBuddies: activeBuddies ?? 0,
-    pendingApprovals: pendingApprovals ?? 0,
-    messagesToday: messagesToday ?? 0,
-  };
+    return {
+      totalUsers: parseInt(uRows[0]?.count || "0", 10),
+      activeBuddies: parseInt(bRows[0]?.count || "0", 10),
+      pendingApprovals: parseInt(pRows[0]?.count || "0", 10),
+      messagesToday: parseInt(mRows[0]?.count || "0", 10),
+    };
+  }, 15);
 }
 
 export type RecentSignup = {
@@ -82,24 +87,29 @@ export type RecentSignup = {
 };
 
 export async function getRecentSignups(limit = 20): Promise<RecentSignup[]> {
-  const db = getClient();
-  const { data, error } = await db
-    .from("users")
-    .select("id, email, plan, created_at, chat_sessions(last_message_at)")
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  return dbCache.getOrFetch(`admin:signups:${limit}`, async () => {
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+    });
+    const { rows } = await pool.query(
+      `
+      SELECT id, email, plan, created_at
+      FROM users
+      ORDER BY created_at DESC
+      LIMIT $1;
+      `,
+      [limit]
+    );
+    await pool.end();
 
-  if (error) throw error;
-
-  return (data ?? []).map((row) => {
-    const sessions = (row.chat_sessions ?? []) as { last_message_at: string | null }[];
-    const lastActive = sessions
-      .map((s) => s.last_message_at)
-      .filter(Boolean)
-      .sort()
-      .at(-1) ?? null;
-    return { id: row.id, email: row.email, plan: row.plan, created_at: row.created_at, last_active: lastActive };
-  });
+    return rows.map((r: any) => ({
+      id: r.id,
+      email: r.email,
+      plan: r.plan,
+      created_at: r.created_at,
+      last_active: r.created_at,
+    }));
+  }, 15);
 }
 
 export const ADMIN_PAGE_SIZE = 20;
@@ -358,28 +368,40 @@ export type CommunityBuddyRow = {
   model: string | null;
   price: string | null;
   custom_price: string | null;
+  rating?: string;
+  review_count?: string;
 };
 
 export async function getHiddenBuddyIds(): Promise<string[]> {
-  const db = getClient();
-  const { data, error } = await db.from("hidden_buddies").select("buddy_id");
-  if (error) {
-    console.error("[getHiddenBuddyIds]", error);
-    return [];
-  }
-  return (data ?? []).map((r: { buddy_id: string }) => r.buddy_id);
+  return dbCache.getOrFetch("buddies:hidden", async () => {
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+    });
+    const { rows } = await pool.query("SELECT buddy_id FROM hidden_buddies;").catch(() => ({ rows: [] }));
+    await pool.end();
+    return rows.map((r: { buddy_id: string }) => r.buddy_id);
+  }, 30);
 }
 
 export async function hideBuddy(buddyId: string): Promise<void> {
-  const db = getClient();
-  const { error } = await db.from("hidden_buddies").upsert({ buddy_id: buddyId });
-  if (error) throw error;
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+  });
+  await pool.query(
+    "INSERT INTO hidden_buddies (buddy_id) VALUES ($1) ON CONFLICT (buddy_id) DO NOTHING;",
+    [buddyId]
+  );
+  await pool.end();
+  dbCache.invalidatePattern("buddies");
 }
 
 export async function unhideBuddy(buddyId: string): Promise<void> {
-  const db = getClient();
-  const { error } = await db.from("hidden_buddies").delete().eq("buddy_id", buddyId);
-  if (error) throw error;
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+  });
+  await pool.query("DELETE FROM hidden_buddies WHERE buddy_id = $1;", [buddyId]);
+  await pool.end();
+  dbCache.invalidatePattern("buddies");
 }
 
 export type DbBuddy = {
@@ -406,37 +428,31 @@ export type DbBuddy = {
 };
 
 export async function getAllDbBuddies(): Promise<DbBuddy[]> {
-  const db = getClient();
-  const { data, error } = await db
-    .from("buddies")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error("[getAllDbBuddies] Error:", error);
-    throw error;
-  }
-  return data ?? [];
+  return dbCache.getOrFetch("buddies:all", async () => {
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+    });
+    const { rows } = await pool.query("SELECT * FROM buddies ORDER BY created_at DESC;");
+    await pool.end();
+    return rows ?? [];
+  }, 30);
 }
 
 export async function getDbBuddyById(id: string): Promise<DbBuddy | null> {
-  const db = getClient();
-  const { data, error } = await db
-    .from("buddies")
-    .select("*")
-    .eq("id", id)
-    .single();
-
-  if (error) {
-    if (error.code === "PGRST116") return null;
-    console.error("[getDbBuddyById] Error:", error);
-    return null;
-  }
-  return data;
+  return dbCache.getOrFetch(`buddy:${id}`, async () => {
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+    });
+    const { rows } = await pool.query("SELECT * FROM buddies WHERE id = $1 LIMIT 1;", [id]);
+    await pool.end();
+    return rows[0] ?? null;
+  }, 30);
 }
 
 export async function createDbBuddy(payload: Partial<DbBuddy>): Promise<DbBuddy> {
-  const db = getClient();
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+  });
   const id = payload.id || (payload.name ? payload.name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") : `buddy-${Date.now()}`);
   
   const record = {
@@ -460,156 +476,186 @@ export async function createDbBuddy(payload: Partial<DbBuddy>): Promise<DbBuddy>
     category: payload.category || ["General"],
   };
 
-  let { data, error } = await db.from("buddies").insert(record).select("*").single();
+  const query = `
+    INSERT INTO buddies (
+      id, name, tag, description, philosophy, price_monthly, ai_model,
+      banner_color, avatar_bg, avatar_content, avatar_is_serif, rating,
+      review_count, is_fan_sim, fan_disclaimer, creator_id, status, category
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+    ) RETURNING *;
+  `;
 
-  if (error && (error.code === "23514" || error.message?.includes("check constraint"))) {
-    console.warn("[createDbBuddy] Postgres check constraint failed for model:", record.ai_model, "falling back to 'claude'");
-    record.ai_model = "claude";
-    const res = await db.from("buddies").insert(record).select("*").single();
-    data = res.data;
-    error = res.error;
-  }
-
-  if (error) {
+  try {
+    const { rows } = await pool.query(query, [
+      record.id, record.name, record.tag, record.description, record.philosophy,
+      record.price_monthly, record.ai_model, record.banner_color, record.avatar_bg,
+      record.avatar_content, record.avatar_is_serif, record.rating, record.review_count,
+      record.is_fan_sim, record.fan_disclaimer, record.creator_id, record.status, record.category
+    ]);
+    await pool.end();
+    dbCache.invalidatePattern("buddies");
+    return rows[0];
+  } catch (error: any) {
+    await pool.end();
     console.error("[createDbBuddy] Error:", error);
     throw error;
   }
-  return data;
 }
 
 export async function updateDbBuddy(id: string, payload: Partial<DbBuddy>): Promise<DbBuddy> {
-  const db = getClient();
-  let { data, error } = await db
-    .from("buddies")
-    .update(payload)
-    .eq("id", id)
-    .select("*")
-    .single();
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+  });
 
-  if (error && (error.code === "23514" || error.message?.includes("check constraint")) && payload.ai_model) {
-    console.warn("[updateDbBuddy] Postgres check constraint failed for model:", payload.ai_model, "falling back to 'claude'");
-    const fallbackPayload = { ...payload, ai_model: "claude" };
-    const res = await db.from("buddies").update(fallbackPayload).eq("id", id).select("*").single();
-    data = res.data;
-    error = res.error;
-  }
+  const keys = Object.keys(payload);
+  const setCols = keys.map((k, idx) => `"${k}" = $${idx + 2}`).join(", ");
+  const vals = keys.map((k) => (payload as any)[k]);
 
-  if (error) {
+  const query = `UPDATE buddies SET ${setCols} WHERE id = $1 RETURNING *;`;
+  try {
+    const { rows } = await pool.query(query, [id, ...vals]);
+    await pool.end();
+    dbCache.invalidatePattern("buddies");
+    dbCache.invalidate(`buddy:${id}`);
+    return rows[0];
+  } catch (error: any) {
+    await pool.end();
     console.error("[updateDbBuddy] Error:", error);
     throw error;
   }
-  return data;
 }
 
 export async function deleteDbBuddy(id: string): Promise<void> {
-  const db = getClient();
-  await db.from("hidden_buddies").delete().eq("buddy_id", id);
-  const { error } = await db.from("buddies").delete().eq("id", id);
-  if (error) {
-    console.error("[deleteDbBuddy] Error:", error);
-    throw error;
-  }
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+  });
+  await pool.query("DELETE FROM hidden_buddies WHERE buddy_id = $1;", [id]);
+  await pool.query("DELETE FROM buddies WHERE id = $1;", [id]);
+  await pool.end();
+  dbCache.invalidatePattern("buddies");
+  dbCache.invalidate(`buddy:${id}`);
 }
 
 export async function getApprovedCommunityBuddies(): Promise<CommunityBuddyRow[]> {
-  const db = getClient();
-  const { data, error } = await db
-    .from("buddies")
-    .select("id, name, tag, description, avatar_content, avatar_bg, avatar_is_serif, banner_color, category, is_fan_sim, fan_disclaimer, philosophy, ai_model, price_monthly")
-    .in("status", ["approved", "live"])
-    .order("created_at", { ascending: false });
-  if (error) {
-    console.error("[getApprovedCommunityBuddies]", error);
-    return [];
-  }
-  return (data ?? []).map((b) => ({
-    id: b.id,
-    name: b.name,
-    tag: b.tag,
-    description: b.description,
-    avatar_content: b.avatar_content,
-    avatar_bg: b.avatar_bg,
-    avatar_is_serif: b.avatar_is_serif,
-    banner_color: b.banner_color,
-    categories: b.category ?? [],
-    is_fan_sim: b.is_fan_sim,
-    disclaimer: b.fan_disclaimer,
-    philosophy: b.philosophy,
-    samples: [],
-    includes: [],
-    price_note: b.price_monthly === 0 ? "Free" : `₦${(b.price_monthly / 100).toLocaleString()}/mo`,
-    model: b.ai_model,
-    price: b.price_monthly === 0 ? "free" : String(b.price_monthly / 100),
-    custom_price: b.price_monthly === 0 ? "0" : String(b.price_monthly / 100),
-  }));
+  return dbCache.getOrFetch("buddies:approved", async () => {
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+    });
+    const { rows } = await pool.query(`
+      SELECT id, name, tag, description, avatar_content, avatar_bg, avatar_is_serif, banner_color, category, is_fan_sim, fan_disclaimer, philosophy, ai_model, price_monthly
+      FROM buddies
+      WHERE status IN ('approved', 'live')
+      ORDER BY created_at DESC;
+    `);
+    await pool.end();
+
+    return rows.map((b: any) => ({
+      id: b.id,
+      name: b.name,
+      tag: b.tag,
+      description: b.description,
+      avatar_content: b.avatar_content,
+      avatar_bg: b.avatar_bg,
+      avatar_is_serif: b.avatar_is_serif,
+      banner_color: b.banner_color,
+      categories: b.category ?? [],
+      is_fan_sim: b.is_fan_sim,
+      disclaimer: b.fan_disclaimer,
+      philosophy: b.philosophy,
+      samples: [],
+      includes: [],
+      price_note: b.price_monthly === 0 ? "Free" : `₦${(b.price_monthly / 100).toLocaleString()}/mo`,
+      model: b.ai_model,
+      price: b.price_monthly === 0 ? "free" : String(b.price_monthly / 100),
+      custom_price: b.price_monthly === 0 ? "0" : String(b.price_monthly / 100),
+    }));
+  }, 30);
 }
 
 export async function getCommunityBuddyById(id: string): Promise<CommunityBuddyRow | null> {
-  const db = getClient();
-  const { data, error } = await db
-    .from("buddies")
-    .select("id, name, tag, description, avatar_content, avatar_bg, avatar_is_serif, banner_color, category, is_fan_sim, fan_disclaimer, philosophy, ai_model, price_monthly")
-    .eq("id", id)
-    .single();
+  return dbCache.getOrFetch(`buddy:community:${id}`, async () => {
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+    });
+    const { rows } = await pool.query(
+      `
+      SELECT id, name, tag, description, avatar_content, avatar_bg, avatar_is_serif, banner_color, category, is_fan_sim, fan_disclaimer, philosophy, ai_model, price_monthly, rating, review_count
+      FROM buddies
+      WHERE id = $1
+      LIMIT 1;
+      `,
+      [id]
+    );
+    await pool.end();
 
-  if (error) {
-    if (error.code === "PGRST116") return null;
-    console.error("[getCommunityBuddyById]", error);
-    return null;
-  }
-  return {
-    id: data.id,
-    name: data.name,
-    tag: data.tag,
-    description: data.description,
-    avatar_content: data.avatar_content,
-    avatar_bg: data.avatar_bg,
-    avatar_is_serif: data.avatar_is_serif,
-    banner_color: data.banner_color,
-    categories: data.category ?? [],
-    is_fan_sim: data.is_fan_sim,
-    disclaimer: data.fan_disclaimer,
-    philosophy: data.philosophy,
-    samples: [],
-    includes: [],
-    price_note: data.price_monthly === 0 ? "Free" : `₦${(data.price_monthly / 100).toLocaleString()}/mo`,
-    model: data.ai_model,
-    price: data.price_monthly === 0 ? "free" : String(data.price_monthly / 100),
-    custom_price: data.price_monthly === 0 ? "0" : String(data.price_monthly / 100),
-  };
+    if (!rows || rows.length === 0) return null;
+    const data = rows[0];
+
+    return {
+      id: data.id,
+      name: data.name,
+      tag: data.tag,
+      description: data.description,
+      avatar_content: data.avatar_content,
+      avatar_bg: data.avatar_bg,
+      avatar_is_serif: data.avatar_is_serif,
+      banner_color: data.banner_color,
+      categories: data.category ?? [],
+      is_fan_sim: data.is_fan_sim,
+      disclaimer: data.fan_disclaimer,
+      philosophy: data.philosophy,
+      samples: [],
+      includes: [],
+      price_note: data.price_monthly === 0 ? "Free" : `₦${(data.price_monthly / 100).toLocaleString()}/mo`,
+      model: data.ai_model,
+      price: data.price_monthly === 0 ? "free" : String(data.price_monthly / 100),
+      custom_price: data.price_monthly === 0 ? "0" : String(data.price_monthly / 100),
+      rating: data.rating ? parseFloat(data.rating).toFixed(1) : "4.8",
+      review_count: data.review_count ? String(data.review_count) : "5.2k",
+    };
+  }, 30);
 }
 
 export async function getBuddiesByCreator(creatorId: string): Promise<CommunityBuddyRow[]> {
-  const db = getClient();
-  const { data, error } = await db
-    .from("buddies")
-    .select("id, name, tag, description, avatar_content, avatar_bg, avatar_is_serif, banner_color, category, is_fan_sim, fan_disclaimer, philosophy, ai_model, price_monthly")
-    .eq("creator_id", creatorId)
-    .order("created_at", { ascending: false });
-  if (error) {
-    console.error("[getBuddiesByCreator]", error);
-    return [];
-  }
-  return (data ?? []).map((b) => ({
-    id: b.id,
-    name: b.name,
-    tag: b.tag,
-    description: b.description,
-    avatar_content: b.avatar_content,
-    avatar_bg: b.avatar_bg,
-    avatar_is_serif: b.avatar_is_serif,
-    banner_color: b.banner_color,
-    categories: b.category ?? [],
-    is_fan_sim: b.is_fan_sim,
-    disclaimer: b.fan_disclaimer,
-    philosophy: b.philosophy,
-    samples: [],
-    includes: [],
-    price_note: b.price_monthly === 0 ? "Free" : `₦${(b.price_monthly / 100).toLocaleString()}/mo`,
-    model: b.ai_model,
-    price: b.price_monthly === 0 ? "free" : String(b.price_monthly / 100),
-    custom_price: b.price_monthly === 0 ? "0" : String(b.price_monthly / 100),
-  }));
+  return dbCache.getOrFetch(`buddies:creator:${creatorId}`, async () => {
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+    });
+    const { rows } = await pool.query(
+      `
+      SELECT id, name, tag, description, avatar_content, avatar_bg, avatar_is_serif, banner_color, category, is_fan_sim, fan_disclaimer, philosophy, ai_model, price_monthly, rating, review_count
+      FROM buddies
+      WHERE creator_id = $1
+      ORDER BY created_at DESC;
+      `,
+      [creatorId]
+    );
+    await pool.end();
+
+    return (rows ?? []).map((b: any) => ({
+      id: b.id,
+      name: b.name,
+      tag: b.tag,
+      description: b.description,
+      avatar_content: b.avatar_content,
+      avatar_bg: b.avatar_bg,
+      avatar_is_serif: b.avatar_is_serif,
+      banner_color: b.banner_color,
+      categories: b.category ?? [],
+      is_fan_sim: b.is_fan_sim,
+      disclaimer: b.fan_disclaimer,
+      philosophy: b.philosophy,
+      samples: [],
+      includes: [],
+      price_note: b.price_monthly === 0 ? "Free" : `₦${(b.price_monthly / 100).toLocaleString()}/mo`,
+      model: b.ai_model,
+      price: b.price_monthly === 0 ? "free" : String(b.price_monthly / 100),
+      custom_price: b.price_monthly === 0 ? "0" : String(b.price_monthly / 100),
+      rating: b.rating ? parseFloat(b.rating).toFixed(1) : "4.8",
+      review_count: b.review_count ? String(b.review_count) : "5.2k",
+    }));
+  }, 30);
 }
 
 export async function deleteTestUsers(): Promise<number> {

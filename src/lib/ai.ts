@@ -12,6 +12,7 @@ import { getBuddy, type Buddy } from "./buddies";
 import { getCommunityBuddyById } from "./db";
 import { formatCurrency } from "./currency";
 import { parseFinancialEmailData } from "./gmail-parser";
+import { generateBedrockCompletion, streamBedrockCompletion, streamBedrockToReadableStream, BEDROCK_MODELS } from "./bedrock";
 
 // ── Clients (lazy-initialised to avoid import-time crashes in edge) ─────────
 let _anthropic: Anthropic | null = null;
@@ -263,10 +264,11 @@ function formatDatabankContext(ctx: DatabankContext): string {
   return lines.length > 0 ? lines.join("\n") : "No DataBank data connected yet.";
 }
 
-/** Normalise the model field from buddies.ts ("Claude" | "GPT-4" | "Gemini" | "Groq" | "NVIDIA" | "Gemma") */
-function resolveModel(buddy: Buddy, override?: "claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma"): "claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma" {
+/** Normalise the model field from buddies.ts ("Claude" | "GPT-4" | "Gemini" | "Groq" | "NVIDIA" | "Gemma" | "Bedrock") */
+function resolveModel(buddy: Buddy, override?: "claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma" | "bedrock"): "claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma" | "bedrock" {
   if (override) return override;
   const m = (buddy.model || "").toLowerCase();
+  if (m.includes("bedrock") || m.includes("aws")) return "bedrock";
   if (m.includes("gemma")) return "gemma";
   if (m.includes("nvidia") || m.includes("nim") || m.includes("nemotron")) return "nvidia";
   if (m.includes("groq") || m.includes("llama")) return "groq";
@@ -346,14 +348,14 @@ Never include both GOAL and DATABANK_WRITE tags in the same message. Keep your t
 }
 
 // ════════════════════════════════════════════════════════════
-// 2. sendMessage — routes to Claude / GPT-4 / Gemini / Groq
+// 2. sendMessage — routes to Claude / GPT-4 / Gemini / Groq / Bedrock
 // ════════════════════════════════════════════════════════════
 
 export async function sendMessage(params: {
   buddyId: string;
   messages: Message[];
   databankContext: DatabankContext;
-  model?: "claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma";
+  model?: "claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma" | "bedrock";
   crossSessionMemory?: string;
 }): Promise<ReadableStream<Uint8Array>> {
   const { buddyId, messages, databankContext, model: modelOverride, crossSessionMemory } = params;
@@ -365,6 +367,7 @@ export async function sendMessage(params: {
     Groq: "#F55036",
     NVIDIA: "#76B900",
     Gemma: "#76B900",
+    Bedrock: "#FF9900",
   };
 
   let buddy: Buddy | undefined;
@@ -372,6 +375,7 @@ export async function sendMessage(params: {
   if (dbRow) {
     const rawModel = (dbRow.model ?? "").toLowerCase();
     const model: Buddy["model"] =
+      rawModel.includes("bedrock") || rawModel.includes("aws") ? "Bedrock" :
       rawModel.includes("gemma") ? "Gemma" :
       rawModel.includes("nvidia") || rawModel.includes("nim") ? "NVIDIA" :
       rawModel.includes("groq") || rawModel.includes("llama") ? "Groq" :
@@ -416,11 +420,13 @@ export async function sendMessage(params: {
   const resolvedModel = resolveModel(buddy, modelOverride);
 
   // Define order of fallback prioritizing active keys
-  const modelsToTry: Array<"claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma"> = [];
+  const modelsToTry: Array<"claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma" | "bedrock"> = [];
 
   const hasNvidiaKey = Boolean(process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY);
 
-  if (resolvedModel === "gemma" && hasNvidiaKey) {
+  if (resolvedModel === "bedrock") {
+    modelsToTry.push("bedrock");
+  } else if (resolvedModel === "gemma" && hasNvidiaKey) {
     modelsToTry.push("gemma");
   } else if (resolvedModel === "nvidia" && hasNvidiaKey) {
     modelsToTry.push("nvidia");
@@ -434,7 +440,12 @@ export async function sendMessage(params: {
     modelsToTry.push("gemini");
   }
 
-  // Add NVIDIA Gemma / NIM & Groq / Gemini as high-priority fallbacks
+  // Add Bedrock as high-priority fallback
+  if (!modelsToTry.includes("bedrock")) {
+    modelsToTry.push("bedrock");
+  }
+
+  // Add NVIDIA Gemma / NIM & Groq / Gemini as fallbacks
   if (hasNvidiaKey && !modelsToTry.includes("gemma")) {
     modelsToTry.push("gemma");
   }
@@ -464,7 +475,13 @@ export async function sendMessage(params: {
   for (const modelName of modelsToTry) {
     try {
       console.log(`[AI] Attempting stream with model: ${modelName}`);
-      if (modelName === "gemma") {
+      if (modelName === "bedrock") {
+        return await streamBedrockToReadableStream({
+          systemPrompt: system,
+          messages,
+          modelId: BEDROCK_MODELS["claude-3-5-sonnet"],
+        });
+      } else if (modelName === "gemma") {
         return await streamNvidia(system, messages, "google/gemma-4-31b-it");
       } else if (modelName === "nvidia") {
         return await streamNvidia(system, messages, "meta/llama-3.3-70b-instruct");
@@ -690,6 +707,19 @@ async function askAI(prompt: string, fallbackModel = "claude-3-5-haiku-latest"):
     }
   }
 
+  // Strategy 1.5: Amazon Bedrock (Claude 3.5 Sonnet / Haiku / Llama 3.3)
+  try {
+    console.log("[AI] Attempting completion with Amazon Bedrock");
+    const text = await generateBedrockCompletion({
+      modelId: BEDROCK_MODELS["claude-3-5-haiku"],
+      userMessage: prompt,
+      maxTokens: 512,
+    });
+    if (text) return text;
+  } catch (err) {
+    console.error("[AI] Amazon Bedrock completion failed, trying Anthropic fallback:", err);
+  }
+
   // Strategy 2: Anthropic (Claude 3.5 Haiku/Sonnet)
   if (process.env.ANTHROPIC_API_KEY && !depletedKeys.claude) {
     try {
@@ -871,7 +901,17 @@ export async function askAIWithEngine(
       return response.text();
     }
 
-    // 3. Anthropic Claude
+    // 3. Amazon Bedrock
+    if (engine.includes("bedrock") || engine.includes("aws")) {
+      console.log("[AI Engine] Calling Amazon Bedrock (Claude 3.5 Sonnet)");
+      return generateBedrockCompletion({
+        modelId: BEDROCK_MODELS["claude-3-5-sonnet"],
+        userMessage: prompt,
+        maxTokens: 1024,
+      });
+    }
+
+    // 4. Anthropic Claude
     if (engine.includes("claude") || engine.includes("anthropic")) {
       if (!process.env.ANTHROPIC_API_KEY) {
         throw new Error("Anthropic API key is not configured in environment variables.");
@@ -888,7 +928,7 @@ export async function askAIWithEngine(
       return response.content[0].type === "text" ? response.content[0].text : "";
     }
 
-    // 4. OpenAI
+    // 5. OpenAI
     if (engine.includes("openai") || engine.includes("gpt")) {
       if (!process.env.OPENAI_API_KEY) {
         throw new Error("OpenAI API key is not configured in environment variables.");

@@ -1,9 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import { cn } from "@/lib/utils";
+import { useState, useEffect } from "react";
+import type { CommunityBuddyRow } from "@/lib/db";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+export type OnboardingResult = {
+  selectedGoal: string | null;
+  selectedBuddy: string;
+  connectedSources: string[];
+};
+
+export type RestoredState = {
+  initialStep: 1 | 2 | 3;
+  initialGoal: string | null;
+  initialBuddy: string;
+  initialConnected: string[];
+};
 
 type Goal = {
   id: string;
@@ -11,15 +22,6 @@ type Goal = {
   iconBg: string;
   label: string;
   sub: string;
-};
-
-type Buddy = {
-  id: string;
-  initials: string;
-  name: string;
-  tag: string;
-  isCeleb: boolean;
-  isSerif: boolean;
 };
 
 type Source = {
@@ -31,22 +33,8 @@ type Source = {
   btnLabel: string;
 };
 
-export type OnboardingResult = {
-  goal: string;
-  buddyId: string;
-  connectedSources: string[];
-};
-
-export type RestoredState = {
-  initialStep?: 1 | 2 | 3;
-  initialGoal?: string | null;
-  initialBuddy?: string;
-  initialConnected?: string[];
-};
-
-// ─── Data ────────────────────────────────────────────────────────────────────
-
 const GOALS: Goal[] = [
+  { id: "budget",     icon: "📊", iconBg: "#FFF8E7", label: "Gain control of my monthly spending", sub: "Track naira out, find leaks, stop overspending" },
   { id: "savings",    icon: "💰", iconBg: "#E8F5E9", label: "Build savings & emergency fund",  sub: "Start a financial safety net" },
   { id: "invest",     icon: "📈", iconBg: "#E3F2FD", label: "Invest and grow my wealth",        sub: "Put money into assets that work" },
   { id: "property",   icon: "🏠", iconBg: "#FFF3E0", label: "Buy property or land",             sub: "Plan and save for real estate" },
@@ -54,25 +42,11 @@ const GOALS: Goal[] = [
   { id: "custom",     icon: "✨", iconBg: "#F3E5F5", label: "Other / Custom Goal",              sub: "Define your own unique financial target" },
 ];
 
-const CELEB_BUDDIES: Buddy[] = [
-  { id: "buffett",  initials: "WB", name: "Warren Buffett",   tag: "Value Investing · ₦3k/mo · Fan Sim",      isCeleb: true, isSerif: true },
-  { id: "kiyosaki", initials: "RK", name: "Robert Kiyosaki",  tag: "Assets vs Liabilities · ₦2k/mo · Fan Sim", isCeleb: true, isSerif: true },
-  { id: "cardone",  initials: "GC", name: "Grant Cardone",    tag: "10X Growth · ₦2.5k/mo · Fan Sim",          isCeleb: true, isSerif: true },
-  { id: "ramsey",   initials: "DR", name: "Dave Ramsey",      tag: "Debt Freedom · ₦1.5k/mo · Fan Sim",        isCeleb: true, isSerif: true },
-];
-
-const ARCHETYPE_BUDDIES: Buddy[] = [
-  { id: "contrarian", initials: "🎯", name: "The Contrarian",    tag: "Value · Long-term · Free",    isCeleb: false, isSerif: false },
-  { id: "lagos",      initials: "🏙️", name: "Street Smart Lagos", tag: "Nigerian Market · ₦2.5k/mo", isCeleb: false, isSerif: false },
-];
-
 const SOURCES: Source[] = [
   { id: "gmail", icon: "📧", iconBg: "#FEE8E6", label: "Connect Gmail",        sub: "Read-only · Bank alerts, receipts, subscriptions", btnLabel: "Connect" },
   { id: "bank",  icon: "🏦", iconBg: "#E8F5E9", label: "Upload Bank Statement", sub: "PDF or CSV · Any Nigerian bank",                   btnLabel: "Upload"  },
   { id: "news",  icon: "📰", iconBg: "#E3F2FD", label: "Live News Feed",        sub: "Optional · Market & economic updates",             btnLabel: "Enable"  },
 ];
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function PipTrack({ step }: { step: 1 | 2 | 3 }) {
   return (
@@ -93,21 +67,12 @@ function PipTrack({ step }: { step: 1 | 2 | 3 }) {
   );
 }
 
-function ModalHeader({
-  step,
-  title,
-  sub,
-}: {
-  step: 1 | 2 | 3;
-  title: string;
-  sub: string;
-}) {
+function ModalHeader({ step, title, sub }: { step: 1 | 2 | 3; title: string; sub: string }) {
   return (
     <div
-      className="relative overflow-hidden px-8 pt-7 pb-6"
-      style={{ background: "linear-gradient(135deg,var(--navy),var(--navy2))" }}
+      className="px-8 pt-7 pb-6 relative overflow-hidden flex-shrink-0"
+      style={{ background: "var(--navy)" }}
     >
-      {/* Decorative circle */}
       <span
         className="absolute -right-10 -top-10 w-40 h-40 rounded-full pointer-events-none"
         style={{ background: "rgba(0,196,140,.1)" }}
@@ -150,13 +115,14 @@ function Actions({
       >
         {leftLabel}
       </button>
+
       <button
         onClick={rightAction}
         disabled={rightDisabled}
-        className="px-[18px] py-2 rounded-[10px] text-[13px] font-medium text-white transition-colors duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+        className="px-6 py-[10px] rounded-[10px] text-[13px] font-semibold text-white border-none cursor-pointer transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
         style={{ background: "var(--green)" }}
         onMouseEnter={(e) => {
-          if (!rightDisabled) (e.currentTarget as HTMLButtonElement).style.background = "var(--green2)";
+          if (!rightDisabled) (e.currentTarget as HTMLButtonElement).style.background = "#00A677";
         }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--green)"; }}
       >
@@ -165,8 +131,6 @@ function Actions({
     </div>
   );
 }
-
-// ─── Main component ───────────────────────────────────────────────────────────
 
 export function OnboardingModal({
   onComplete,
@@ -183,6 +147,16 @@ export function OnboardingModal({
   const [selectedBuddy, setSelectedBuddy] = useState<string>(restored?.initialBuddy ?? "buffett");
   const [connected, setConnected] = useState<Set<string>>(new Set(restored?.initialConnected ?? []));
   const [connecting, setConnecting] = useState<string | null>(null);
+  const [dbBuddies, setDbBuddies] = useState<CommunityBuddyRow[]>([]);
+
+  useEffect(() => {
+    fetch("/api/studio")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setDbBuddies(data);
+      })
+      .catch(() => {});
+  }, []);
 
   async function handleConnect(sourceId: string) {
     if (connected.has(sourceId) || connecting) return;
@@ -193,185 +167,126 @@ export function OnboardingModal({
       const height = 700;
       const left = window.screenX + (window.outerWidth - width) / 2;
       const top = window.screenY + (window.outerHeight - height) / 2;
-
       const popup = window.open(
-        `/api/auth/gmail`,
-        "Connect Gmail",
-        `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes`
+        "/api/auth/gmail",
+        "gmail_oauth",
+        `width=${width},height=${height},left=${left},top=${top}`
       );
 
-      const handleOAuthMessage = (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return;
-        if (event.data?.type === "GMAIL_CONNECTED") {
-          setConnected((prev) => new Set([...prev, "gmail"]));
+      const checkTimer = setInterval(() => {
+        if (!popup || popup.closed) {
+          clearInterval(checkTimer);
           setConnecting(null);
-          window.removeEventListener("message", handleOAuthMessage);
-        } else if (event.data?.type === "GMAIL_ERROR") {
-          setConnecting(null);
-          window.removeEventListener("message", handleOAuthMessage);
+          fetch("/api/databank/gmail/status")
+            .then((r) => r.json())
+            .then((status) => {
+              if (status.connected) {
+                setConnected((prev) => new Set([...prev, "gmail"]));
+              }
+            })
+            .catch(() => {});
         }
-      };
-
-      window.addEventListener("message", handleOAuthMessage);
-
-      const timer = setInterval(() => {
-        if (popup?.closed) {
-          clearInterval(timer);
-          setConnecting(null);
-          window.removeEventListener("message", handleOAuthMessage);
-        }
-      }, 1000);
-
-      return;
-    }
-
-    if (sourceId === "bank") {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept = ".pdf,.csv";
-      input.onchange = async (e) => {
-        const file = (e.target as HTMLInputElement).files?.[0];
-        if (!file) return;
-        setConnecting("bank");
-        const formData = new FormData();
-        formData.append("file", file);
-        try {
-          const res = await fetch("/api/databank/upload", { method: "POST", body: formData });
-          if (res.ok) setConnected((prev) => new Set([...prev, "bank"]));
-        } finally {
-          setConnecting(null);
-        }
-      };
-      input.click();
-      return;
-    }
-
-    if (sourceId === "news") {
-      setConnecting("news");
-      try {
-        const res = await fetch("/api/signals/enable", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sourceId: "news" }),
-        });
-        if (res.ok) setConnected((prev) => new Set([...prev, "news"]));
-      } finally {
-        setConnecting(null);
-      }
-      return;
+      }, 500);
+    } else {
+      setConnected((prev) => new Set([...prev, sourceId]));
     }
   }
 
-  async function handleFinish() {
-    const finalGoal = selectedGoal === "custom" ? customGoalText.trim() : (selectedGoal ?? "");
-    const result: OnboardingResult = {
-      goal: finalGoal,
-      buddyId: selectedBuddy,
+  function handleFinish() {
+    const finalGoal = selectedGoal === "custom" && customGoalText.trim()
+      ? customGoalText.trim()
+      : selectedGoal;
+
+    onComplete({
+      selectedGoal: finalGoal,
+      selectedBuddy,
       connectedSources: Array.from(connected),
-    };
-    onComplete(result);
+    });
   }
 
-  // ─── Step 1 ───────────────────────────────────────────────────────────────
+  const celebBuddies = dbBuddies.filter((b) => b.is_fan_sim);
+  const archetypeBuddies = dbBuddies.filter((b) => !b.is_fan_sim);
+
   const step1 = (
     <>
       <ModalHeader
         step={1}
-        title="Welcome to Smart Money 👋"
-        sub="Get advice that fits your actual financial life — not generic tips. Set up in 60 seconds."
+        title="What is your primary financial goal?"
+        sub="Smart Money will tailor recommendations, insights, and buddy advice to what matters most to you right now."
       />
       <div className="px-8 pt-6 pb-7">
-        <p className="text-[13px] font-semibold mb-[13px]" style={{ color: "var(--text)" }}>
-          What&apos;s your main financial goal right now?
-        </p>
         <div className="flex flex-col gap-[9px] mb-[22px]">
-          {GOALS.map((g) => (
-            <button
-              key={g.id}
-              onClick={() => setSelectedGoal(g.id)}
-              className={cn(
-                "flex items-center gap-[13px] px-[15px] py-[13px] rounded-xl border text-left transition-all duration-200",
-                selectedGoal === g.id
-                  ? "border-green bg-green/5"
-                  : "hover:border-green"
-              )}
-              style={{ borderColor: selectedGoal === g.id ? "var(--green)" : "var(--border)", background: selectedGoal === g.id ? "rgba(0,196,140,.05)" : "var(--bg)" }}
-            >
-              <span
-                className="w-[38px] h-[38px] rounded-[10px] flex items-center justify-center text-[19px] flex-shrink-0"
-                style={{ background: g.iconBg }}
-              >
-                {g.icon}
-              </span>
-              <span className="flex-1 min-w-0">
-                <span className="block text-[13px] font-semibold mb-[1px]" style={{ color: "var(--text)" }}>{g.label}</span>
-                <span className="block text-[11px]" style={{ color: "var(--muted)" }}>{g.sub}</span>
-              </span>
-              {/* Check circle */}
-              <span
-                className="w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center flex-shrink-0 text-[10px] transition-all duration-200"
-                style={{
-                  borderColor: selectedGoal === g.id ? "var(--green)" : "var(--border)",
-                  background: selectedGoal === g.id ? "var(--green)" : "transparent",
-                  color: selectedGoal === g.id ? "#fff" : "transparent",
-                }}
-              >
-                ✓
-              </span>
-            </button>
-          ))}
-          {selectedGoal === "custom" && (
-            <div className="mt-1">
-              <input
-                type="text"
-                value={customGoalText}
-                onChange={(e) => setCustomGoalText(e.target.value)}
-                placeholder="e.g. Save ₦2.5M for a Master's degree, start a bakery..."
-                className="w-full px-[15px] py-3 rounded-xl border outline-none text-[13px] transition-colors"
-                style={{
-                  borderColor: "var(--green)",
-                  background: "var(--bg)",
-                  color: "var(--text)"
-                }}
-                maxLength={120}
-              />
-            </div>
-          )}
+          {GOALS.map((g) => {
+            const isSelected = selectedGoal === g.id;
+            return (
+              <div key={g.id}>
+                <div
+                  onClick={() => setSelectedGoal(g.id)}
+                  className="flex items-center gap-[14px] p-3 rounded-[12px] cursor-pointer transition-all duration-200 border"
+                  style={
+                    isSelected
+                      ? { background: "rgba(0,196,140,.08)", borderColor: "var(--green)" }
+                      : { background: "var(--bg)", borderColor: "var(--border)" }
+                  }
+                >
+                  <div
+                    className="w-10 h-10 rounded-[10px] flex items-center justify-center text-[18px] flex-shrink-0"
+                    style={{ background: g.iconBg }}
+                  >
+                    {g.icon}
+                  </div>
+
+                  <div className="flex-grow">
+                    <div className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>
+                      {g.label}
+                    </div>
+                    <div className="text-[11px]" style={{ color: "var(--muted)" }}>
+                      {g.sub}
+                    </div>
+                  </div>
+
+                  <div
+                    className="w-[18px] h-[18px] rounded-full border-[2px] flex items-center justify-center flex-shrink-0 transition-all duration-200"
+                    style={
+                      isSelected
+                        ? { borderColor: "var(--green)", background: "var(--green)" }
+                        : { borderColor: "var(--border)" }
+                    }
+                  >
+                    {isSelected && <span className="text-white text-[10px]">✓</span>}
+                  </div>
+                </div>
+
+                {g.id === "custom" && isSelected && (
+                  <input
+                    type="text"
+                    placeholder="Describe your financial goal..."
+                    value={customGoalText}
+                    onChange={(e) => setCustomGoalText(e.target.value)}
+                    className="mt-[9px] w-full px-[14px] py-[9px] rounded-[10px] text-[13px] outline-none border transition-colors duration-150"
+                    style={{
+                      background: "var(--bg)",
+                      borderColor: "var(--border)",
+                      color: "var(--text)",
+                    }}
+                    autoFocus
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
+
         <Actions
-          leftLabel="Skip for now"
-          leftAction={() => setStep(2)}
+          leftLabel="Skip onboarding"
+          leftAction={onClose}
           rightLabel="Next →"
           rightAction={() => setStep(2)}
-          rightDisabled={selectedGoal === "custom" && !customGoalText.trim()}
+          rightDisabled={!selectedGoal || (selectedGoal === "custom" && !customGoalText.trim())}
         />
       </div>
     </>
   );
-
-  // ─── Step 2 ───────────────────────────────────────────────────────────────
-  function BuddyCard({ buddy }: { buddy: Buddy }) {
-    const active = selectedBuddy === buddy.id;
-    return (
-      <button
-        onClick={() => setSelectedBuddy(buddy.id)}
-        className="px-[13px] py-[13px] rounded-xl border text-left transition-all duration-200"
-        style={{
-          borderColor: active ? "var(--green)" : "var(--border)",
-          background: active ? "rgba(0,196,140,.05)" : "var(--bg)",
-        }}
-      >
-        <div
-          className="mb-[5px] text-[22px]"
-          style={buddy.isSerif ? { fontFamily: "var(--font-dm-serif)", fontSize: "18px", color: "var(--text)" } : {}}
-        >
-          {buddy.initials}
-        </div>
-        <div className="text-[13px] font-semibold mb-[2px]" style={{ color: "var(--text)" }}>{buddy.name}</div>
-        <div className="text-[10px]" style={{ color: "var(--muted)" }}>{buddy.tag}</div>
-      </button>
-    );
-  }
 
   const step2 = (
     <>
@@ -381,26 +296,77 @@ export function OnboardingModal({
         sub="Chat with legendary investors or choose a specialist archetype. You can add more anytime."
       />
       <div className="px-8 pt-6 pb-7">
-        {/* Celebrity section */}
         <p className="text-[11px] font-semibold uppercase tracking-[.5px] mb-2" style={{ color: "var(--muted)" }}>
           ⭐ Popular · Celebrity Simulations
         </p>
-        <div className="grid grid-cols-2 gap-[9px] mb-[4px]">
-          {CELEB_BUDDIES.map((b) => <BuddyCard key={b.id} buddy={b} />)}
+        <div className="grid grid-cols-2 gap-[9px] mb-[4px] max-h-[160px] overflow-y-auto">
+          {celebBuddies.map((b) => {
+            const isSelected = selectedBuddy === b.id;
+            return (
+              <div
+                key={b.id}
+                onClick={() => setSelectedBuddy(b.id)}
+                className="flex items-center gap-[10px] p-[10px] rounded-[12px] cursor-pointer border transition-all duration-150"
+                style={
+                  isSelected
+                    ? { background: "rgba(0,196,140,.08)", borderColor: "var(--green)" }
+                    : { background: "var(--bg)", borderColor: "var(--border)" }
+                }
+              >
+                <div
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-[13px] flex-shrink-0 overflow-hidden"
+                  style={{ background: b.avatar_bg || "#1A3A6E", color: "white" }}
+                >
+                  {b.avatar_content && (b.avatar_content.startsWith("http") || b.avatar_content.startsWith("data:")) ? (
+                    <img src={b.avatar_content} alt={b.name} className="w-full h-full object-cover" />
+                  ) : (
+                    b.avatar_content || "WB"
+                  )}
+                </div>
+                <div className="flex-grow min-w-0">
+                  <div className="text-[12px] font-semibold truncate" style={{ color: "var(--text)" }}>{b.name}</div>
+                  <div className="text-[10px] truncate" style={{ color: "var(--muted)" }}>{b.tag}</div>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
-        {/* Archetype section */}
         <p className="text-[11px] font-semibold uppercase tracking-[.5px] mb-2 mt-3" style={{ color: "var(--muted)" }}>
           Or try an Archetype
         </p>
-        <div className="grid grid-cols-2 gap-[9px] mb-3">
-          {ARCHETYPE_BUDDIES.map((b) => <BuddyCard key={b.id} buddy={b} />)}
+        <div className="grid grid-cols-2 gap-[9px] mb-3 max-h-[140px] overflow-y-auto">
+          {archetypeBuddies.map((b) => {
+            const isSelected = selectedBuddy === b.id;
+            return (
+              <div
+                key={b.id}
+                onClick={() => setSelectedBuddy(b.id)}
+                className="flex items-center gap-[10px] p-[10px] rounded-[12px] cursor-pointer border transition-all duration-150"
+                style={
+                  isSelected
+                    ? { background: "rgba(0,196,140,.08)", borderColor: "var(--green)" }
+                    : { background: "var(--bg)", borderColor: "var(--border)" }
+                }
+              >
+                <div
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-[13px] flex-shrink-0 overflow-hidden"
+                  style={{ background: b.avatar_bg || "#1A3A6E", color: "white" }}
+                >
+                  {b.avatar_content && (b.avatar_content.startsWith("http") || b.avatar_content.startsWith("data:")) ? (
+                    <img src={b.avatar_content} alt={b.name} className="w-full h-full object-cover" />
+                  ) : (
+                    b.avatar_content || "🎯"
+                  )}
+                </div>
+                <div className="flex-grow min-w-0">
+                  <div className="text-[12px] font-semibold truncate" style={{ color: "var(--text)" }}>{b.name}</div>
+                  <div className="text-[10px] truncate" style={{ color: "var(--muted)" }}>{b.tag}</div>
+                </div>
+              </div>
+            );
+          })}
         </div>
-
-        {/* Fan disclaimer */}
-        <p className="text-[10px] leading-relaxed mb-4" style={{ color: "var(--muted)" }}>
-          ⚠️ Celebrity names are fan-created AI simulations, not affiliated with the real individuals.
-        </p>
 
         <Actions
           leftLabel="← Back"
@@ -412,62 +378,63 @@ export function OnboardingModal({
     </>
   );
 
-  // ─── Step 3 ───────────────────────────────────────────────────────────────
   const step3 = (
     <>
       <ModalHeader
         step={3}
         title="Connect your financial data"
-        sub="This is what makes advice specific to you. Delete anything anytime."
+        sub="Give your AI Buddy context to calculate real figures. Data is stored locally on your device and encrypted."
       />
       <div className="px-8 pt-6 pb-7">
-        <div className="flex flex-col gap-[9px] mb-[22px]">
+        <div className="flex flex-col gap-[10px] mb-[22px]">
           {SOURCES.map((s) => {
-            const isDone = connected.has(s.id);
-            const isConnecting = connecting === s.id;
+            const isConn = connected.has(s.id);
+            const isConnThis = connecting === s.id;
             return (
               <div
                 key={s.id}
-                className="flex items-center gap-[13px] px-[15px] py-[13px] rounded-xl border transition-all duration-200"
-                style={{
-                  borderColor: isDone ? "var(--green)" : "var(--border)",
-                  background: isDone ? "rgba(0,196,140,.05)" : "var(--bg)",
-                }}
+                className="flex items-center gap-[14px] p-3 rounded-[12px] border"
+                style={{ background: "var(--bg)", borderColor: "var(--border)" }}
               >
-                <span
-                  className="w-9 h-9 rounded-[9px] flex items-center justify-center text-[17px] flex-shrink-0"
+                <div
+                  className="w-10 h-10 rounded-[10px] flex items-center justify-center text-[18px] flex-shrink-0"
                   style={{ background: s.iconBg }}
                 >
                   {s.icon}
-                </span>
-                <span className="flex-1 min-w-0">
-                  <span className="block text-[13px] font-semibold" style={{ color: "var(--text)" }}>{s.label}</span>
-                  <span className="block text-[11px]" style={{ color: "var(--muted)" }}>{s.sub}</span>
-                </span>
+                </div>
+
+                <div className="flex-grow">
+                  <div className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>
+                    {s.label}
+                  </div>
+                  <div className="text-[11px]" style={{ color: "var(--muted)" }}>
+                    {s.sub}
+                  </div>
+                </div>
+
                 <button
                   onClick={() => handleConnect(s.id)}
-                  disabled={isDone || isConnecting}
-                  className="px-[13px] py-[6px] rounded-[8px] border text-[12px] whitespace-nowrap transition-all duration-200 disabled:cursor-default"
-                  style={{
-                    borderColor: isDone ? "var(--green)" : "var(--border)",
-                    background: isDone ? "rgba(0,196,140,.07)" : "transparent",
-                    color: isDone ? "var(--green)" : "var(--muted)",
-                    fontFamily: "var(--font-sora)",
-                  }}
+                  disabled={isConn || Boolean(connecting)}
+                  className="px-3 py-1.5 rounded-[8px] text-[11px] font-semibold border-none cursor-pointer flex-shrink-0 transition-all duration-150"
+                  style={
+                    isConn
+                      ? { background: "rgba(0,196,140,.12)", color: "#00A677", border: "1px solid rgba(0,196,140,.3)" }
+                      : isConnThis
+                      ? { background: "var(--border)", color: "var(--muted)" }
+                      : { background: "var(--navy)", color: "white" }
+                  }
                 >
-                  {isConnecting ? "..." : isDone ? "✓ Connected" : s.btnLabel}
+                  {isConn ? "✓ Connected" : isConnThis ? "Connecting..." : s.btnLabel}
                 </button>
               </div>
             );
           })}
         </div>
-        <p className="text-[11px] mb-5" style={{ color: "var(--muted)" }}>
-          🔒 You can skip and connect later in DataBank
-        </p>
+
         <Actions
           leftLabel="← Back"
           leftAction={() => setStep(2)}
-          rightLabel="Start Chatting →"
+          rightLabel="Get Started →"
           rightAction={handleFinish}
         />
       </div>
@@ -475,33 +442,14 @@ export function OnboardingModal({
   );
 
   return (
-    /* Backdrop */
     <div
-      className="fixed inset-0 z-[300] flex items-center justify-center"
-      style={{
-        background: "var(--onboard-overlay)",
-        backdropFilter: "blur(4px)",
-        WebkitBackdropFilter: "blur(4px)",
-      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
     >
-      {/* Modal */}
       <div
-        className="relative w-[520px] max-w-[92vw] rounded-3xl overflow-hidden"
-        style={{
-          background: "var(--card)",
-          boxShadow: "0 24px 80px rgba(0,0,0,.25)",
-        }}
+        className="w-full max-w-[500px] rounded-[20px] overflow-hidden relative shadow-2xl border"
+        style={{ background: "var(--card)", borderColor: "var(--border)" }}
       >
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 z-10 w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-150"
-          style={{ background: "rgba(255,255,255,.15)", color: "#fff" }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,.25)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,.15)"; }}
-          aria-label="Close"
-        >
-          ✕
-        </button>
         {step === 1 && step1}
         {step === 2 && step2}
         {step === 3 && step3}

@@ -5,11 +5,11 @@ import { usePathname } from "next/navigation";
 
 const NAV_ITEMS = [
   { label: "Overview", href: "/admin/overview", icon: "📊" },
+  { label: "User Management", href: "/admin/users", icon: "👥" },
+  { label: "Buddy Approvals", href: "/admin/approvals", icon: "🤖" },
   { label: "Help Desk & Reviews", href: "/admin/helpdesk", icon: "💬" },
-  { label: "Users", href: "/admin/users", icon: "👥" },
-  { label: "Buddies", href: "/admin/buddies", icon: "🤖" },
-  { label: "Buddy Approvals", href: "/admin/approvals", icon: "✦" },
-  { label: "Data Management", href: "/admin/data", icon: "🗄" },
+  { label: "Buddy Catalogue", href: "/admin/buddies", icon: "✦" },
+  { label: "Data & Signals Engine", href: "/admin/data", icon: "🗄️" },
 ] as const;
 
 export function AdminSidebar() {
@@ -18,34 +18,62 @@ export function AdminSidebar() {
   return (
     <aside
       style={{
-        width: 220,
-        minWidth: 220,
+        width: 240,
+        minWidth: 240,
         height: "100vh",
-        background: "#0B1E3D",
+        background: "#1E293B",
         display: "flex",
         flexDirection: "column",
-        borderRight: "1px solid rgba(255,255,255,.08)",
+        borderRight: "1px solid #334155",
         position: "sticky",
         top: 0,
+        zIndex: 50,
       }}
     >
-      {/* Brand */}
+      {/* Brand & System Status Header */}
       <div
         style={{
-          padding: "24px 20px 20px",
-          borderBottom: "1px solid rgba(255,255,255,.08)",
+          padding: "20px 20px 16px",
+          borderBottom: "1px solid #334155",
         }}
       >
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#00C48C", letterSpacing: "1px", textTransform: "uppercase", marginBottom: 4 }}>
-          Smart Money
+        <div style={{ display: "flex", alignItems: "center", justifyBetween: "space-between", marginBottom: 4 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: "#94A3B8", letterSpacing: "1px", textTransform: "uppercase" }}>
+            Smart Money Enterprise
+          </span>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              fontSize: 10,
+              fontWeight: 600,
+              color: "#10B981",
+              padding: "2px 6px",
+              borderRadius: 4,
+              background: "rgba(16, 185, 129, 0.1)",
+              border: "1px solid rgba(16, 185, 129, 0.2)",
+              marginLeft: "auto",
+            }}
+          >
+            <span
+              style={{
+                width: 5,
+                height: 5,
+                borderRadius: "50%",
+                background: "#10B981",
+              }}
+            />
+            ONLINE
+          </span>
         </div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,.9)" }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "#F8FAFC", letterSpacing: "-0.2px" }}>
           Admin Console
         </div>
       </div>
 
-      {/* Nav */}
-      <nav style={{ padding: "12px 0", flex: 1 }}>
+      {/* Navigation Menu */}
+      <nav style={{ padding: "16px 12px", flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
         {NAV_ITEMS.map(({ label, href, icon }) => {
           const isActive = pathname === href || pathname.startsWith(href + "/");
           return (
@@ -55,67 +83,79 @@ export function AdminSidebar() {
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 10,
-                padding: "10px 20px",
+                gap: 12,
+                padding: "10px 14px",
                 fontSize: 13,
-                fontWeight: isActive ? 600 : 400,
-                color: isActive ? "#00C48C" : "rgba(255,255,255,.55)",
+                fontWeight: isActive ? 600 : 500,
+                color: isActive ? "#F8FAFC" : "#94A3B8",
                 textDecoration: "none",
-                borderLeft: isActive ? "3px solid #00C48C" : "3px solid transparent",
-                background: isActive ? "rgba(0,196,140,.08)" : "transparent",
-                transition: "all .15s",
+                borderRadius: 8,
+                background: isActive ? "#334155" : "transparent",
+                border: isActive ? "1px solid #475569" : "1px solid transparent",
+                transition: "all 0.15s ease",
               }}
             >
-              <span style={{ fontSize: 15, width: 18, textAlign: "center", flexShrink: 0 }}>
+              <span
+                style={{
+                  fontSize: 14,
+                  width: 20,
+                  height: 20,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
                 {icon}
               </span>
-              {label}
+              <span>{label}</span>
             </Link>
           );
         })}
       </nav>
 
-      {/* Footer */}
+      {/* Database & Infrastructure Telemetry Footer */}
       <div
         style={{
-          padding: "16px 20px",
-          borderTop: "1px solid rgba(255,255,255,.08)",
+          padding: "16px",
+          borderTop: "1px solid #334155",
           display: "flex",
           flexDirection: "column",
-          gap: 16,
+          gap: 10,
         }}
       >
+        <div style={{ background: "#0F172A", border: "1px solid #334155", borderRadius: 8, padding: "10px 12px" }}>
+          <div style={{ fontSize: 10, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Database Cluster
+          </div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#F8FAFC", marginTop: 2, display: "flex", alignItems: "center", justifyBetween: "space-between" }}>
+            <span>PostgreSQL 16</span>
+            <span style={{ fontSize: 10, color: "#10B981", background: "rgba(16,185,129,0.1)", padding: "1px 5px", borderRadius: 4, marginLeft: "auto" }}>
+              Native EC2
+            </span>
+          </div>
+        </div>
+
         <Link
           href="/marketplace"
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            gap: 8,
+            gap: 6,
             padding: "8px 12px",
-            background: "rgba(255,255,255,.05)",
-            border: "1px solid rgba(255,255,255,.1)",
+            background: "transparent",
+            border: "1px solid #334155",
             borderRadius: 8,
-            color: "rgba(255,255,255,.7)",
+            color: "#94A3B8",
             fontSize: 12,
-            fontWeight: 600,
+            fontWeight: 500,
             textDecoration: "none",
-            transition: "all .15s",
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,.1)";
-            (e.currentTarget as HTMLAnchorElement).style.color = "#ffffff";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,.05)";
-            (e.currentTarget as HTMLAnchorElement).style.color = "rgba(255,255,255,.7)";
+            transition: "all 0.15s",
           }}
         >
-          <span>←</span> Back to Marketplace
+          <span>←</span> Back to User App
         </Link>
-        <div style={{ fontSize: 11, color: "rgba(255,255,255,.3)", textAlign: "center" }}>
-          Admin only · v1.0
-        </div>
       </div>
     </aside>
   );

@@ -1,128 +1,58 @@
-import { DangerZoneAction } from "@/components/admin/DangerZoneAction";
-import {
-  deleteTestUsersAction,
-  clearDummyTransactionsAction,
-  resetDatabankAction,
-} from "./actions";
+import { Pool } from "pg";
 
-export const metadata = { title: "Data Management · Admin · Smart Money" };
+export const metadata = { title: "Data Engine · Admin · Smart Money" };
+export const dynamic = "force-dynamic";
 
-const ACTIONS = [
-  {
-    title: "Delete Test Users",
-    description:
-      "Permanently removes all user accounts whose email contains '+test' or '@example.com', along with all their sessions, goals, chat history, and DataBank entries.",
-    confirmPhrase: "DELETE TEST USERS",
-    buttonLabel: "Delete Test Users",
-    action: deleteTestUsersAction,
-  },
-  {
-    title: "Clear Dummy Transactions",
-    description:
-      "Deletes all DataBank entries flagged as dummy data (is_dummy = true). This includes synthetic income, expense, and subscription rows added during testing.",
-    confirmPhrase: "CLEAR TRANSACTIONS",
-    buttonLabel: "Clear Dummy Transactions",
-    action: clearDummyTransactionsAction,
-  },
-  {
-    title: "Reset DataBank Fixtures",
-    description:
-      "Removes all DataBank entries seeded as demo fixtures (is_fixture = true). Use this to restore a clean state before re-seeding from the fixture script.",
-    confirmPhrase: "RESET DATABANK",
-    buttonLabel: "Reset DataBank Fixtures",
-    action: resetDatabankAction,
-  },
-] as const;
+const localPool = new Pool({
+  connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+});
 
-export default function DataManagementPage() {
+export default async function AdminDataPage() {
+  const { rows: tableStats } = await localPool.query(`
+    SELECT relname as table_name, n_live_tup as row_count
+    FROM pg_stat_user_tables
+    ORDER BY n_live_tup DESC;
+  `);
+
   return (
-    <div>
-      <h1 style={{ fontSize: 22, fontWeight: 700, color: "#0B1E3D", marginBottom: 6 }}>
-        Data Management
-      </h1>
-      <p style={{ fontSize: 14, color: "#6B7A99", marginBottom: 32 }}>
-        Bulk cleanup operations for test and fixture data. All actions are permanent.
-      </p>
-
-      {/* Danger zone header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          marginBottom: 16,
-        }}
-      >
-        <div
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            background: "#E53E3E",
-          }}
-        />
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 700,
-            letterSpacing: "1px",
-            textTransform: "uppercase",
-            color: "#E53E3E",
-          }}
-        >
-          Danger Zone
-        </span>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {/* Header Banner */}
+      <div style={{ borderBottom: "1px solid #334155", paddingBottom: 16 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: "#F8FAFC", margin: 0 }}>
+          Data &amp; Signals Engine
+        </h1>
+        <p style={{ fontSize: 13, color: "#94A3B8", margin: "4px 0 0" }}>
+          Monitor PostgreSQL table statistics, row counts, and storage metrics.
+        </p>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {ACTIONS.map(({ title, description, confirmPhrase, buttonLabel, action }) => (
-          <div
-            key={title}
-            style={{
-              background: "#ffffff",
-              borderRadius: 16,
-              borderLeft: "4px solid #E53E3E",
-              padding: "24px 28px",
-              boxShadow: "0 1px 4px rgba(11,30,61,.06)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 24,
-            }}
-          >
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: "#0B1E3D", marginBottom: 6 }}>
-                {title}
+      {/* Database Tables Statistics */}
+      <div style={{ background: "#1E293B", border: "1px solid #334155", borderRadius: 8, padding: 20 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 600, color: "#F8FAFC", margin: "0 0 16px" }}>
+          PostgreSQL Database Table Row Counts
+        </h2>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
+          {tableStats.map((tbl) => (
+            <div
+              key={tbl.table_name}
+              style={{
+                background: "#0F172A",
+                border: "1px solid #334155",
+                borderRadius: 6,
+                padding: "14px",
+              }}
+            >
+              <div style={{ fontSize: 11, color: "#94A3B8", fontWeight: 600, textTransform: "uppercase" }}>
+                {tbl.table_name}
               </div>
-              <div style={{ fontSize: 13, color: "#6B7A99", lineHeight: 1.6, maxWidth: 560 }}>
-                {description}
+              <div style={{ fontSize: 22, fontWeight: 700, color: "#F8FAFC", marginTop: 4 }}>
+                {parseInt(tbl.row_count || 0, 10).toLocaleString()}
               </div>
+              <div style={{ fontSize: 10, color: "#64748B", marginTop: 2 }}>live rows</div>
             </div>
-            <DangerZoneAction
-              confirmPhrase={confirmPhrase}
-              buttonLabel={buttonLabel}
-              action={action}
-            />
-          </div>
-        ))}
-      </div>
-
-      {/* Informational footer */}
-      <div
-        style={{
-          marginTop: 32,
-          padding: "16px 20px",
-          borderRadius: 12,
-          background: "rgba(245,166,35,.08)",
-          border: "1px solid rgba(245,166,35,.25)",
-          fontSize: 12,
-          color: "#6B7A99",
-          lineHeight: 1.6,
-        }}
-      >
-        <strong style={{ color: "#F5A623" }}>Note:</strong> Deleting users removes their auth
-        account and all associated data via cascade. DataBank cleanups only affect entries
-        matching the respective flag — live user data is untouched.
+          ))}
+        </div>
       </div>
     </div>
   );

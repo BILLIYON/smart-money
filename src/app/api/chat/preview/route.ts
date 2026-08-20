@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
+import { streamBedrockToReadableStream, BEDROCK_MODELS } from "@/lib/bedrock";
 
 let _anthropic: Anthropic | null = null;
 function getAnthropic() {
@@ -86,6 +87,23 @@ export async function POST(req: Request) {
 
   const selectedModel = (config.model || "").toLowerCase();
   const hasNvidiaKey = Boolean(process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY);
+
+  // If Bedrock selected, stream via AWS Bedrock Converse API
+  if (selectedModel.includes("bedrock") || selectedModel.includes("aws")) {
+    try {
+      const readable = await streamBedrockToReadableStream({
+        systemPrompt: system,
+        messages,
+        modelId: BEDROCK_MODELS["claude-3-5-sonnet"],
+        maxTokens: 256,
+      });
+      return new Response(readable, {
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
+    } catch (bErr) {
+      console.warn("[/api/chat/preview] Bedrock stream failed, falling back:", bErr);
+    }
+  }
 
   // If NVIDIA / Gemma selected and key available, stream directly from NVIDIA NIM
   if ((selectedModel.includes("nvidia") || selectedModel.includes("gemma")) && hasNvidiaKey) {

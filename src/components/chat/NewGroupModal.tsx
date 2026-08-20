@@ -1,25 +1,26 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { ALL_BUDDIES } from "@/lib/buddies";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useChatStore } from "@/store/chatStore";
-
-const SELECTABLE = ALL_BUDDIES.map((b) => ({
-  id: b.id,
-  name: b.name.length > 14 ? b.name.split(" ").slice(0, 2).join(" ") : b.name,
-  sub: b.isFanSim ? `${b.price} · Fan` : b.price,
-  bg: b.avatarBg,
-  av: b.avatarContent,
-  serif: b.avatarIsSerif,
-}));
 
 const DEFAULT_PICKED = new Set(["contrarian", "buffett"]);
 
 export function NewGroupModal() {
-  const { setShowNewGroupModal, setChatMode, setActiveGroupId, initGroupThread } = useChatStore();
+  const { setShowNewGroupModal, setChatMode, setActiveGroupId, initGroupThread, communityBuddies } = useChatStore();
   const [picked, setPicked] = useState<Set<string>>(new Set(DEFAULT_PICKED));
   const [groupName, setGroupName] = useState("My Finance Council");
   const modalRef = useRef<HTMLDivElement>(null);
+
+  const selectable = useMemo(() => {
+    return communityBuddies.map((b) => ({
+      id: b.id,
+      name: b.name.length > 14 ? b.name.split(" ").slice(0, 2).join(" ") : b.name,
+      sub: b.isFanSim ? `${b.price} · Fan` : b.price,
+      bg: b.avatarBg,
+      av: b.avatarContent,
+      serif: b.avatarIsSerif,
+    }));
+  }, [communityBuddies]);
 
   useEffect(() => {
     const prevFocus = document.activeElement as HTMLElement;
@@ -42,144 +43,146 @@ export function NewGroupModal() {
     });
   }
 
-  function create() {
-    if (!groupName.trim() || picked.size < 2) return;
-    const gid = groupName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
-    initGroupThread(gid, []);
-    setActiveGroupId(gid);
+  function handleCreate() {
+    const ids = Array.from(picked);
+    const newId = `custom-${Date.now()}`;
+    const name = groupName.trim() || "My Finance Council";
+    initGroupThread(newId, []);
+    setActiveGroupId(newId);
     setChatMode("group");
     setShowNewGroupModal(false);
   }
 
   return (
     <div
-      className="fixed inset-0 z-[280] flex items-center justify-center"
-      style={{ background: "rgba(0,0,0,.45)", backdropFilter: "blur(4px)" }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
       onClick={(e) => { if (e.target === e.currentTarget) setShowNewGroupModal(false); }}
+      aria-modal="true"
+      role="dialog"
+      aria-labelledby="new-council-title"
     >
       <div
         ref={modalRef}
-        className="overflow-hidden"
-        style={{
-          background: "var(--card)",
-          borderRadius: 20,
-          width: 480,
-          maxWidth: "92vw",
-          boxShadow: "0 20px 60px rgba(0,0,0,.25)",
-        }}
+        className="w-full max-w-[480px] rounded-[20px] p-6 relative overflow-hidden"
+        style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}
       >
-        {/* Header */}
-        <div
-          className="px-[26px] py-[22px] relative overflow-hidden"
-          style={{ background: "linear-gradient(135deg,var(--navy),var(--navy2))" }}
+        <button
+          onClick={() => setShowNewGroupModal(false)}
+          className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-[16px] border cursor-pointer"
+          style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--muted)" }}
         >
-          <span
-            className="pointer-events-none absolute -right-[30px] -top-[30px] w-[120px] h-[120px] rounded-full"
-            style={{ background: "rgba(0,196,140,.1)" }}
+          ✕
+        </button>
+
+        <div className="text-[10px] uppercase tracking-[1.5px] font-semibold mb-1" style={{ color: "var(--green)" }}>
+          AI Council
+        </div>
+        <h2 id="new-council-title" className="text-[20px] font-bold mb-1" style={{ color: "var(--text)" }}>
+          Create a New Council
+        </h2>
+        <p className="text-[12px] mb-5 leading-relaxed" style={{ color: "var(--muted)" }}>
+          Combine 2 to 4 AI Finance Buddies to advise you simultaneously on complex financial decisions.
+        </p>
+
+        {/* Group Name Input */}
+        <div className="mb-5">
+          <label className="block text-[11px] font-semibold mb-1" style={{ color: "var(--text)" }}>
+            Council Name
+          </label>
+          <input
+            type="text"
+            value={groupName}
+            onChange={(e) => setGroupName(e.target.value)}
+            placeholder="e.g. Real Estate &amp; Wealth Council"
+            className="w-full px-3 py-2 rounded-[10px] text-[13px] border outline-none"
+            style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
           />
-          <h3
-            className="relative z-[1] text-[20px] text-white mb-1"
-            style={{ fontFamily: "var(--font-dm-serif)" }}
-          >
-            Start a Group Chat
-          </h3>
-          <p className="relative z-[1] text-[12px]" style={{ color: "rgba(255,255,255,.5)" }}>
-            Pick 2–4 Finance Buddies. They&apos;ll all see your DataBank and respond to each other.
-          </p>
         </div>
 
-        {/* Body */}
-        <div className="px-[26px] py-[22px]">
-          {/* Buddy selector */}
-          <div className="text-[11px] font-semibold uppercase tracking-[.5px] mb-3" style={{ color: "var(--muted)" }}>
-            Select Buddies ({picked.size}/4 selected · min 2)
+        {/* Pick Buddies */}
+        <div className="mb-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-semibold" style={{ color: "var(--text)" }}>
+              Select Buddies ({picked.size}/4)
+            </span>
+            <span className="text-[10px]" style={{ color: "var(--muted)" }}>Min 2 · Max 4</span>
           </div>
-          <div className="grid gap-2 mb-5" style={{ gridTemplateColumns: "1fr 1fr" }}>
-            {SELECTABLE.map((b) => {
-              const active = picked.has(b.id);
+
+          <div className="grid grid-cols-2 gap-2 max-h-[220px] overflow-y-auto pr-1">
+            {selectable.map((b) => {
+              const isSelected = picked.has(b.id);
               return (
                 <button
                   key={b.id}
+                  type="button"
                   onClick={() => toggle(b.id)}
-                  className="flex items-center gap-[10px] px-3 py-[10px] rounded-[10px] border text-left transition-all duration-200 cursor-pointer"
-                  style={{
-                    background: active ? "rgba(0,196,140,.06)" : "var(--bg)",
-                    borderColor: active ? "var(--green)" : "var(--border)",
-                  }}
+                  className="flex items-center gap-2 p-2 rounded-[12px] border text-left cursor-pointer transition-all duration-150"
+                  style={
+                    isSelected
+                      ? { background: "rgba(0,196,140,0.1)", borderColor: "var(--green)", color: "var(--text)" }
+                      : { background: "var(--bg)", borderColor: "var(--border)", color: "var(--muted)" }
+                  }
                 >
                   <div
-                    className="flex items-center justify-center flex-shrink-0 rounded-[8px] text-[15px]"
+                    className="w-8 h-8 rounded-[8px] flex items-center justify-center text-[13px] flex-shrink-0 overflow-hidden"
                     style={{
-                      width: 30, height: 30,
                       background: b.bg,
-                      ...(b.serif ? { fontFamily: "var(--font-dm-serif)", fontSize: "13px", color: "rgba(255,255,255,.9)" } : {}),
+                      color: "white",
+                      ...(b.serif ? { fontFamily: "var(--font-dm-serif)" } : {}),
                     }}
                   >
-                    {b.av}
+                    {b.av.startsWith("http") || b.av.startsWith("data:") ? (
+                      <img src={b.av} alt={b.name} className="w-full h-full object-cover" />
+                    ) : (
+                      b.av
+                    )}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[12px] font-semibold truncate" style={{ color: "var(--text)" }}>{b.name}</div>
-                    <div className="text-[10px]" style={{ color: "var(--muted)" }}>{b.sub}</div>
+
+                  <div className="min-w-0 flex-grow">
+                    <div className="text-[12px] font-semibold truncate" style={{ color: isSelected ? "var(--text)" : "var(--text)" }}>
+                      {b.name}
+                    </div>
+                    <div className="text-[10px] truncate" style={{ color: "var(--muted)" }}>
+                      {b.sub}
+                    </div>
                   </div>
-                  {/* Check circle */}
+
                   <div
-                    className="flex items-center justify-center flex-shrink-0 rounded-full text-[10px] transition-all duration-200"
-                    style={{
-                      width: 18, height: 18,
-                      border: active ? "none" : "2px solid var(--border)",
-                      background: active ? "var(--green)" : "transparent",
-                      color: active ? "#fff" : "transparent",
-                    }}
+                    className="w-4 h-4 rounded-full border flex items-center justify-center text-[10px] flex-shrink-0"
+                    style={
+                      isSelected
+                        ? { background: "var(--green)", borderColor: "var(--green)", color: "white" }
+                        : { borderColor: "var(--border)" }
+                    }
                   >
-                    ✓
+                    {isSelected && "✓"}
                   </div>
                 </button>
               );
             })}
           </div>
+        </div>
 
-          {/* Group name */}
-          <div className="mb-5">
-            <div className="text-[11px] font-semibold uppercase tracking-[.5px] mb-2" style={{ color: "var(--muted)" }}>
-              Group Name
-            </div>
-            <input
-              type="text"
-              value={groupName}
-              onChange={(e) => setGroupName(e.target.value)}
-              placeholder="e.g. My Investment Council"
-              className="w-full rounded-[10px] px-[14px] py-[10px] text-[13px] outline-none border transition-colors duration-200"
-              style={{
-                background: "var(--input-bg)",
-                borderColor: "var(--border)",
-                color: "var(--text)",
-                fontFamily: "var(--font-sora)",
-              }}
-              onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = "var(--green)"; }}
-              onBlur={(e) => { (e.target as HTMLInputElement).style.borderColor = "var(--border)"; }}
-            />
-          </div>
-
-          {/* Actions */}
-          <div className="flex gap-[10px]">
-            <button
-              onClick={create}
-              disabled={picked.size < 2 || !groupName.trim()}
-              className="flex-1 py-[11px] rounded-[10px] text-[13px] font-semibold text-white border-none cursor-pointer transition-colors duration-200"
-              style={{ background: picked.size >= 2 ? "var(--navy)" : "var(--border)" }}
-              onMouseEnter={(e) => { if (picked.size >= 2) (e.currentTarget as HTMLButtonElement).style.background = "var(--green)"; }}
-              onMouseLeave={(e) => { if (picked.size >= 2) (e.currentTarget as HTMLButtonElement).style.background = "var(--navy)"; }}
-            >
-              Start Group Chat →
-            </button>
-            <button
-              onClick={() => setShowNewGroupModal(false)}
-              className="px-4 py-[11px] rounded-[10px] text-[13px] border cursor-pointer transition-colors duration-200"
-              style={{ color: "var(--muted)", borderColor: "var(--border)", background: "transparent" }}
-            >
-              Cancel
-            </button>
-          </div>
+        {/* Actions */}
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => setShowNewGroupModal(false)}
+            className="flex-1 py-2.5 rounded-[12px] text-[13px] font-medium border cursor-pointer"
+            style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleCreate}
+            disabled={picked.size < 2}
+            className="flex-1 py-2.5 rounded-[12px] text-[13px] font-semibold border-none cursor-pointer disabled:opacity-50"
+            style={{ background: "var(--green)", color: "white" }}
+          >
+            Create Council
+          </button>
         </div>
       </div>
     </div>

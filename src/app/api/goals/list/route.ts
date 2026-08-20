@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceSupabaseClient } from "@/lib/supabase-server";
-import { ALL_BUDDIES } from "@/lib/buddies";
+import { getApprovedCommunityBuddies, getCommunityBuddyById } from "@/lib/db";
 
 // In-memory store for guest/demo sessions
 let IN_MEMORY_GOALS: any[] = [];
@@ -28,10 +28,12 @@ export async function GET() {
       dbGoals = IN_MEMORY_GOALS;
     }
 
+    const allCommunityBuddies = await getApprovedCommunityBuddies();
+
     // Format goals for frontend
     const formattedGoals = dbGoals.map((g) => {
       const buddyId = g.buddy_id;
-      const buddy = ALL_BUDDIES.find((b) => b.id === buddyId || b.id === "contrarian");
+      const buddy = allCommunityBuddies.find((b) => b.id === buddyId) || allCommunityBuddies[0];
 
       let deadlineStr = "No deadline";
       if (g.target_date) {
@@ -65,8 +67,8 @@ export async function GET() {
         title: g.title,
         meta: `Started ${startStr} · Target: ${deadlineStr}`,
         buddy: buddy ? buddy.name : "The Contrarian Investor",
-        buddyEmoji: buddy ? buddy.avatarContent : "🎯",
-        buddyColor: buddy ? buddy.avatarBg : "#132952",
+        buddyEmoji: buddy ? (buddy.avatar_content || "🎯") : "🎯",
+        buddyColor: buddy ? (buddy.avatar_bg || "#132952") : "#132952",
         current: (g.current_amount || 0) / 100, // kobo to Naira
         target: (g.target_amount || 0) / 100,   // kobo to Naira
         deadline: deadlineStr,

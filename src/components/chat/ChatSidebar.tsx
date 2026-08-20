@@ -141,16 +141,11 @@ export function ChatSidebar() {
     return () => clearTimeout(t);
   }, []);
 
-  // Overwrite static buddies with database counterparts when loaded
-  const dbIds = new Set(communityBuddies.map((b) => b.id));
-  const ALL_BUDDY_LIST: Buddy[] = [
-    ...communityBuddies,
-    ...STATIC_BUDDY_LIST.filter((b) => !dbIds.has(b.id)),
-  ];
+  // Use database buddies directly
+  const ALL_BUDDY_LIST: Buddy[] = communityBuddies;
 
-  // Resolve active buddy from combined list (handles DB buddies)
+  // Resolve active buddy from database list
   const activeBuddy = ALL_BUDDY_LIST.find((b) => b.id === activeBuddyId)
-    ?? getBuddy(activeBuddyId)
     ?? ALL_BUDDY_LIST[0];
 
   function selectBuddy(id: string) {

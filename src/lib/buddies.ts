@@ -1,4 +1,4 @@
-export type BuddyModel = "Claude" | "GPT-4" | "Gemini" | "Groq" | "NVIDIA" | "Gemma";
+export type BuddyModel = "Claude" | "GPT-4" | "Gemini" | "Groq" | "NVIDIA" | "Gemma" | "Bedrock";
 export type BuddyCategory =
   | "Investing"
   | "Budgeting"

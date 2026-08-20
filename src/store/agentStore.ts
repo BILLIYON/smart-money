@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { useMilestoneToast } from "@/components/ui/MilestoneToast";
-import { ALL_BUDDIES } from "@/lib/buddies";
+import { useBuddyStore } from "@/store/buddyStore";
 
 // ── Types ──────────────────────────────────────────────────
 export type AgentAction = {
@@ -82,11 +82,10 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     set({ isLoading: true });
     try {
       const res = await fetch("/api/agent/pending");
-      if (!res.ok) return;
       const data = (await res.json()) as AgentAction[];
-      
       const mapped = data.map((action) => {
-        const buddy = ALL_BUDDIES.find((b) => b.id === action.buddy_id);
+        const allBuddies = useBuddyStore.getState().allBuddies;
+        const buddy = allBuddies.find((b) => b.id === action.buddy_id);
         return {
           ...action,
           buddyName: buddy?.name || "AI Buddy",

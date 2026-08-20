@@ -261,7 +261,8 @@ export default function StudioPage() {
           let modelName: StudioConfig["model"] = "Claude";
           if (b.ai_model) {
             const m = b.ai_model.toLowerCase();
-            if (m.includes("gemma")) modelName = "Gemma";
+            if (m.includes("bedrock") || m.includes("aws")) modelName = "Bedrock";
+            else if (m.includes("gemma")) modelName = "Gemma";
             else if (m.includes("nvidia") || m.includes("nim")) modelName = "NVIDIA";
             else if (m.includes("gpt")) modelName = "GPT-4";
             else if (m.includes("gemini")) modelName = "Gemini";
@@ -500,6 +501,7 @@ export default function StudioPage() {
   ];
 
   const models: { id: StudioConfig["model"]; label: string; sub: string }[] = [
+    { id: "Bedrock", label: "Bedrock (AWS)", sub: "Claude 3.5 Sonnet · AWS Bedrock" },
     { id: "Gemma", label: "Gemma (NVIDIA)", sub: "Gemma 2 27B · NVIDIA Build" },
     { id: "NVIDIA", label: "NVIDIA NIM", sub: "Llama 3.3 70B · Agentic" },
     { id: "Claude", label: "Claude", sub: "Nuanced · Balanced" },

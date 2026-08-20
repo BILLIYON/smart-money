@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
-
-export const metadata: Metadata = { title: "Admin · Smart Money" };
-export const dynamic = "force-dynamic";
-
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+
+export const metadata: Metadata = { title: "Admin Console · Smart Money" };
+export const dynamic = "force-dynamic";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -26,18 +25,30 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   }
 
   return (
-    <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
+    <div
+      style={{
+        display: "flex",
+        height: "100vh",
+        width: "100vw",
+        overflow: "hidden",
+        background: "#0F172A",
+        color: "#F8FAFC",
+        fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      }}
+    >
       <AdminSidebar />
 
       <main
         style={{
           flex: 1,
           overflowY: "auto",
-          background: "#F4F6FB",
-          padding: 32,
+          padding: "32px 40px",
+          background: "#0F172A",
         }}
       >
-        {children}
+        <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+          {children}
+        </div>
       </main>
     </div>
   );

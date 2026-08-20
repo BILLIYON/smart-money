@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from "react";
 import { CelebrityHero } from "@/components/buddy/CelebrityHero";
 import { BuddyCard, CelebrityCard, CreateYourOwnCard } from "@/components/buddy/BuddyCard";
 import { useBuddyStore } from "@/store/buddyStore";
-import { ARCHETYPE_BUDDIES, CELEBRITY_BUDDIES, type Buddy, type BuddyCategory } from "@/lib/buddies";
+import { type Buddy, type BuddyCategory } from "@/lib/buddies";
 import type { CommunityBuddyRow } from "@/lib/db";
 import Link from "next/link";
 
@@ -17,16 +17,16 @@ const MODEL_COLOR: Record<string, string> = {
 
 function rowToBuddy(row: CommunityBuddyRow): Buddy {
   const price =
-    row.price === "free" ? "Free"
-    : row.price === "custom" && row.custom_price ? `$${row.custom_price}/mo`
-    : "$5/mo";
-  const badgeType: "free" | "pro" = row.price === "free" ? "free" : "pro";
+    row.price_note ||
+    (row.price === "free" || row.price === "0" ? "Free" : `₦${row.price}/mo`);
+  const badgeType: "free" | "pro" = (row.price === "free" || row.price === "0" || row.price_note === "Free") ? "free" : "pro";
   const rawModel = (row.model ?? "").toLowerCase();
   const model: Buddy["model"] =
     rawModel.includes("groq") || rawModel.includes("llama") ? "Groq" :
     rawModel.includes("gpt") ? "GPT-4" :
     rawModel.includes("gemini") ? "Gemini" :
     "Claude";
+
   return {
     id: row.id,
     name: row.name,
@@ -42,8 +42,8 @@ function rowToBuddy(row: CommunityBuddyRow): Buddy {
     avatarIsSerif: row.avatar_is_serif ?? false,
     model,
     modelColor: MODEL_COLOR[model] ?? "#7B68EE",
-    rating: "New",
-    reviewCount: "0",
+    rating: row.rating ? String(row.rating) : "4.8",
+    reviewCount: row.review_count ? String(row.review_count) : "5.2k",
     isFanSim: row.is_fan_sim ?? false,
     disclaimer: row.disclaimer ?? undefined,
     categories: (row.categories ?? []) as BuddyCategory[],
@@ -78,8 +78,12 @@ export default function MarketplacePage() {
       fetch("/api/hidden-buddies").then((r) => r.json()),
     ])
       .then(([rows, ids]: [CommunityBuddyRow[], string[]]) => {
-        setCommunityBuddies(rows.map(rowToBuddy));
-        setHiddenIds(new Set(ids));
+        if (Array.isArray(rows)) {
+          setCommunityBuddies(rows.map(rowToBuddy));
+        }
+        if (Array.isArray(ids)) {
+          setHiddenIds(new Set(ids));
+        }
         setLoading(false);
       })
       .catch(() => {
@@ -87,17 +91,13 @@ export default function MarketplacePage() {
       });
   }, []);
 
-  // Use DB buddies exclusively so Admin edits/deletions take immediate effect
+  // Use database buddies exclusively so all dynamic edits/avatars take effect
   const { visibleArchetypes, visibleCelebs, extraCommunity } = useMemo(() => {
     const activeFromDb = communityBuddies.filter((b) => !hiddenIds.has(b.id));
-    const builtInIds = new Set([
-      "contrarian", "closer", "academic", "lagos", "architect",
-      "buffett", "kiyosaki", "cardone", "ramsey", "lynch", "trump"
-    ]);
 
-    const archetypes = activeFromDb.filter((b) => !b.isFanSim && builtInIds.has(b.id));
-    const celebs = activeFromDb.filter((b) => b.isFanSim && builtInIds.has(b.id));
-    const extra = activeFromDb.filter((b) => !builtInIds.has(b.id));
+    const archetypes = activeFromDb.filter((b) => !b.isFanSim);
+    const celebs = activeFromDb.filter((b) => b.isFanSim);
+    const extra: Buddy[] = [];
 
     return {
       visibleArchetypes: archetypes,
@@ -106,13 +106,14 @@ export default function MarketplacePage() {
     };
   }, [communityBuddies, hiddenIds]);
 
-  // In "All" mode, show archetypes + celebs merged. Otherwise filter separately.
   const filteredArchetypes = useMemo(() => {
     let list = visibleArchetypes;
     if (activeFilter === "Free Only") {
       list = list.filter((b) => b.badgeType === "free");
-    } else if (activeFilter !== "All") {
+    } else if (activeFilter !== "All" && activeFilter !== "Celebrity Sim") {
       list = list.filter((b) => b.categories.includes(activeFilter as BuddyCategory));
+    } else if (activeFilter === "Celebrity Sim") {
+      return [];
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
@@ -167,7 +168,6 @@ export default function MarketplacePage() {
     return list;
   }, [activeFilter, extraCommunity, searchQuery]);
 
-  // Extract custom categories from community buddies
   const dynamicFilters = useMemo(() => {
     const predefinedValues = new Set(FILTERS.map((f) => f.value as string));
     const customCats = new Set<string>();
@@ -182,18 +182,15 @@ export default function MarketplacePage() {
     return [...FILTERS, ...customFilters];
   }, [communityBuddies]);
 
-  // Merged grid: archetypes first, then celebs, then community
   const allMergedBuddies = [...filteredArchetypes, ...filteredCelebs, ...filteredCommunity];
 
   if (loading) {
     return (
       <div className="px-3 py-6 sm:px-6 lg:px-8 w-full">
-        {/* Skeleton hero */}
         <div
           className="rounded-[20px] mb-8 animate-pulse"
           style={{ height: 160, background: "var(--card)", border: "1px solid var(--border)" }}
         />
-        {/* Skeleton filter chips */}
         <div className="flex gap-2 mb-6">
           {[80, 90, 110, 80, 70, 90].map((w, i) => (
             <div
@@ -203,7 +200,6 @@ export default function MarketplacePage() {
             />
           ))}
         </div>
-        {/* Skeleton buddy cards grid — 2 cols on mobile, auto-fill on desktop */}
         <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3 sm:gap-5">
           {Array.from({ length: 8 }).map((_, i) => (
             <div
@@ -226,8 +222,8 @@ export default function MarketplacePage() {
 
   return (
     <div className="px-3 py-6 sm:px-6 lg:px-8 w-full">
-      {/* Celebrity Hero */}
-      <CelebrityHero />
+      {/* Dynamic Celebrity Hero */}
+      <CelebrityHero celebs={visibleCelebs} />
 
       {/* Section header */}
       <div className="flex items-center justify-between mb-4">
@@ -274,7 +270,7 @@ export default function MarketplacePage() {
         })}
       </div>
 
-      {/* Fan disclaimer banner — only when Celebrity Sim filter is selected */}
+      {/* Fan disclaimer banner */}
       {activeFilter === "Celebrity Sim" && filteredCelebs.length > 0 && (
         <div
           className="flex items-start gap-3 px-4 py-3 rounded-[12px] border mb-5 text-[12px] leading-relaxed"
@@ -293,7 +289,7 @@ export default function MarketplacePage() {
         </div>
       )}
 
-      {/* Unified merged buddies grid — 2 cols on mobile, auto-fill on desktop */}
+      {/* Merged database buddies grid */}
       {allMergedBuddies.length > 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3 sm:gap-5 mb-8">
           {filteredArchetypes.map((buddy) => (

@@ -907,16 +907,9 @@ export function MessageThread() {
     communityBuddies,
   } = useChatStore();
 
-  const isStatic = ALL_BUDDIES.some((b) => b.id === activeBuddyId);
-  const isLoaded = isStatic || communityBuddies.length > 0;
-
-  const dbIds = new Set(communityBuddies.map((b) => b.id));
-  const ALL_BUDDY_LIST = [
-    ...communityBuddies,
-    ...ALL_BUDDIES.filter((b) => !dbIds.has(b.id)),
-  ];
-  const buddy = ALL_BUDDY_LIST.find((b) => b.id === activeBuddyId)
-    ?? getBuddy(activeBuddyId);
+  const isLoaded = communityBuddies.length > 0;
+  const ALL_BUDDY_LIST = communityBuddies;
+  const buddy = ALL_BUDDY_LIST.find((b) => b.id === activeBuddyId) ?? ALL_BUDDY_LIST[0];
   const messages = threads[activeBuddyId] ?? [];
   const bottomRef = useRef<HTMLDivElement>(null);
   const showNudge = messages.length === 0 && !hasConnectedDatabank && !showDatabankNudge;
