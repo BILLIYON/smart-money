@@ -127,8 +127,11 @@ function LoginForm() {
             Smart{" "}
             <span style={{ color: "var(--green)" }}>Money</span>
           </div>
-          <div className="text-[13px] mt-1" style={{ color: "rgba(255,255,255,.45)" }}>
-            Your AI-powered finance team
+          <div className="text-[13px] mt-1 flex items-center gap-2" style={{ color: "rgba(255,255,255,.45)" }}>
+            <span>Your AI-powered finance team</span>
+            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: "rgba(0,196,140,.15)", color: "var(--green)", border: "1px solid rgba(0,196,140,.3)" }}>
+              this is v1
+            </span>
           </div>
         </div>
 
