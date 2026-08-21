@@ -265,9 +265,15 @@ function formatDatabankContext(ctx: DatabankContext): string {
 }
 
 /** Normalise the model field from buddies.ts ("Claude" | "GPT-4" | "Gemini" | "Groq" | "NVIDIA" | "Gemma" | "Bedrock") */
-function resolveModel(buddy: Buddy, override?: "claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma" | "bedrock"): "claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma" | "bedrock" {
+function resolveModel(
+  buddy: Buddy,
+  override?: "claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma" | "bedrock" | "bedrock-haiku" | "bedrock-llama" | "bedrock-nova"
+): "claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma" | "bedrock" | "bedrock-haiku" | "bedrock-llama" | "bedrock-nova" {
   if (override) return override;
   const m = (buddy.model || "").toLowerCase();
+  if (m.includes("haiku")) return "bedrock-haiku";
+  if (m.includes("llama") && m.includes("bedrock")) return "bedrock-llama";
+  if (m.includes("nova")) return "bedrock-nova";
   if (m.includes("bedrock") || m.includes("aws")) return "bedrock";
   if (m.includes("gemma")) return "gemma";
   if (m.includes("nvidia") || m.includes("nim") || m.includes("nemotron")) return "nvidia";
@@ -573,7 +579,7 @@ async function streamGemini(
   messages: Message[]
 ): Promise<ReadableStream<Uint8Array>> {
   const model = gemini().getGenerativeModel({
-    model: "gemini-2.5-flash",
+    model: "gemini-3.6-flash",
     systemInstruction: system,
   });
 
@@ -736,8 +742,8 @@ async function askAI(prompt: string, fallbackModel = "claude-3-5-haiku-latest"):
   }
 
   // Strategy 3: Google Gemini 2.5 Flash
-  console.log("[AI] Attempting completion with Gemini: gemini-2.5-flash");
-  const model = gemini().getGenerativeModel({ model: "gemini-2.5-flash" });
+  console.log("[AI] Attempting completion with Gemini: gemini-3.6-flash");
+  const model = gemini().getGenerativeModel({ model: "gemini-3.6-flash" });
   const result = await model.generateContent(prompt);
   const response = await result.response;
   return response.text();
@@ -894,8 +900,8 @@ export async function askAIWithEngine(
       if (!process.env.GOOGLE_AI_API_KEY) {
         throw new Error("Google AI (Gemini) API key is not configured in environment variables.");
       }
-      console.log("[AI Engine] Calling Gemini (gemini-2.5-flash)");
-      const model = gemini().getGenerativeModel({ model: "gemini-2.5-flash" });
+      console.log("[AI Engine] Calling Gemini (gemini-3.6-flash)");
+      const model = gemini().getGenerativeModel({ model: "gemini-3.6-flash" });
       const result = await model.generateContent(prompt);
       const response = await result.response;
       return response.text();
@@ -903,9 +909,14 @@ export async function askAIWithEngine(
 
     // 3. Amazon Bedrock
     if (engine.includes("bedrock") || engine.includes("aws")) {
-      console.log("[AI Engine] Calling Amazon Bedrock (Claude 3.5 Sonnet)");
+      let modelId = BEDROCK_MODELS["claude-3-5-sonnet"];
+      if (engine.includes("haiku")) modelId = BEDROCK_MODELS["claude-3-5-haiku"];
+      else if (engine.includes("llama")) modelId = BEDROCK_MODELS["llama-3-3-70b"];
+      else if (engine.includes("nova")) modelId = BEDROCK_MODELS["nova-pro"];
+
+      console.log(`[AI Engine] Calling Amazon Bedrock (${modelId})`);
       return generateBedrockCompletion({
-        modelId: BEDROCK_MODELS["claude-3-5-sonnet"],
+        modelId,
         userMessage: prompt,
         maxTokens: 1024,
       });

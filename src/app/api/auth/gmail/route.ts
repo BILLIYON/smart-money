@@ -1,11 +1,13 @@
 import { google } from "googleapis";
 import { createClient } from "@/lib/supabase/server";
 import { encrypt } from "@/lib/crypto";
+import { getAppOrigin } from "@/lib/auth-utils";
 
 export async function GET(req: Request) {
   try {
     const urlObj = new URL(req.url);
-    const redirectUri = `${urlObj.origin}/api/auth/gmail/callback`;
+    const origin = getAppOrigin(req);
+    const redirectUri = `${origin}/api/auth/gmail/callback`;
 
     const clientId = process.env.GOOGLE_CLIENT_ID || "64971754557-dt5ldg3u1vrvbns4k7venkvvcdtajfhl.apps.googleusercontent.com";
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET || "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";

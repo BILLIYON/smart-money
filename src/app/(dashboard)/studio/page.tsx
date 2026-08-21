@@ -30,7 +30,7 @@ type StudioConfig = {
   signaturePhrase: string;
   willNotAdviseOn: string;
   // ④ AI Model
-  model: "Claude" | "GPT-4" | "Gemini" | "Groq" | "NVIDIA" | "Gemma";
+  model: "Claude" | "GPT-4" | "Gemini" | "Groq" | "NVIDIA" | "Gemma" | "Bedrock" | "Bedrock-Haiku" | "Bedrock-Llama" | "Bedrock-Nova";
   // ⑤ Notifications
   triggers: boolean[];
   maxNotifs: number;
@@ -335,6 +335,10 @@ export default function StudioPage() {
         body: JSON.stringify({
           messages: history.map((m) => ({ role: m.role, content: m.content })),
           config: {
+            buddyName: config.buddyName,
+            tag: config.tag,
+            desc: config.desc,
+            philosophy: config.philosophy,
             tone: config.tone,
             delivery: config.delivery,
             register: config.register,
@@ -501,7 +505,10 @@ export default function StudioPage() {
   ];
 
   const models: { id: StudioConfig["model"]; label: string; sub: string }[] = [
-    { id: "Bedrock", label: "Bedrock (AWS)", sub: "Claude 3.5 Sonnet · AWS Bedrock" },
+    { id: "Bedrock", label: "Bedrock Sonnet (AWS)", sub: "Claude 3.5 Sonnet · AWS Bedrock" },
+    { id: "Bedrock-Haiku", label: "Bedrock Haiku (AWS)", sub: "Claude 3.5 Haiku · AWS Bedrock" },
+    { id: "Bedrock-Llama", label: "Bedrock Llama (AWS)", sub: "Meta Llama 3.3 70B · AWS Bedrock" },
+    { id: "Bedrock-Nova", label: "Bedrock Nova (AWS)", sub: "Amazon Nova Pro · AWS Bedrock" },
     { id: "Gemma", label: "Gemma (NVIDIA)", sub: "Gemma 2 27B · NVIDIA Build" },
     { id: "NVIDIA", label: "NVIDIA NIM", sub: "Llama 3.3 70B · Agentic" },
     { id: "Claude", label: "Claude", sub: "Nuanced · Balanced" },
@@ -1263,7 +1270,11 @@ export default function StudioPage() {
                       alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
                     }}
                   >
-                    {msg.content}
+                    {msg.streaming && !msg.content ? (
+                      <span className="italic" style={{ color: "var(--muted)" }}>Thinking...</span>
+                    ) : (
+                      msg.content
+                    )}
                     {msg.streaming && (
                       <span
                         className="inline-block w-[2px] h-[12px] ml-[2px] rounded-sm align-middle"

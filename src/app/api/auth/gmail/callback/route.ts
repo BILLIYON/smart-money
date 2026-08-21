@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceSupabaseClient } from "@/lib/supabase-server";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { syncGmailForUser } from "@/lib/gmail";
+import { getAppOrigin } from "@/lib/auth-utils";
 
 function redirectOrPopup(url: string, type: "GMAIL_CONNECTED" | "GMAIL_ERROR") {
   return new Response(
@@ -25,7 +26,7 @@ function redirectOrPopup(url: string, type: "GMAIL_CONNECTED" | "GMAIL_ERROR") {
 
 export async function GET(req: Request) {
   const urlObj = new URL(req.url);
-  const baseUrl = urlObj.origin;
+  const baseUrl = getAppOrigin(req);
   const redirectUri = `${baseUrl}/api/auth/gmail/callback`;
 
   const clientId = process.env.GOOGLE_CLIENT_ID || "64971754557-dt5ldg3u1vrvbns4k7venkvvcdtajfhl.apps.googleusercontent.com";

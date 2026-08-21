@@ -26,6 +26,7 @@ export async function proxy(request: NextRequest) {
     pathname === "/contact" ||
     pathname === "/api/contact" ||
     pathname === "/api/studio" ||
+    pathname === "/api/chat/preview" ||
     pathname === "/api/hidden-buddies" ||
     pathname === "/api/databank/sources-summary" ||
     pathname === "/api/subscriptions/price" ||

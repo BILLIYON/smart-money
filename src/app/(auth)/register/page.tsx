@@ -37,7 +37,6 @@ function RegisterForm() {
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   function handleGoogle() {
     setError(null);
@@ -62,68 +61,44 @@ function RegisterForm() {
     setLoading(true);
 
     try {
-      const { data, error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { full_name: fullName },
-          emailRedirectTo: `${location.origin}/auth/callback`,
-        },
+      // 1. Call server API for direct registration (auto-confirms account)
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, fullName }),
       });
 
-      if (authError) {
-        setError(authError.message);
+      const resData = await res.json();
+
+      if (!res.ok || resData.error) {
+        setError(resData.error || "Failed to create account.");
         setLoading(false);
         return;
       }
 
-      // Supabase may require email confirmation — check if session was created
-      if (data.session) {
-        const next = searchParams.get("next") ?? "/";
-        router.push(next);
-        router.refresh();
-      } else {
-        setSuccess(true);
+      // 2. Direct instant sign-in after account creation
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) {
+        setError("Account created! Please sign in with your password.");
         setLoading(false);
+        router.push(`/login?email=${encodeURIComponent(email)}`);
+        return;
       }
+
+      // 3. Instant redirect into application
+      const next = searchParams.get("next") ?? "/";
+      router.push(next);
+      router.refresh();
     } catch (err: any) {
-      setError(err?.message || "Unable to connect to authentication server. Please check your internet connection.");
+      setError(err?.message || "Unable to connect to authentication server.");
       setLoading(false);
     }
   }
 
-  if (success) {
-    return (
-      <div
-        className="min-h-screen flex items-center justify-center px-4 py-12"
-        style={{ background: "var(--navy)" }}
-      >
-        <div
-          className="w-full max-w-[400px] rounded-[20px] p-8 text-center"
-          style={{ background: "var(--navy2)", border: "1px solid rgba(255,255,255,.07)" }}
-        >
-          <div className="text-[40px] mb-4">✉️</div>
-          <div
-            className="text-[20px] font-semibold mb-2"
-            style={{ color: "#fff", fontFamily: "var(--font-sora)" }}
-          >
-            Check your email
-          </div>
-          <div className="text-[13px] mb-6" style={{ color: "rgba(255,255,255,.45)" }}>
-            We sent a confirmation link to <strong style={{ color: "#fff" }}>{email}</strong>.
-            Click it to activate your account and get started.
-          </div>
-          <Link
-            href="/login"
-            className="inline-block px-6 py-[11px] rounded-[10px] text-[14px] font-semibold"
-            style={{ background: "var(--green)", color: "#fff" }}
-          >
-            Back to Sign In
-          </Link>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div

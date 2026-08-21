@@ -897,10 +897,16 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
                     onChange={(e) => setFormAiModel(e.target.value)}
                     style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 13, background: "#fff" }}
                   >
-                    <option value="claude">Claude (Anthropic)</option>
-                    <option value="gpt4">GPT-4 (OpenAI)</option>
-                    <option value="gemini">Gemini (Google)</option>
+                    <option value="bedrock-sonnet">Amazon Bedrock (Claude 3.5 Sonnet)</option>
+                    <option value="bedrock-haiku">Amazon Bedrock (Claude 3.5 Haiku)</option>
+                    <option value="bedrock-llama">Amazon Bedrock (Meta Llama 3.3 70B)</option>
+                    <option value="bedrock-nova">Amazon Bedrock (Amazon Nova Pro)</option>
+                    <option value="claude">Claude (Anthropic Direct)</option>
+                    <option value="gpt4">GPT-4 (OpenAI Direct)</option>
+                    <option value="gemini">Gemini (Google AI Direct)</option>
                     <option value="groq">Groq (Llama 3.3 70B)</option>
+                    <option value="gemma">Gemma 4 31B (NVIDIA Build)</option>
+                    <option value="nvidia">Llama 3.3 70B (NVIDIA NIM)</option>
                   </select>
                 </div>
 

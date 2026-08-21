@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
+import { getAppOrigin } from "@/lib/auth-utils";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const next = searchParams.get("next") ?? "/";
-  const redirectUri = `${new URL(req.url).origin}/api/auth/google/callback`;
+  const origin = getAppOrigin(req);
+  const redirectUri = `${origin}/api/auth/google/callback`;
 
   const googleAuthUrl =
     `https://accounts.google.com/o/oauth2/v2/auth?` +
@@ -16,3 +18,4 @@ export async function GET(req: Request) {
 
   return NextResponse.redirect(googleAuthUrl);
 }
+

@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getAppOrigin } from "@/lib/auth-utils";
 
 export async function GET(req: Request) {
-  const { searchParams, origin } = new URL(req.url);
+  const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
   const next = searchParams.get("state") ?? "/";
+  const origin = getAppOrigin(req);
   const redirectUri = `${origin}/api/auth/google/callback`;
 
   if (!code) {

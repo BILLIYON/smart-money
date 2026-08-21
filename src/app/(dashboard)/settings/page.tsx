@@ -532,6 +532,10 @@ function ProfileTab() {
                   fontWeight: 600,
                 }}
               >
+                <option value="bedrock-sonnet">⚡ Amazon Bedrock — Claude 3.5 Sonnet (AWS Bedrock)</option>
+                <option value="bedrock-haiku">⚡ Amazon Bedrock — Claude 3.5 Haiku (AWS Bedrock)</option>
+                <option value="bedrock-llama">⚡ Amazon Bedrock — Meta Llama 3.3 70B (AWS Bedrock)</option>
+                <option value="bedrock-nova">⚡ Amazon Bedrock — Amazon Nova Pro (AWS Bedrock)</option>
                 <option value="gemma">✨ Gemma 4 31B (NVIDIA Build API · Frontier Reasoning)</option>
                 <option value="nvidia">🚀 Llama 3.3 70B (NVIDIA NIM · High-Precision Agentic)</option>
                 <option value="groq-70b">⚡ Groq Llama 3.3 70B Versatile (Fast Agentic Reasoning)</option>
@@ -641,6 +645,10 @@ function ProfileTab() {
                       fontWeight: 500,
                     }}
                   >
+                    <option value="bedrock-sonnet">⚡ Amazon Bedrock — Claude 3.5 Sonnet</option>
+                    <option value="bedrock-haiku">⚡ Amazon Bedrock — Claude 3.5 Haiku</option>
+                    <option value="bedrock-llama">⚡ Amazon Bedrock — Meta Llama 3.3 70B</option>
+                    <option value="bedrock-nova">⚡ Amazon Bedrock — Amazon Nova Pro</option>
                     <option value="groq-70b">⚡ Groq Llama 3.3 70B Versatile (Fast &amp; Reliable)</option>
                     <option value="groq-8b">⚡ Groq Llama 3.1 8B Instant (Sub-100ms Speed)</option>
                     <option value="gemini">🔮 Google Gemini 2.0 Flash (Multimodal Backup)</option>
