@@ -3,32 +3,25 @@ import { requireAuth } from "@/lib/supabase-server";
 import { SUPPORTED_CURRENCIES } from "@/lib/currency";
 
 export async function GET() {
-  const { supabase, userId, error } = await requireAuth();
-  if (error) return error;
+  const { user, userId, error } = await requireAuth();
+  if (error || !userId) return error;
 
-  const { data, error: dbError } = await supabase
-    .from("users")
-    .select("currency, full_name, email, primary_goal, risk_tolerance, income_range, plan")
-    .eq("id", userId)
-    .single();
-
-  if (dbError || !data) {
-    return NextResponse.json({
-      currency: "NGN",
-      full_name: null,
-      email: null,
-      primary_goal: null,
-      risk_tolerance: null,
-      income_range: null,
-      plan: "free"
-    });
-  }
-  return NextResponse.json(data);
+  return NextResponse.json({
+    user: {
+      id: user.id,
+      email: user.email,
+      full_name: user.full_name,
+      is_admin: user.is_admin,
+      onboarding_complete: user.onboarding_complete,
+      plan: user.plan || "free",
+    },
+    ...user,
+  });
 }
 
 export async function PATCH(req: Request) {
   const { supabase, userId, error } = await requireAuth();
-  if (error) return error;
+  if (error || !userId) return error;
 
   const body = (await req.json()) as {
     currency?: string;

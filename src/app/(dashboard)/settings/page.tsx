@@ -5,6 +5,7 @@ import { useTheme } from "next-themes";
 import { useUserStore } from "@/store/userStore";
 import { useBuddyStore } from "@/store/buddyStore";
 import { popup } from "@/store/popupStore";
+import { OTPModal } from "@/components/auth/OTPModal";
 
 // ── Types ──────────────────────────────────────────────────
 type Tab = "profile" | "notifs" | "subs" | "privacy" | "appear";
@@ -189,6 +190,8 @@ function ProfileTab() {
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [phoneVerified, setPhoneVerified] = useState(false);
   const [currency, setCurrency] = useState("NGN");
   const [incomeRange, setIncomeRange] = useState("₦300k–₦500k");
   const [primaryGoal, setPrimaryGoal] = useState("Build emergency fund");
@@ -197,6 +200,20 @@ function ProfileTab() {
   const [aiEngine, setAiEngine] = useState("groq-70b");
   const [enableFallback, setEnableFallback] = useState(true);
   const [fallbackEngine, setFallbackEngine] = useState("groq-70b");
+
+  const [otpModal, setOtpModal] = useState<{
+    isOpen: boolean;
+    purpose: "email_change" | "phone_change" | "profile_update";
+    title: string;
+    subtitle: string;
+    destination: string;
+  }>({
+    isOpen: false,
+    purpose: "profile_update",
+    title: "",
+    subtitle: "",
+    destination: "",
+  });
 
   useEffect(() => {
     loadProfile().then(() => setLoading(false));
@@ -220,10 +237,115 @@ function ProfileTab() {
       setIncomeRange(profile.income_range ?? "₦300k–₦500k");
       setPrimaryGoal(profile.primary_goal ?? "Build emergency fund");
       setRiskTolerance(profile.risk_tolerance ?? "Moderate (balanced growth)");
+      setPhoneNumber((profile as any).phone_number ?? "");
+      setPhoneVerified((profile as any).phone_verified ?? false);
     }
   }, [profile]);
 
+  async function handleSendPhoneOtp() {
+    if (!phoneNumber || phoneNumber.trim().length < 7) {
+      popup.error("Invalid Phone Number", "Please enter a valid phone number.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ purpose: "phone_change", targetPhone: phoneNumber.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        popup.error("Failed to Send OTP", data.error || "Unable to send verification code.");
+        return;
+      }
+
+      setOtpModal({
+        isOpen: true,
+        purpose: "phone_change",
+        title: "Verify Phone Number",
+        subtitle: "Enter the 6-digit OTP code sent via email to confirm updating phone number to",
+        destination: phoneNumber.trim(),
+      });
+    } catch (err: any) {
+      popup.error("Error", err?.message || "Failed to send code.");
+    }
+  }
+
+  async function handleSendEmailOtp() {
+    if (!email || !email.includes("@")) {
+      popup.error("Invalid Email", "Please enter a valid email address.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ purpose: "email_change", targetEmail: email.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        popup.error("Failed to Send OTP", data.error || "Unable to send verification code.");
+        return;
+      }
+
+      setOtpModal({
+        isOpen: true,
+        purpose: "email_change",
+        title: "Confirm Email Change",
+        subtitle: "Enter the 6-digit OTP code sent to your new email address",
+        destination: email.trim(),
+      });
+    } catch (err: any) {
+      popup.error("Error", err?.message || "Failed to send code.");
+    }
+  }
+
+  const handleVerifyOtpModal = async (code: string) => {
+    const res = await fetch("/api/auth/verify-otp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        purpose: otpModal.purpose,
+        targetEmail: email.trim(),
+        targetPhone: phoneNumber.trim(),
+        code,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      throw new Error(data.error || "Verification failed. Invalid code.");
+    }
+
+    setOtpModal((prev) => ({ ...prev, isOpen: false }));
+    popup.success("Verified!", data.message || "Updated successfully!");
+    if (otpModal.purpose === "phone_change") setPhoneVerified(true);
+    await loadProfile();
+  };
+
+  const handleResendOtpModal = async () => {
+    const res = await fetch("/api/auth/send-otp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        purpose: otpModal.purpose,
+        targetEmail: email.trim(),
+        targetPhone: phoneNumber.trim(),
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      throw new Error(data.error || "Failed to resend code.");
+    }
+  };
+
   async function handleSave() {
+    if (email && email !== profile?.email) {
+      await handleSendEmailOtp();
+      return;
+    }
     setSaved(true);
     await updateProfile({
       full_name: fullName,
@@ -385,7 +507,7 @@ function ProfileTab() {
       </div>
 
       {/* Personal Info */}
-      <Section title="Personal Info" sub="Update your name, email, and currency preferences">
+      <Section title="Personal Info" sub="Update your name, email, phone number, and currency preferences">
         <div
           style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}
         >
@@ -431,7 +553,7 @@ function ProfileTab() {
                 marginBottom: 6,
               }}
             >
-              Email
+              Email (Requires 6-Digit OTP)
             </div>
             <input
               type="email"
@@ -450,6 +572,82 @@ function ProfileTab() {
                 boxSizing: "border-box",
               }}
             />
+          </div>
+
+          {/* Phone Number with 6-Digit OTP Verification */}
+          <div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 6,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "var(--muted)",
+                  textTransform: "uppercase",
+                  letterSpacing: ".5px",
+                }}
+              >
+                Phone Number
+              </span>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  color: phoneVerified ? "var(--green)" : "#E24B4A",
+                  background: phoneVerified ? "rgba(0,196,140,0.15)" : "rgba(226,75,74,0.15)",
+                  padding: "2px 8px",
+                  borderRadius: 12,
+                }}
+              >
+                {phoneVerified ? "✓ Verified" : "Unverified"}
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                type="tel"
+                value={phoneNumber}
+                onChange={(e) => {
+                  setPhoneNumber(e.target.value);
+                  setPhoneVerified(false);
+                }}
+                placeholder="+234 801 234 5678"
+                style={{
+                  flex: 1,
+                  padding: "9px 12px",
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  fontFamily: "inherit",
+                  fontSize: 13,
+                  color: "var(--text)",
+                  background: "var(--card)",
+                  outline: "none",
+                  boxSizing: "border-box",
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleSendPhoneOtp}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  background: "var(--green)",
+                  color: "#fff",
+                  border: "none",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Verify Phone OTP
+              </button>
+            </div>
           </div>
           <div>
             <div
@@ -775,6 +973,17 @@ function ProfileTab() {
           {profileSaved ? "✓ Saved" : "Save Profile"}
         </button>
       </Section>
+
+      {/* 6-Digit Verification OTP Modal */}
+      <OTPModal
+        isOpen={otpModal.isOpen}
+        title={otpModal.title}
+        subtitle={otpModal.subtitle}
+        targetDestination={otpModal.destination}
+        onClose={() => setOtpModal((prev) => ({ ...prev, isOpen: false }))}
+        onVerify={handleVerifyOtpModal}
+        onResend={handleResendOtpModal}
+      />
     </>
   );
 }

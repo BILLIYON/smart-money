@@ -3,7 +3,7 @@
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { OTPModal } from "@/components/auth/OTPModal";
 
 // ── Google icon ────────────────────────────────────────────
 function GoogleIcon() {
@@ -28,7 +28,6 @@ export default function RegisterPage() {
 function RegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = createClient();
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -37,6 +36,9 @@ function RegisterForm() {
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // OTP state
+  const [isOtpOpen, setIsOtpOpen] = useState(false);
 
   function handleGoogle() {
     setError(null);
@@ -61,44 +63,73 @@ function RegisterForm() {
     setLoading(true);
 
     try {
-      // 1. Call server API for direct registration (auto-confirms account)
-      const res = await fetch("/api/auth/register", {
+      // Send 6-digit Registration OTP via AWS SES
+      const res = await fetch("/api/auth/send-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, fullName }),
+        body: JSON.stringify({
+          purpose: "registration",
+          targetEmail: email,
+          fullName,
+        }),
       });
 
       const resData = await res.json();
 
       if (!res.ok || resData.error) {
-        setError(resData.error || "Failed to create account.");
+        setError(resData.error || "Failed to send verification code.");
         setLoading(false);
         return;
       }
 
-      // 2. Direct instant sign-in after account creation
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (signInError) {
-        setError("Account created! Please sign in with your password.");
-        setLoading(false);
-        router.push(`/login?email=${encodeURIComponent(email)}`);
-        return;
-      }
-
-      // 3. Instant redirect into application
-      const next = searchParams.get("next") ?? "/";
-      router.push(next);
-      router.refresh();
+      // Open OTP Verification Modal
+      setIsOtpOpen(true);
     } catch (err: any) {
       setError(err?.message || "Unable to connect to authentication server.");
+    } finally {
       setLoading(false);
     }
   }
 
+  const handleVerifyOtp = async (code: string) => {
+    const res = await fetch("/api/auth/verify-otp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        purpose: "registration",
+        targetEmail: email,
+        fullName,
+        password,
+        code,
+      }),
+    });
+
+    const resData = await res.json();
+    if (!res.ok || resData.error) {
+      throw new Error(resData.error || "Verification failed. Invalid code.");
+    }
+
+    // Success -> redirect
+    const next = searchParams.get("next") ?? "/";
+    router.push(next);
+    router.refresh();
+  };
+
+  const handleResendOtp = async () => {
+    const res = await fetch("/api/auth/send-otp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        purpose: "registration",
+        targetEmail: email,
+        fullName,
+      }),
+    });
+    const resData = await res.json();
+    if (!res.ok || resData.error) {
+      throw new Error(resData.error || "Failed to resend code.");
+    }
+  };
 
   return (
     <div
@@ -317,7 +348,7 @@ function RegisterForm() {
                 if (!loading) (e.currentTarget as HTMLButtonElement).style.background = "var(--green)";
               }}
             >
-              {loading ? "Creating account…" : "Create Account →"}
+              {loading ? "Sending OTP Code..." : "Create Account →"}
             </button>
           </form>
 
@@ -362,6 +393,17 @@ function RegisterForm() {
           </Link>
         </div>
       </div>
+
+      {/* 6-Digit Registration OTP Verification Modal */}
+      <OTPModal
+        isOpen={isOtpOpen}
+        title="Verify Your Registration"
+        subtitle="Enter the 6-digit OTP code sent via email to"
+        targetDestination={email}
+        onClose={() => setIsOtpOpen(false)}
+        onVerify={handleVerifyOtp}
+        onResend={handleResendOtp}
+      />
     </div>
   );
 }

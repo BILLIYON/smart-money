@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { getAppOrigin } from "@/lib/auth-utils";
+import { findUserByEmail, createUser, setSessionCookie } from "@/lib/auth";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -15,7 +15,7 @@ export async function GET(req: Request) {
   }
 
   try {
-    // Exchange code for tokens directly from Google
+    // Exchange code for tokens from Google
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -35,44 +35,37 @@ export async function GET(req: Request) {
     }
 
     const tokens = await tokenRes.json();
-    const idToken = tokens.id_token;
 
-    if (!idToken) {
-      console.error("[/api/auth/google/callback] No id_token returned by Google");
-      return NextResponse.redirect(`${origin}/login?error=google_auth_failed`);
-    }
-
-    // Authenticate user in Supabase locally using the Google ID Token
-    const supabase = await createClient();
-    const { data, error } = await supabase.auth.signInWithIdToken({
-      provider: "google",
-      token: idToken,
+    // Fetch user profile from Google using access token
+    const profileRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
     });
 
-    if (error) {
-      console.error("[/api/auth/google/callback] signInWithIdToken failed:", error.message);
+    if (!profileRes.ok) {
+      console.error("[/api/auth/google/callback] Failed to fetch Google profile");
       return NextResponse.redirect(`${origin}/login?error=google_auth_failed`);
     }
 
-    // Fail-safe: ensure user profile is in public.users
-    if (data?.user) {
-      const user = data.user;
-      const { data: profile } = await supabase
-        .from("users")
-        .select("id")
-        .eq("id", user.id)
-        .single();
+    const googleUser = await profileRes.json();
+    const email = googleUser.email;
+    const fullName = googleUser.name || googleUser.given_name || "";
 
-      if (!profile) {
-        const fullName = user.user_metadata?.full_name || user.user_metadata?.name || "";
-        await supabase.from("users").insert({
-          id: user.id,
-          email: user.email || "",
-          full_name: fullName,
-          onboarding_complete: false,
-        });
-      }
+    if (!email) {
+      console.error("[/api/auth/google/callback] Google profile missing email");
+      return NextResponse.redirect(`${origin}/login?error=google_auth_failed`);
     }
+
+    // Find or create user in PostgreSQL
+    let user = await findUserByEmail(email);
+    if (!user) {
+      user = await createUser({
+        email,
+        full_name: fullName,
+      });
+    }
+
+    // Set HTTP-only session cookie
+    await setSessionCookie(user);
 
     // Success redirect
     return NextResponse.redirect(`${origin}${next}`);

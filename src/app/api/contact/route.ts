@@ -127,12 +127,8 @@ export async function POST(req: Request) {
     } else {
       // If guest submission, match email against existing users table to auto-link to account
       try {
-        const { data: matchedUser } = await supabase
-          .from("users")
-          .select("id, full_name")
-          .eq("email", userEmail)
-          .maybeSingle();
-
+        const { findUserByEmail } = await import("@/lib/auth");
+        const matchedUser = await findUserByEmail(userEmail);
         if (matchedUser) {
           userId = matchedUser.id;
           if (!name && matchedUser.full_name) userName = matchedUser.full_name;
@@ -192,6 +188,18 @@ export async function POST(req: Request) {
     }
 
     IN_MEMORY_TICKETS.unshift(newTicket);
+
+    // Send email alert to admin via AWS SES
+    try {
+      const { sendEmail, renderContactAlertEmail } = await import("@/lib/email");
+      sendEmail({
+        to: "adeolujohn495@gmail.com",
+        subject: `[Smart Money Support] ${newTicket.type.toUpperCase()}: ${newTicket.subject}`,
+        html: renderContactAlertEmail(userName, userEmail, newTicket.subject, message),
+      }).catch((emailErr) => console.warn("[/api/contact] Admin SES alert warning:", emailErr));
+    } catch {
+      // Non-blocking
+    }
 
     return NextResponse.json({
       ok: true,

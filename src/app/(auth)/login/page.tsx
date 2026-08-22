@@ -48,13 +48,15 @@ function LoginForm() {
     setLoading(true);
 
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
       });
 
-      if (authError) {
-        setError(authError.message);
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setError(data.error || "Invalid email or password.");
         setLoading(false);
         return;
       }

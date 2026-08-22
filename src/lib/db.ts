@@ -377,6 +377,7 @@ export async function getHiddenBuddyIds(): Promise<string[]> {
     const pool = new Pool({
       connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
     });
+    await pool.query("CREATE TABLE IF NOT EXISTS hidden_buddies (buddy_id TEXT PRIMARY KEY);");
     const { rows } = await pool.query("SELECT buddy_id FROM hidden_buddies;").catch(() => ({ rows: [] }));
     await pool.end();
     return rows.map((r: { buddy_id: string }) => r.buddy_id);
@@ -387,6 +388,7 @@ export async function hideBuddy(buddyId: string): Promise<void> {
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
   });
+  await pool.query("CREATE TABLE IF NOT EXISTS hidden_buddies (buddy_id TEXT PRIMARY KEY);");
   await pool.query(
     "INSERT INTO hidden_buddies (buddy_id) VALUES ($1) ON CONFLICT (buddy_id) DO NOTHING;",
     [buddyId]
@@ -399,6 +401,7 @@ export async function unhideBuddy(buddyId: string): Promise<void> {
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
   });
+  await pool.query("CREATE TABLE IF NOT EXISTS hidden_buddies (buddy_id TEXT PRIMARY KEY);");
   await pool.query("DELETE FROM hidden_buddies WHERE buddy_id = $1;", [buddyId]);
   await pool.end();
   dbCache.invalidatePattern("buddies");
@@ -530,7 +533,8 @@ export async function deleteDbBuddy(id: string): Promise<void> {
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
   });
-  await pool.query("DELETE FROM hidden_buddies WHERE buddy_id = $1;", [id]);
+  await pool.query("CREATE TABLE IF NOT EXISTS hidden_buddies (buddy_id TEXT PRIMARY KEY);");
+  await pool.query("DELETE FROM hidden_buddies WHERE buddy_id = $1;", [id]).catch(() => {});
   await pool.query("DELETE FROM buddies WHERE id = $1;", [id]);
   await pool.end();
   dbCache.invalidatePattern("buddies");

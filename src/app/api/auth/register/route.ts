@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createServiceClient } from "@/lib/supabase/service";
-import { Pool } from "pg";
+import { findUserByEmail, createUser, hashPassword, setSessionCookie } from "@/lib/auth";
+import { sendEmail, renderWelcomeEmail } from "@/lib/email";
 
 export async function POST(request: Request) {
   try {
@@ -17,58 +17,45 @@ export async function POST(request: Request) {
     const cleanEmail = email.toLowerCase().trim();
     const cleanName = typeof fullName === "string" ? fullName.trim() : "";
 
-    const serviceClient = createServiceClient();
-
-    // Create user in Supabase Auth with auto-confirmed email (bypasses OTP / confirmation link)
-    const { data: authData, error: authError } = await serviceClient.auth.admin.createUser({
-      email: cleanEmail,
-      password,
-      email_confirm: true,
-      user_metadata: { full_name: cleanName },
-    });
-
-    if (authError) {
-      const msg = authError.message.toLowerCase();
-      if (msg.includes("already registered") || msg.includes("already exists")) {
-        return NextResponse.json({ error: "An account with this email already exists. Please sign in instead." }, { status: 400 });
-      }
-      return NextResponse.json({ error: authError.message }, { status: 400 });
+    // Check if user already exists in PostgreSQL
+    const existing = await findUserByEmail(cleanEmail);
+    if (existing) {
+      return NextResponse.json(
+        { error: "An account with this email already exists. Please sign in instead." },
+        { status: 400 }
+      );
     }
 
-    const userId = authData.user.id;
+    // Hash password and create user in PostgreSQL
+    const password_hash = await hashPassword(password);
+    const user = await createUser({
+      email: cleanEmail,
+      password_hash,
+      full_name: cleanName,
+    });
 
-    // 1. Ensure user row exists in Supabase public.users
-    await serviceClient.from("users").upsert(
-      {
-        id: userId,
-        email: cleanEmail,
-        full_name: cleanName,
-        onboarding_complete: false,
-        plan: "free",
-        created_at: new Date().toISOString(),
-      },
-      { onConflict: "id" }
-    );
+    // Set HTTP-only session cookie
+    await setSessionCookie(user);
 
-    // 2. Ensure user row exists in local PostgreSQL table (if active)
-    if (process.env.DATABASE_URL) {
-      try {
-        const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-        await pool.query(
-          `INSERT INTO users (id, email, full_name, onboarding_complete, plan, created_at)
-           VALUES ($1, $2, $3, false, 'free', NOW())
-           ON CONFLICT (id) DO UPDATE SET email = $2, full_name = $3;`,
-          [userId, cleanEmail, cleanName]
-        );
-        await pool.end();
-      } catch (pgErr) {
-        console.warn("[/api/auth/register] Local PG sync warning:", pgErr);
-      }
+    // Send Welcome Email via AWS SES asynchronously
+    try {
+      sendEmail({
+        to: cleanEmail,
+        subject: "Welcome to Smart Money! 🚀",
+        html: renderWelcomeEmail(cleanName),
+      }).catch((emailErr) => console.warn("[/api/auth/register] Welcome email dispatch warning:", emailErr));
+    } catch {
+      // Non-blocking
     }
 
     return NextResponse.json({
       success: true,
-      user: { id: userId, email: cleanEmail, full_name: cleanName },
+      user: {
+        id: user.id,
+        email: user.email,
+        full_name: user.full_name,
+        onboarding_complete: user.onboarding_complete,
+      },
     });
   } catch (err: any) {
     console.error("[/api/auth/register] Exception:", err);

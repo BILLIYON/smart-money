@@ -29,6 +29,11 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
   const [editingBuddy, setEditingBuddy] = useState<DbBuddy | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Live AI Model Testing Sandbox state
+  const [testPrompt, setTestPrompt] = useState("How should I allocate my ₦300,000 monthly income between savings, investments, and personal expenses?");
+  const [testResponse, setTestResponse] = useState("");
+  const [isTestingAi, setIsTestingAi] = useState(false);
+
   // Form Fields
   const [formId, setFormId] = useState("");
   const [formName, setFormName] = useState("");
@@ -45,6 +50,44 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
   const [formCategories, setFormCategories] = useState("Investing, Value Investing");
   const [formIsFanSim, setFormIsFanSim] = useState(false);
   const [formFanDisclaimer, setFormFanDisclaimer] = useState("");
+
+  const handleTestAiResponse = async () => {
+    if (!testPrompt.trim()) {
+      popup.error("Validation Error", "Please enter a test prompt for the AI.");
+      return;
+    }
+    setIsTestingAi(true);
+    setTestResponse("");
+
+    try {
+      const res = await fetch("/api/admin/test-buddy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: formName,
+          tag: formTag,
+          philosophy: formPhilosophy,
+          ai_model: formAiModel,
+          is_fan_sim: formIsFanSim,
+          fan_disclaimer: formFanDisclaimer,
+          testPrompt: testPrompt.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Failed to generate test AI response.");
+      }
+
+      setTestResponse(data.response || "No response text generated.");
+      popup.success("AI Model Response Ready!", `Successfully generated response using model engine: ${data.modelUsed}.`);
+    } catch (err: any) {
+      console.error(err);
+      popup.error("AI Test Error", err.message || "Failed to query AI model.");
+    } finally {
+      setIsTestingAi(false);
+    }
+  };
 
   const openCreateModal = () => {
     setEditingBuddy(null);
@@ -63,6 +106,7 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
     setFormCategories("Investing");
     setFormIsFanSim(false);
     setFormFanDisclaimer("");
+    setTestResponse("");
     setModalOpen(true);
   };
 
@@ -83,6 +127,7 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
     setFormCategories((buddy.category || []).join(", "));
     setFormIsFanSim(buddy.is_fan_sim || false);
     setFormFanDisclaimer(buddy.fan_disclaimer || "");
+    setTestResponse("");
     setModalOpen(true);
   };
 
@@ -968,7 +1013,76 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
                 )}
               </div>
 
-              {/* Submit / Cancel Buttons */}
+              {/* 🧪 Live AI Model Response Testing Sandbox */}
+              <div
+                style={{
+                  background: "#F8FAFC",
+                  padding: 16,
+                  borderRadius: 14,
+                  border: "1px solid #E2E8F0",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#0B1E3D", display: "flex", alignItems: "center", gap: 6 }}>
+                    🧪 Live AI Model Testing Sandbox
+                  </span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "#475569", background: "#E2E8F0", padding: "2px 8px", borderRadius: 12 }}>
+                    Selected Engine: {formAiModel}
+                  </span>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 11, color: "#475569", fontWeight: 600, display: "block", marginBottom: 4 }}>
+                    Test Prompt
+                  </label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      type="text"
+                      placeholder="Enter a test prompt to send to the selected AI model..."
+                      value={testPrompt}
+                      onChange={(e) => setTestPrompt(e.target.value)}
+                      style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 12, background: "#fff" }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleTestAiResponse}
+                      disabled={isTestingAi}
+                      style={{
+                        padding: "8px 14px",
+                        borderRadius: 8,
+                        background: isTestingAi ? "#94A3B8" : "#7B68EE",
+                        color: "#ffffff",
+                        border: "none",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: isTestingAi ? "wait" : "pointer",
+                        whiteSpace: "nowrap",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                      }}
+                    >
+                      {isTestingAi ? "⚡ Running Test..." : "⚡ Test AI Model Response"}
+                    </button>
+                  </div>
+                </div>
+
+                {testResponse && (
+                  <div style={{ background: "#ffffff", padding: 12, borderRadius: 8, border: "1px solid #CBD5E1" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#0B1E3D", marginBottom: 4, textTransform: "uppercase" }}>
+                      🤖 Live Output ({formAiModel}):
+                    </div>
+                    <div style={{ fontSize: 13, color: "#1E293B", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+                      {testResponse}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Single Unified Submit / Cancel Buttons */}
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 8 }}>
                 <button
                   type="button"
@@ -980,9 +1094,19 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  style={{ padding: "10px 24px", borderRadius: 10, background: "#00C48C", color: "#ffffff", border: "none", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                  style={{
+                    padding: "10px 24px",
+                    borderRadius: 10,
+                    background: isSubmitting ? "#94A3B8" : "#00C48C",
+                    color: "#ffffff",
+                    border: "none",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: isSubmitting ? "wait" : "pointer",
+                    boxShadow: "0 2px 8px rgba(0,196,140,0.3)",
+                  }}
                 >
-                  {isSubmitting ? "Saving..." : editingBuddy ? "Update Buddy" : "Create Buddy"}
+                  {isSubmitting ? "Saving to Database..." : editingBuddy ? "✓ Update Buddy in Database" : "✦ Save Buddy to Database"}
                 </button>
               </div>
             </form>
