@@ -430,39 +430,23 @@ export async function sendMessage(params: {
 
   const hasNvidiaKey = Boolean(process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY);
 
-  if (resolvedModel === "bedrock") {
-    modelsToTry.push("bedrock");
-  } else if (resolvedModel === "gemma" && hasNvidiaKey) {
-    modelsToTry.push("gemma");
-  } else if (resolvedModel === "nvidia" && hasNvidiaKey) {
-    modelsToTry.push("nvidia");
-  } else if (resolvedModel === "groq" && process.env.GROQ_API_KEY) {
-    modelsToTry.push("groq");
-  } else if (resolvedModel === "claude" && !depletedKeys.claude) {
-    modelsToTry.push("claude");
-  } else if (resolvedModel === "gpt4" && !depletedKeys.gpt4) {
-    modelsToTry.push("gpt4");
-  } else if (resolvedModel === "gemini") {
+  // Add active working engines (Gemini & NVIDIA Gemma) as immediate high-priority fallbacks
+  if (!modelsToTry.includes("gemini")) {
     modelsToTry.push("gemini");
   }
-
-  // Add Bedrock as high-priority fallback
-  if (!modelsToTry.includes("bedrock")) {
-    modelsToTry.push("bedrock");
-  }
-
-  // Add NVIDIA Gemma / NIM & Groq / Gemini as fallbacks
   if (hasNvidiaKey && !modelsToTry.includes("gemma")) {
     modelsToTry.push("gemma");
   }
   if (hasNvidiaKey && !modelsToTry.includes("nvidia")) {
     modelsToTry.push("nvidia");
   }
+
+  // Add Bedrock & Groq
+  if (!modelsToTry.includes("bedrock")) {
+    modelsToTry.push("bedrock");
+  }
   if (process.env.GROQ_API_KEY && !modelsToTry.includes("groq")) {
     modelsToTry.push("groq");
-  }
-  if (!modelsToTry.includes("gemini")) {
-    modelsToTry.push("gemini");
   }
 
   // Add remaining non-depleted keys
@@ -481,7 +465,13 @@ export async function sendMessage(params: {
   for (const modelName of modelsToTry) {
     try {
       console.log(`[AI] Attempting stream with model: ${modelName}`);
-      if (modelName === "bedrock") {
+      if (modelName === "gemini") {
+        return await streamGemini(system, messages);
+      } else if (modelName === "gemma") {
+        return await streamNvidia(system, messages, "google/gemma-4-31b-it");
+      } else if (modelName === "nvidia") {
+        return await streamNvidia(system, messages, "meta/llama-3.3-70b-instruct");
+      } else if (modelName === "bedrock") {
         return await streamBedrockToReadableStream({
           systemPrompt: system,
           messages,
@@ -909,7 +899,7 @@ export async function askAIWithEngine(
 
     // 3. Amazon Bedrock
     if (engine.includes("bedrock") || engine.includes("aws")) {
-      let modelId = BEDROCK_MODELS["claude-3-5-sonnet"];
+      let modelId: string = BEDROCK_MODELS["claude-3-5-sonnet"];
       if (engine.includes("haiku")) modelId = BEDROCK_MODELS["claude-3-5-haiku"];
       else if (engine.includes("llama")) modelId = BEDROCK_MODELS["llama-3-3-70b"];
       else if (engine.includes("nova")) modelId = BEDROCK_MODELS["nova-pro"];

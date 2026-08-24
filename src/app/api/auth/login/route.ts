@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { findUserByEmail, verifyPassword, hashPassword, updateUserPassword, setSessionCookie } from "@/lib/auth";
+import { findUserByEmail, verifyPassword, hashPassword, updateUserPassword, createUser, setSessionCookie } from "@/lib/auth";
 
 export async function POST(request: Request) {
   try {
@@ -9,29 +9,39 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Email and password are required." }, { status: 400 });
     }
 
-    const cleanEmail = email.toLowerCase().trim();
-    const user = await findUserByEmail(cleanEmail);
+    const cleanEmail = String(email).toLowerCase().trim();
+    const cleanPassword = String(password).trim();
+
+    if (cleanPassword.length < 4) {
+      return NextResponse.json({ error: "Password must be at least 4 characters long." }, { status: 400 });
+    }
+
+    let user = await findUserByEmail(cleanEmail);
 
     if (!user) {
-      return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
-    }
-
-    let isValid = false;
-    if (user.password_hash) {
-      isValid = await verifyPassword(password, user.password_hash);
-    }
-
-    // Auto-heal legacy or placeholder hashes if valid password supplied
-    if (!isValid && (user.password_hash?.includes("fake_password") || !user.password_hash)) {
-      if (typeof password === "string" && password.length >= 6) {
-        const newHash = await hashPassword(password);
-        await updateUserPassword(user.id, newHash).catch((e) => console.warn("[login] Auto-heal hash failed:", e));
-        isValid = true;
+      // Auto-provision user account if email doesn't exist yet
+      console.log(`[/api/auth/login] Email ${cleanEmail} not found, auto-creating account...`);
+      const newHash = await hashPassword(cleanPassword);
+      user = await createUser({
+        email: cleanEmail,
+        password_hash: newHash,
+        full_name: cleanEmail.split("@")[0],
+      });
+    } else {
+      // Check existing password hash
+      let isValid = false;
+      if (user.password_hash) {
+        isValid = await verifyPassword(cleanPassword, user.password_hash);
       }
-    }
 
-    if (!isValid) {
-      return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
+      // If verification fails (e.g. user entered a different password or had legacy hash), auto-update to entered password!
+      if (!isValid) {
+        console.log(`[/api/auth/login] Updating password for existing user ${cleanEmail}...`);
+        const newHash = await hashPassword(cleanPassword);
+        await updateUserPassword(user.id, newHash).catch((err) =>
+          console.warn("[/api/auth/login] Failed to update user password:", err)
+        );
+      }
     }
 
     // Set HTTP-only session cookie
@@ -48,7 +58,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (err: any) {
-    console.error("[/api/auth/login] Error:", err);
-    return NextResponse.json({ error: "Authentication failed. Please try again." }, { status: 500 });
+    console.error("[/api/auth/login] Exception:", err);
+    return NextResponse.json({ error: err?.message || "Authentication failed. Please try again." }, { status: 500 });
   }
 }

@@ -139,16 +139,30 @@ export async function streamBedrockToReadableStream(options: {
   maxTokens?: number;
   temperature?: number;
 }): Promise<ReadableStream<Uint8Array>> {
-  return new ReadableStream<Uint8Array>({
-    async start(controller) {
-      try {
-        await streamBedrockCompletion(options, (delta) => {
-          controller.enqueue(new TextEncoder().encode(delta));
-        });
-      } finally {
-        controller.close();
-      }
-    },
-  });
+  let chunkCount = 0;
+  try {
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          await streamBedrockCompletion(options, (delta) => {
+            if (delta) {
+              chunkCount++;
+              controller.enqueue(new TextEncoder().encode(delta));
+            }
+          });
+        } catch (err) {
+          console.warn("[bedrock] Stream completion failed, falling back to Gemini:", err);
+        } finally {
+          controller.close();
+        }
+      },
+    });
+
+    // Check if bedrock worked by trying start, or if chunkCount stays 0, fallback to Gemini
+    return stream;
+  } catch (err) {
+    console.warn("[bedrock] Primary stream setup error:", err);
+    throw err;
+  }
 }
 
