@@ -310,6 +310,23 @@ export async function submitBuddy(config: BuddySubmission & { editBuddyId?: stri
 
   const modelVal = config.model ? config.model.toLowerCase() : "claude";
 
+  // Build composite philosophy that incorporates personality sliders, catchphrase, and boundaries
+  const toneLabel = (config.tone ?? 50) > 66 ? "Aggressive & High-Conviction" : (config.tone ?? 50) > 33 ? "Balanced & Pragmatic" : "Conservative & Risk-Averse";
+  const deliveryLabel = (config.delivery ?? 50) > 66 ? "Blunt & Direct" : (config.delivery ?? 50) > 33 ? "Clear & Empathetic" : "Soft & Encouraging";
+  const registerLabel = (config.register ?? 50) > 66 ? "Casual & Conversational" : (config.register ?? 50) > 33 ? "Professional & Accessible" : "Formal & Structured";
+
+  const philosophyParts = [
+    config.philosophy?.trim(),
+    `\n[Personality & Voice Directives]`,
+    `• Tone: ${toneLabel}`,
+    `• Delivery Style: ${deliveryLabel}`,
+    `• Register: ${registerLabel}`,
+    config.signaturePhrase?.trim() ? `• Signature Phrase: "${config.signaturePhrase.trim()}"` : null,
+    config.willNotAdviseOn?.trim() ? `• Strict Boundaries (Will NOT advise on): ${config.willNotAdviseOn.trim()}` : null,
+  ].filter(Boolean);
+
+  const fullPhilosophy = philosophyParts.join("\n");
+
   const record = {
     id: slug,
     name: config.buddyName || "Untitled Buddy",
@@ -322,7 +339,7 @@ export async function submitBuddy(config: BuddySubmission & { editBuddyId?: stri
     category: categories,
     is_fan_sim: config.isFanSim ?? false,
     fan_disclaimer: config.disclaimer || null,
-    philosophy: config.philosophy || null,
+    philosophy: fullPhilosophy,
     ai_model: modelVal,
     price_monthly: isNaN(priceMonthly) ? 0 : priceMonthly,
     rating: 5.0,

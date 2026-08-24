@@ -23,9 +23,10 @@ function getGroq() {
 
 let _nvidia: OpenAI | null = null;
 function getNvidia() {
-  if (!_nvidia && (process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY)) {
+  const key = process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY;
+  if (!_nvidia && key) {
     _nvidia = new OpenAI({
-      apiKey: process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY,
+      apiKey: key,
       baseURL: "https://integrate.api.nvidia.com/v1",
     });
   }
@@ -40,6 +41,14 @@ function getAnthropic() {
   return _anthropic;
 }
 
+let _openai: OpenAI | null = null;
+function getOpenAI() {
+  if (!_openai && process.env.OPENAI_API_KEY) {
+    _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return _openai;
+}
+
 type StudioConfig = {
   buddyName?: string;
   tag?: string;
@@ -51,7 +60,204 @@ type StudioConfig = {
   signaturePhrase?: string;
   willNotAdviseOn?: string;
   model?: string;
+  knowledgeSummary?: string;
 };
+
+// ── Stream Handlers per Provider ──────────────────────────
+
+async function tryStreamBedrock(system: string, messages: { role: "user" | "assistant"; content: string }[], selectedModel: string): Promise<ReadableStream<Uint8Array> | null> {
+  try {
+    let modelId: string = BEDROCK_MODELS["claude-3-5-sonnet"];
+    if (selectedModel.includes("haiku")) modelId = BEDROCK_MODELS["claude-3-5-haiku"];
+    else if (selectedModel.includes("llama")) modelId = BEDROCK_MODELS["llama-3-3-70b"];
+    else if (selectedModel.includes("nova")) modelId = BEDROCK_MODELS["nova-pro"];
+
+    let hasStarted = false;
+    return new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          await streamBedrockCompletion({ systemPrompt: system, messages, modelId, maxTokens: 400 }, (delta) => {
+            if (delta) {
+              hasStarted = true;
+              controller.enqueue(new TextEncoder().encode(delta));
+            }
+          });
+        } catch (err) {
+          console.warn("[preview] Bedrock stream error:", err);
+          if (!hasStarted) {
+            controller.enqueue(new TextEncoder().encode(" (Bedrock unavailable, switching to preview assistant fallback) "));
+          }
+        } finally {
+          controller.close();
+        }
+      },
+    });
+  } catch (err) {
+    console.warn("[preview] Bedrock init error:", err);
+    return null;
+  }
+}
+
+async function tryStreamNvidia(system: string, messages: { role: "user" | "assistant"; content: string }[], selectedModel: string): Promise<ReadableStream<Uint8Array> | null> {
+  const client = getNvidia();
+  if (!client) return null;
+
+  try {
+    const modelName = selectedModel.includes("gemma") ? "google/gemma-4-31b-it" : "meta/llama-3.3-70b-instruct";
+    const response = await client.chat.completions.create({
+      model: modelName,
+      messages: [{ role: "system", content: system }, ...messages],
+      temperature: 0.6,
+      max_tokens: 400,
+      stream: true,
+    });
+
+    return new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          for await (const chunk of response) {
+            const text = chunk.choices[0]?.delta?.content ?? "";
+            if (text) controller.enqueue(new TextEncoder().encode(text));
+          }
+        } finally {
+          controller.close();
+        }
+      },
+    });
+  } catch (err) {
+    console.warn("[preview] NVIDIA stream error:", err);
+    return null;
+  }
+}
+
+async function tryStreamGemini(system: string, messages: { role: "user" | "assistant"; content: string }[]): Promise<ReadableStream<Uint8Array> | null> {
+  const client = getGemini();
+  if (!client) return null;
+
+  try {
+    const model = client.getGenerativeModel({
+      model: "gemini-3.6-flash",
+      systemInstruction: system,
+    });
+
+    const geminiMessages = messages.map((m) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }],
+    }));
+
+    const result = await model.generateContentStream({ contents: geminiMessages });
+
+    return new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          for await (const chunk of result.stream) {
+            const text = chunk.text();
+            if (text) controller.enqueue(new TextEncoder().encode(text));
+          }
+        } finally {
+          controller.close();
+        }
+      },
+    });
+  } catch (err) {
+    console.warn("[preview] Gemini stream error:", err);
+    return null;
+  }
+}
+
+async function tryStreamGroq(system: string, messages: { role: "user" | "assistant"; content: string }[]): Promise<ReadableStream<Uint8Array> | null> {
+  const client = getGroq();
+  if (!client) return null;
+
+  try {
+    const response = await client.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [{ role: "system", content: system }, ...messages],
+      stream: true,
+      max_tokens: 400,
+    });
+
+    return new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          for await (const chunk of response) {
+            const text = chunk.choices[0]?.delta?.content ?? "";
+            if (text) controller.enqueue(new TextEncoder().encode(text));
+          }
+        } finally {
+          controller.close();
+        }
+      },
+    });
+  } catch (err) {
+    console.warn("[preview] Groq stream error:", err);
+    return null;
+  }
+}
+
+async function tryStreamAnthropic(system: string, messages: { role: "user" | "assistant"; content: string }[]): Promise<ReadableStream<Uint8Array> | null> {
+  const client = getAnthropic();
+  if (!client) return null;
+
+  try {
+    const stream = await client.messages.create({
+      model: "claude-3-5-sonnet-20241022",
+      max_tokens: 400,
+      system,
+      messages,
+      stream: true,
+    });
+
+    return new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          for await (const chunk of stream) {
+            if (chunk.type === "content_block_delta" && chunk.delta.type === "text_delta") {
+              controller.enqueue(new TextEncoder().encode(chunk.delta.text));
+            }
+          }
+        } finally {
+          controller.close();
+        }
+      },
+    });
+  } catch (err) {
+    console.warn("[preview] Anthropic stream error:", err);
+    return null;
+  }
+}
+
+async function tryStreamOpenAI(system: string, messages: { role: "user" | "assistant"; content: string }[]): Promise<ReadableStream<Uint8Array> | null> {
+  const client = getOpenAI();
+  if (!client) return null;
+
+  try {
+    const response = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "system", content: system }, ...messages],
+      stream: true,
+      max_tokens: 400,
+    });
+
+    return new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          for await (const chunk of response) {
+            const text = chunk.choices[0]?.delta?.content ?? "";
+            if (text) controller.enqueue(new TextEncoder().encode(text));
+          }
+        } finally {
+          controller.close();
+        }
+      },
+    });
+  } catch (err) {
+    console.warn("[preview] OpenAI stream error:", err);
+    return null;
+  }
+}
+
+// ── Main Preview Handler ────────────────────────────────────
 
 export async function POST(req: Request) {
   try {
@@ -65,127 +271,89 @@ export async function POST(req: Request) {
     const delivery = config.delivery ?? 50;
     const register = config.register ?? 50;
 
-    const toneLabel = tone > 66 ? "aggressive and high-conviction" : tone > 33 ? "balanced" : "conservative and cautious";
-    const deliveryLabel = delivery > 66 ? "blunt and direct" : delivery > 33 ? "clear but empathetic" : "gentle and encouraging";
-    const registerLabel = register > 66 ? "casual and conversational" : register > 33 ? "professional but accessible" : "formal and structured";
+    const toneLabel = tone > 66 ? "aggressive, high-conviction, and bold" : tone > 33 ? "balanced, pragmatic, and objective" : "conservative, cautious, and risk-averse";
+    const deliveryLabel = delivery > 66 ? "blunt, direct, and unfiltered" : delivery > 33 ? "clear, empathetic, and constructive" : "gentle, soft, and highly encouraging";
+    const registerLabel = register > 66 ? "casual, colloquial, and conversational" : register > 33 ? "professional, polished, yet accessible" : "formal, academic, and structured";
 
     const system = [
       `You are ${buddyName}, a custom AI Finance Buddy being created in Smart Money's AI Studio.`,
       config.tag ? `Tagline: ${config.tag}` : "",
       config.desc ? `Summary: ${config.desc}` : "",
       config.philosophy ? `Financial Philosophy:\n${config.philosophy}` : "",
-      `Voice & Personality: Tone: ${toneLabel}. Delivery: ${deliveryLabel}. Register: ${registerLabel}.`,
-      config.signaturePhrase ? `Signature phrase: "${config.signaturePhrase}"` : "",
-      config.willNotAdviseOn ? `Will NOT advise on: ${config.willNotAdviseOn}` : "",
+      `Voice & Personality Instructions:`,
+      `- Tone: ${toneLabel} (${tone}/100)`,
+      `- Delivery Style: ${deliveryLabel} (${delivery}/100)`,
+      `- Register: ${registerLabel} (${register}/100)`,
+      config.signaturePhrase ? `- Signature Catchphrase: "${config.signaturePhrase}" (incorporate naturally when appropriate)` : "",
+      config.willNotAdviseOn ? `- Strict Boundary (Will NOT advise on): ${config.willNotAdviseOn}` : "",
+      config.knowledgeSummary ? `- Ingested Knowledge Base Context: ${config.knowledgeSummary}` : "",
       "",
       "Respond strictly as this persona in 2–4 concise sentences. Use ₦ for Naira currency amounts.",
-      "Demonstrate your financial mindset clearly right away.",
+      "Demonstrate your financial mindset and distinct personality clearly right away.",
     ]
       .filter(Boolean)
       .join("\n");
 
     const selectedModel = (config.model || "").toLowerCase();
 
-    // 1. AWS Bedrock streaming attempt (if selected)
+    // Provider execution list starting with chosen model
+    const providersToTry: Array<"bedrock" | "nvidia" | "gemini" | "groq" | "anthropic" | "openai"> = [];
+
     if (selectedModel.includes("bedrock") || selectedModel.includes("aws")) {
-      try {
-        let modelId: string = BEDROCK_MODELS["claude-3-5-sonnet"];
-        if (selectedModel.includes("haiku")) modelId = BEDROCK_MODELS["claude-3-5-haiku"];
-        else if (selectedModel.includes("llama")) modelId = BEDROCK_MODELS["llama-3-3-70b"];
-        else if (selectedModel.includes("nova")) modelId = BEDROCK_MODELS["nova-pro"];
+      providersToTry.push("bedrock");
+    } else if (selectedModel.includes("gemma") || selectedModel.includes("nvidia")) {
+      providersToTry.push("nvidia");
+    } else if (selectedModel.includes("groq") || selectedModel.includes("llama")) {
+      providersToTry.push("groq");
+    } else if (selectedModel.includes("gpt")) {
+      providersToTry.push("openai");
+    } else if (selectedModel.includes("claude")) {
+      providersToTry.push("anthropic");
+    } else if (selectedModel.includes("gemini")) {
+      providersToTry.push("gemini");
+    }
 
-        let firstChunkReceived = false;
-        const stream = new ReadableStream<Uint8Array>({
-          async start(controller) {
-            try {
-              await streamBedrockCompletion({ systemPrompt: system, messages, modelId, maxTokens: 300 }, (delta) => {
-                if (delta) {
-                  firstChunkReceived = true;
-                  controller.enqueue(new TextEncoder().encode(delta));
-                }
-              });
-            } catch (err) {
-              console.warn("[/api/chat/preview] Bedrock inner stream error:", err);
-            } finally {
-              controller.close();
-            }
-          },
-        });
+    // Add fallback providers in priority order
+    const fallbacks: Array<"gemini" | "nvidia" | "groq" | "bedrock" | "anthropic" | "openai"> = [
+      "gemini",
+      "nvidia",
+      "groq",
+      "bedrock",
+      "anthropic",
+      "openai",
+    ];
 
-        // Test if bedrock started cleanly
+    for (const fb of fallbacks) {
+      if (!providersToTry.includes(fb)) {
+        providersToTry.push(fb);
+      }
+    }
+
+    // Execute providers in order
+    for (const provider of providersToTry) {
+      let stream: ReadableStream<Uint8Array> | null = null;
+
+      if (provider === "bedrock") {
+        stream = await tryStreamBedrock(system, messages, selectedModel);
+      } else if (provider === "nvidia") {
+        stream = await tryStreamNvidia(system, messages, selectedModel);
+      } else if (provider === "gemini") {
+        stream = await tryStreamGemini(system, messages);
+      } else if (provider === "groq") {
+        stream = await tryStreamGroq(system, messages);
+      } else if (provider === "anthropic") {
+        stream = await tryStreamAnthropic(system, messages);
+      } else if (provider === "openai") {
+        stream = await tryStreamOpenAI(system, messages);
+      }
+
+      if (stream) {
         return new Response(stream, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
-      } catch (bErr) {
-        console.warn("[/api/chat/preview] Bedrock failed, trying Gemini 3.6 Flash fallback:", bErr);
       }
     }
 
-    // 2. Google Gemini 3.6 Flash (Fast, reliable, 100% active API key)
-    const gemini = getGemini();
-    if (gemini) {
-      try {
-        const model = gemini.getGenerativeModel({
-          model: "gemini-3.6-flash",
-          systemInstruction: system,
-        });
-
-        const geminiMessages = messages.map((m) => ({
-          role: m.role === "assistant" ? "model" : "user",
-          parts: [{ text: m.content }],
-        }));
-
-        const result = await model.generateContentStream({ contents: geminiMessages });
-
-        const readable = new ReadableStream<Uint8Array>({
-          async start(controller) {
-            try {
-              for await (const chunk of result.stream) {
-                const text = chunk.text();
-                if (text) controller.enqueue(new TextEncoder().encode(text));
-              }
-            } finally {
-              controller.close();
-            }
-          },
-        });
-
-        return new Response(readable, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
-      } catch (gemErr) {
-        console.warn("[/api/chat/preview] Gemini 3.6 Flash failed:", gemErr);
-      }
-    }
-
-    // 3. Groq (if key active)
-    const groq = getGroq();
-    if (groq) {
-      try {
-        const response = await groq.chat.completions.create({
-          model: "llama-3.3-70b-versatile",
-          messages: [{ role: "system", content: system }, ...messages],
-          stream: true,
-          max_tokens: 300,
-        });
-
-        const readable = new ReadableStream<Uint8Array>({
-          async start(controller) {
-            try {
-              for await (const chunk of response) {
-                const text = chunk.choices[0]?.delta?.content ?? "";
-                if (text) controller.enqueue(new TextEncoder().encode(text));
-              }
-            } finally {
-              controller.close();
-            }
-          },
-        });
-
-        return new Response(readable, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
-      } catch (gErr) {
-        console.warn("[/api/chat/preview] Groq failed:", gErr);
-      }
-    }
-
-    // 4. Fallback static persona response if all AI stream endpoints fail
-    const fallbackText = `👋 Hello! I am ${buddyName}. ${config.tag ? `(${config.tag}) ` : ""}I'm configured with your ${toneLabel} tone and ${deliveryLabel} delivery. Send any financial question to test how I analyze your Naira cashflow!`;
+    // Static fallback response if all AI endpoints fail
+    const fallbackText = `👋 Hello! I am ${buddyName}. ${config.tag ? `(${config.tag}) ` : ""}I'm configured with your ${toneLabel} tone and ${deliveryLabel} delivery. ${config.signaturePhrase ? `Remember: "${config.signaturePhrase}"! ` : ""}Send any financial question to test how I analyze your Naira cashflow!`;
     return new Response(fallbackText, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
   } catch (err: any) {
     console.error("[/api/chat/preview] Critical exception:", err);

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { createClient as createServerClient } from "./supabase/server";
+import { PostgrestClient } from "@supabase/postgrest-js";
 
 export { createClient as createServerSupabaseClient } from "./supabase/server";
 
@@ -34,12 +35,6 @@ export async function requireAuth(): Promise<AuthResult> {
 
 /** Service-role fallback shim */
 export function createServiceSupabaseClient() {
-  return {
-    from: (table: string) => {
-      // Return a basic table proxy
-      return {
-        select: () => ({ eq: () => ({ single: async () => ({ data: null, error: null }) }) }),
-      };
-    },
-  };
+  const url = process.env.LOCAL_DB_URL || "http://127.0.0.1:3001";
+  return new PostgrestClient(url);
 }

@@ -329,6 +329,7 @@ export default function StudioPage() {
     setPreviewStreaming(true);
 
     try {
+      const knowledgeSummary = files.map((f) => `${f.emoji} ${f.name} (${f.meta})`).join("; ");
       const res = await fetch("/api/chat/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -346,6 +347,7 @@ export default function StudioPage() {
             willNotAdviseOn: config.willNotAdviseOn,
             model: config.model,
             triggers: config.triggers,
+            knowledgeSummary,
           },
         }),
       });

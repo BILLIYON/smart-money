@@ -70,7 +70,11 @@ export async function findUserByEmail(email: string): Promise<AuthUser & { passw
   const pool = getPool();
   try {
     const { rows } = await pool.query(
-      `SELECT id, email, full_name, is_admin, onboarding_complete, plan, password_hash FROM public.users WHERE LOWER(email) = LOWER($1) LIMIT 1;`,
+      `SELECT u.id, u.email, u.full_name, u.is_admin, u.onboarding_complete, u.plan, 
+              COALESCE(u.password_hash, a.encrypted_password) AS password_hash 
+       FROM public.users u
+       LEFT JOIN auth.users a ON a.id = u.id
+       WHERE LOWER(u.email) = LOWER($1) LIMIT 1;`,
       [email.trim()]
     );
     return rows[0] || null;
@@ -92,20 +96,42 @@ export async function findUserById(id: string): Promise<AuthUser | null> {
   }
 }
 
+export async function updateUserPassword(userId: string, newPasswordHash: string): Promise<void> {
+  const pool = getPool();
+  try {
+    await pool.query(`UPDATE public.users SET password_hash = $1 WHERE id = $2;`, [newPasswordHash, userId]);
+    await pool.query(`UPDATE auth.users SET encrypted_password = $1 WHERE id = $2;`, [newPasswordHash, userId]);
+  } finally {
+    await pool.end();
+  }
+}
+
 export async function createUser(payload: {
   email: string;
   password_hash?: string | null;
   full_name?: string | null;
 }): Promise<AuthUser> {
   const pool = getPool();
+  const cleanEmail = payload.email.trim().toLowerCase();
   try {
     const { rows } = await pool.query(
       `INSERT INTO public.users (email, password_hash, full_name)
        VALUES ($1, $2, $3)
        RETURNING id, email, full_name, is_admin, onboarding_complete, plan;`,
-      [payload.email.trim().toLowerCase(), payload.password_hash || null, payload.full_name || null]
+      [cleanEmail, payload.password_hash || null, payload.full_name || null]
     );
-    return rows[0];
+
+    const user = rows[0];
+    if (user && user.id) {
+      await pool.query(
+        `INSERT INTO auth.users (id, email, encrypted_password)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (id) DO UPDATE SET encrypted_password = EXCLUDED.encrypted_password;`,
+        [user.id, cleanEmail, payload.password_hash || null]
+      ).catch(() => {});
+    }
+
+    return user;
   } finally {
     await pool.end();
   }
@@ -123,14 +149,18 @@ export async function setSessionCookie(user: AuthUser) {
     exp,
   });
 
-  const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 30 * 24 * 60 * 60, // 30 days in seconds
-  });
+  try {
+    const cookieStore = await cookies();
+    cookieStore.set(SESSION_COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 30 * 24 * 60 * 60, // 30 days in seconds
+    });
+  } catch (err) {
+    console.warn("[setSessionCookie] Notice: cookies() outside request store context");
+  }
 }
 
 export async function clearSessionCookie() {
