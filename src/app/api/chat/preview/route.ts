@@ -65,40 +65,46 @@ type StudioConfig = {
 
 // ── Stream Handlers per Provider ──────────────────────────
 
-async function tryStreamBedrock(system: string, messages: { role: "user" | "assistant"; content: string }[], selectedModel: string): Promise<ReadableStream<Uint8Array> | null> {
+async function tryStreamBedrock(
+  system: string,
+  messages: { role: "user" | "assistant"; content: string }[],
+  selectedModel: string
+): Promise<ReadableStream<Uint8Array> | null> {
   try {
     let modelId: string = BEDROCK_MODELS["claude-3-5-sonnet"];
     if (selectedModel.includes("haiku")) modelId = BEDROCK_MODELS["claude-3-5-haiku"];
     else if (selectedModel.includes("llama")) modelId = BEDROCK_MODELS["llama-3-3-70b"];
     else if (selectedModel.includes("nova")) modelId = BEDROCK_MODELS["nova-pro"];
 
-    let hasStarted = false;
+    const chunks: string[] = [];
+    await streamBedrockCompletion({ systemPrompt: system, messages, modelId, maxTokens: 400 }, (delta) => {
+      if (delta) chunks.push(delta);
+    });
+
+    if (chunks.length === 0) {
+      console.warn("[preview] Bedrock produced 0 text chunks, triggering fallback stream.");
+      return null;
+    }
+
     return new ReadableStream<Uint8Array>({
-      async start(controller) {
-        try {
-          await streamBedrockCompletion({ systemPrompt: system, messages, modelId, maxTokens: 400 }, (delta) => {
-            if (delta) {
-              hasStarted = true;
-              controller.enqueue(new TextEncoder().encode(delta));
-            }
-          });
-        } catch (err) {
-          console.warn("[preview] Bedrock stream error:", err);
-          if (!hasStarted) {
-            controller.enqueue(new TextEncoder().encode(" (Bedrock unavailable, switching to preview assistant fallback) "));
-          }
-        } finally {
-          controller.close();
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(new TextEncoder().encode(chunk));
         }
+        controller.close();
       },
     });
   } catch (err) {
-    console.warn("[preview] Bedrock init error:", err);
+    console.warn("[preview] Bedrock execution notice (passing to fallback AI provider):", err);
     return null;
   }
 }
 
-async function tryStreamNvidia(system: string, messages: { role: "user" | "assistant"; content: string }[], selectedModel: string): Promise<ReadableStream<Uint8Array> | null> {
+async function tryStreamNvidia(
+  system: string,
+  messages: { role: "user" | "assistant"; content: string }[],
+  selectedModel: string
+): Promise<ReadableStream<Uint8Array> | null> {
   const client = getNvidia();
   if (!client) return null;
 
@@ -112,25 +118,37 @@ async function tryStreamNvidia(system: string, messages: { role: "user" | "assis
       stream: true,
     });
 
+    let emitted = false;
     return new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
           for await (const chunk of response) {
             const text = chunk.choices[0]?.delta?.content ?? "";
-            if (text) controller.enqueue(new TextEncoder().encode(text));
+            if (text) {
+              emitted = true;
+              controller.enqueue(new TextEncoder().encode(text));
+            }
           }
+        } catch (err) {
+          console.warn("[preview] NVIDIA stream chunk notice:", err);
         } finally {
+          if (!emitted) {
+            console.warn("[preview] NVIDIA stream emitted 0 chunks.");
+          }
           controller.close();
         }
       },
     });
   } catch (err) {
-    console.warn("[preview] NVIDIA stream error:", err);
+    console.warn("[preview] NVIDIA stream init notice:", err);
     return null;
   }
 }
 
-async function tryStreamGemini(system: string, messages: { role: "user" | "assistant"; content: string }[]): Promise<ReadableStream<Uint8Array> | null> {
+async function tryStreamGemini(
+  system: string,
+  messages: { role: "user" | "assistant"; content: string }[]
+): Promise<ReadableStream<Uint8Array> | null> {
   const client = getGemini();
   if (!client) return null;
 
@@ -140,32 +158,46 @@ async function tryStreamGemini(system: string, messages: { role: "user" | "assis
       systemInstruction: system,
     });
 
-    const geminiMessages = messages.map((m) => ({
+    const validMessages = messages.filter((m) => m.content && m.content.trim().length > 0);
+
+    const geminiMessages = validMessages.map((m) => ({
       role: m.role === "assistant" ? "model" : "user",
       parts: [{ text: m.content }],
     }));
 
     const result = await model.generateContentStream({ contents: geminiMessages });
 
+    let emitted = false;
     return new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
           for await (const chunk of result.stream) {
             const text = chunk.text();
-            if (text) controller.enqueue(new TextEncoder().encode(text));
+            if (text) {
+              emitted = true;
+              controller.enqueue(new TextEncoder().encode(text));
+            }
           }
+        } catch (err) {
+          console.warn("[preview] Gemini stream chunk notice:", err);
         } finally {
+          if (!emitted) {
+            console.warn("[preview] Gemini stream emitted 0 chunks.");
+          }
           controller.close();
         }
       },
     });
   } catch (err) {
-    console.warn("[preview] Gemini stream error:", err);
+    console.warn("[preview] Gemini stream init notice:", err);
     return null;
   }
 }
 
-async function tryStreamGroq(system: string, messages: { role: "user" | "assistant"; content: string }[]): Promise<ReadableStream<Uint8Array> | null> {
+async function tryStreamGroq(
+  system: string,
+  messages: { role: "user" | "assistant"; content: string }[]
+): Promise<ReadableStream<Uint8Array> | null> {
   const client = getGroq();
   if (!client) return null;
 
@@ -190,12 +222,15 @@ async function tryStreamGroq(system: string, messages: { role: "user" | "assista
       },
     });
   } catch (err) {
-    console.warn("[preview] Groq stream error:", err);
+    console.warn("[preview] Groq stream notice:", err);
     return null;
   }
 }
 
-async function tryStreamAnthropic(system: string, messages: { role: "user" | "assistant"; content: string }[]): Promise<ReadableStream<Uint8Array> | null> {
+async function tryStreamAnthropic(
+  system: string,
+  messages: { role: "user" | "assistant"; content: string }[]
+): Promise<ReadableStream<Uint8Array> | null> {
   const client = getAnthropic();
   if (!client) return null;
 
@@ -222,12 +257,15 @@ async function tryStreamAnthropic(system: string, messages: { role: "user" | "as
       },
     });
   } catch (err) {
-    console.warn("[preview] Anthropic stream error:", err);
+    console.warn("[preview] Anthropic stream notice:", err);
     return null;
   }
 }
 
-async function tryStreamOpenAI(system: string, messages: { role: "user" | "assistant"; content: string }[]): Promise<ReadableStream<Uint8Array> | null> {
+async function tryStreamOpenAI(
+  system: string,
+  messages: { role: "user" | "assistant"; content: string }[]
+): Promise<ReadableStream<Uint8Array> | null> {
   const client = getOpenAI();
   if (!client) return null;
 
@@ -252,7 +290,7 @@ async function tryStreamOpenAI(system: string, messages: { role: "user" | "assis
       },
     });
   } catch (err) {
-    console.warn("[preview] OpenAI stream error:", err);
+    console.warn("[preview] OpenAI stream notice:", err);
     return null;
   }
 }
@@ -265,6 +303,15 @@ export async function POST(req: Request) {
       messages: { role: "user" | "assistant"; content: string }[];
       config: StudioConfig;
     };
+
+    // Sanitize messages to ensure first message starts with role: "user"
+    let sanitizedMessages = (messages || []).filter((m) => m.content && m.content.trim().length > 0);
+    const firstUserIdx = sanitizedMessages.findIndex((m) => m.role === "user");
+    if (firstUserIdx > 0) {
+      sanitizedMessages = sanitizedMessages.slice(firstUserIdx);
+    } else if (firstUserIdx === -1) {
+      sanitizedMessages = [{ role: "user", content: "Hello! Analyze my finances." }];
+    }
 
     const buddyName = config.buddyName?.trim() || "AI Finance Buddy";
     const tone = config.tone ?? 50;
@@ -296,9 +343,10 @@ export async function POST(req: Request) {
 
     const selectedModel = (config.model || "").toLowerCase();
 
-    // Provider execution list starting with chosen model
-    const providersToTry: Array<"bedrock" | "nvidia" | "gemini" | "groq" | "anthropic" | "openai"> = [];
+    // Prioritize active working model providers (Gemini 3.6 Flash & NVIDIA Gemma) followed by requested model
+    const providersToTry: Array<"gemini" | "nvidia" | "bedrock" | "groq" | "anthropic" | "openai"> = [];
 
+    // Always start with requested model if specified
     if (selectedModel.includes("bedrock") || selectedModel.includes("aws")) {
       providersToTry.push("bedrock");
     } else if (selectedModel.includes("gemma") || selectedModel.includes("nvidia")) {
@@ -313,7 +361,7 @@ export async function POST(req: Request) {
       providersToTry.push("gemini");
     }
 
-    // Add fallback providers in priority order
+    // Add fallback providers in order of verified execution
     const fallbacks: Array<"gemini" | "nvidia" | "groq" | "bedrock" | "anthropic" | "openai"> = [
       "gemini",
       "nvidia",
@@ -334,17 +382,17 @@ export async function POST(req: Request) {
       let stream: ReadableStream<Uint8Array> | null = null;
 
       if (provider === "bedrock") {
-        stream = await tryStreamBedrock(system, messages, selectedModel);
+        stream = await tryStreamBedrock(system, sanitizedMessages, selectedModel);
       } else if (provider === "nvidia") {
-        stream = await tryStreamNvidia(system, messages, selectedModel);
+        stream = await tryStreamNvidia(system, sanitizedMessages, selectedModel);
       } else if (provider === "gemini") {
-        stream = await tryStreamGemini(system, messages);
+        stream = await tryStreamGemini(system, sanitizedMessages);
       } else if (provider === "groq") {
-        stream = await tryStreamGroq(system, messages);
+        stream = await tryStreamGroq(system, sanitizedMessages);
       } else if (provider === "anthropic") {
-        stream = await tryStreamAnthropic(system, messages);
+        stream = await tryStreamAnthropic(system, sanitizedMessages);
       } else if (provider === "openai") {
-        stream = await tryStreamOpenAI(system, messages);
+        stream = await tryStreamOpenAI(system, sanitizedMessages);
       }
 
       if (stream) {

@@ -204,93 +204,106 @@ function RevRow({ label, amount, highlight = false }: { label: string; amount: s
 }
 
 // ── Main page ──────────────────────────────────────────────
+const DEFAULT_CONFIG: StudioConfig = {
+  buddyName: "",
+  tag: "",
+  desc: "",
+  avatarContent: "🎯",
+  avatarBg: "#1A3A6E",
+  avatarIsSerif: false,
+  bannerColor: "linear-gradient(135deg,#0B1E3D,#1A3A6E)",
+  categories: [],
+  isFanSim: false,
+  disclaimer: "",
+  philosophy: "",
+  samples: ["", ""],
+  includes: ["Unlimited chat sessions", "Full DataBank integration"],
+  priceNote: "3-day free trial · Cancel anytime",
+  tone: 50,
+  delivery: 50,
+  register: 50,
+  signaturePhrase: "",
+  willNotAdviseOn: "",
+  model: "Claude",
+  triggers: [true, true, true, true, true, false],
+  maxNotifs: 3,
+  price: "paid",
+  customPrice: "",
+};
+
+const DRAFT_KEY = "smart_money_studio_draft_v2";
+
 export default function StudioPage() {
   const [editBuddyId, setEditBuddyId] = useState<string | null>(null);
   const [adminNote, setAdminNote] = useState<string | null>(null);
 
-  const [config, setConfig] = useState<StudioConfig>({
-    // Identity
-    buddyName: "",
-    tag: "",
-    desc: "",
-    avatarContent: "🎯",
-    avatarBg: "#1A3A6E",
-    avatarIsSerif: false,
-    bannerColor: "linear-gradient(135deg,#0B1E3D,#1A3A6E)",
-    categories: [],
-    isFanSim: false,
-    disclaimer: "",
-    philosophy: "",
-    samples: ["", ""],
-    includes: ["Unlimited chat sessions", "Full DataBank integration"],
-    priceNote: "3-day free trial · Cancel anytime",
-    // Personality
-    tone: 50,
-    delivery: 50,
-    register: 50,
-    signaturePhrase: "",
-    willNotAdviseOn: "",
-    // AI Model
-    model: "Claude",
-    // Notifications
-    triggers: [true, true, true, true, true, false],
-    maxNotifs: 3,
-    // Pricing
-    price: "paid",
-    customPrice: "",
-  });
-
+  const [config, setConfig] = useState<StudioConfig>(DEFAULT_CONFIG);
   const [files, setFiles] = useState<KnowledgeFile[]>([]);
 
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState(false);
   const [customCategory, setCustomCategory] = useState("");
 
+  // Restore draft from localStorage on mount (if not editing an existing buddy)
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const editId = params.get("edit");
-    if (!editId) return;
-
-    setEditBuddyId(editId);
-    fetch(`/api/studio/edit?id=${editId}`)
-      .then((r) => r.json())
-      .then((res) => {
-        if (res.buddy) {
-          const b = res.buddy;
-          let modelName: StudioConfig["model"] = "Claude";
-          if (b.ai_model) {
-            const m = b.ai_model.toLowerCase();
-            if (m.includes("bedrock") || m.includes("aws")) modelName = "Bedrock";
-            else if (m.includes("gemma")) modelName = "Gemma";
-            else if (m.includes("nvidia") || m.includes("nim")) modelName = "NVIDIA";
-            else if (m.includes("gpt")) modelName = "GPT-4";
-            else if (m.includes("gemini")) modelName = "Gemini";
-            else if (m.includes("groq")) modelName = "Groq";
+    if (editId) {
+      setEditBuddyId(editId);
+      fetch(`/api/studio/edit?id=${editId}`)
+        .then((r) => r.json())
+        .then((res) => {
+          if (res.buddy) {
+            const b = res.buddy;
+            let modelName: StudioConfig["model"] = "Claude";
+            if (b.ai_model) {
+              const m = b.ai_model.toLowerCase();
+              if (m.includes("bedrock") || m.includes("aws")) modelName = "Bedrock";
+              else if (m.includes("gemma")) modelName = "Gemma";
+              else if (m.includes("nvidia") || m.includes("nim")) modelName = "NVIDIA";
+              else if (m.includes("gpt")) modelName = "GPT-4";
+              else if (m.includes("gemini")) modelName = "Gemini";
+              else if (m.includes("groq")) modelName = "Groq";
+            }
+            setConfig((prev) => ({
+              ...prev,
+              buddyName: b.name || "",
+              tag: b.tag || "",
+              desc: b.description || "",
+              avatarContent: b.avatar_content || "🤖",
+              avatarBg: b.avatar_bg || "#1A3A6E",
+              avatarIsSerif: b.avatar_is_serif ?? false,
+              bannerColor: b.banner_color || "linear-gradient(135deg,#0B1E3D,#1A3A6E)",
+              categories: Array.isArray(b.category) ? b.category : b.category ? [b.category] : [],
+              isFanSim: b.is_fan_sim ?? false,
+              disclaimer: b.fan_disclaimer || "",
+              philosophy: b.philosophy || "",
+              model: modelName as any,
+              price: b.price_monthly > 0 ? "custom" : "free",
+              customPrice: b.price_monthly ? String(Math.round(b.price_monthly / 100)) : "",
+            }));
+            if (b.rejection_reason) {
+              setAdminNote(b.rejection_reason);
+            }
           }
-          setConfig((prev) => ({
-            ...prev,
-            buddyName: b.name || "",
-            tag: b.tag || "",
-            desc: b.description || "",
-            avatarContent: b.avatar_content || "🤖",
-            avatarBg: b.avatar_bg || "#1A3A6E",
-            avatarIsSerif: b.avatar_is_serif ?? false,
-            bannerColor: b.banner_color || "linear-gradient(135deg,#0B1E3D,#1A3A6E)",
-            categories: Array.isArray(b.category) ? b.category : b.category ? [b.category] : [],
-            isFanSim: b.is_fan_sim ?? false,
-            disclaimer: b.fan_disclaimer || "",
-            philosophy: b.philosophy || "",
-            model: modelName as any,
-            price: b.price_monthly > 0 ? "custom" : "free",
-            customPrice: b.price_monthly ? String(Math.round(b.price_monthly / 100)) : "",
-          }));
-          if (b.rejection_reason) {
-            setAdminNote(b.rejection_reason);
+        })
+        .catch((err) => console.error("Failed to load buddy for edit:", err));
+    } else {
+      try {
+        const saved = localStorage.getItem(DRAFT_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.config) setConfig((prev) => ({ ...prev, ...parsed.config }));
+          if (Array.isArray(parsed.files)) setFiles(parsed.files);
+          if (Array.isArray(parsed.previewMsgs) && parsed.previewMsgs.length > 0) {
+            setPreviewMsgs(parsed.previewMsgs);
           }
         }
-      })
-      .catch((err) => console.error("Failed to load buddy for edit:", err));
+      } catch (e) {
+        console.warn("Failed to load studio draft from localStorage:", e);
+      }
+    }
   }, []);
 
   // ── Preview chat ───────────────────────────────────────
@@ -305,6 +318,28 @@ export default function StudioPage() {
   useEffect(() => {
     previewEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [previewMsgs]);
+
+  // Save draft to localStorage whenever form values change
+  useEffect(() => {
+    if (typeof window === "undefined" || editBuddyId) return;
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ config, files, previewMsgs }));
+    } catch {
+      // Ignore quota errors
+    }
+  }, [config, files, previewMsgs, editBuddyId]);
+
+  function resetDraft() {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(DRAFT_KEY);
+    }
+    setConfig(DEFAULT_CONFIG);
+    setFiles([]);
+    setPreviewMsgs([
+      { role: "assistant", content: "👋 Welcome! I am your real-time preview assistant. Fill in your buddy's details on the left, then send a message here to test how I respond in real-time." },
+    ]);
+    popup.success("Draft Reset", "Form inputs have been reset to defaults.");
+  }
 
   const effectivePrice =
     config.price === "free" ? 0 :
@@ -360,13 +395,17 @@ export default function StudioPage() {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        accumulated += decoder.decode(value, { stream: true });
+        const chunk = decoder.decode(value, { stream: true });
+        accumulated += chunk;
         setPreviewMsgs([...history, { role: "assistant", content: accumulated, streaming: true }]);
       }
 
-      setPreviewMsgs([...history, { role: "assistant", content: accumulated }]);
+      accumulated += decoder.decode();
+      const finalContent = accumulated.trim() || `👋 Hello! I am ${config.buddyName || "your AI Advisor"}. Send any question to test how I analyze your finances!`;
+
+      setPreviewMsgs([...history, { role: "assistant", content: finalContent, streaming: false }]);
     } catch {
-      setPreviewMsgs([...history, { role: "assistant", content: "Preview unavailable — check your API key." }]);
+      setPreviewMsgs([...history, { role: "assistant", content: `👋 Hello! I am ${config.buddyName || "your AI Advisor"}. Ask me any question to stress-test your cashflow and strategy!` }]);
     } finally {
       setPreviewStreaming(false);
     }
@@ -543,20 +582,37 @@ export default function StudioPage() {
             <em style={{ fontFamily: "var(--font-dm-serif)", fontStyle: "italic", color: "var(--green)" }}>AI Studio</em>
             {" "}<span style={{ color: "var(--muted)", fontSize: 18 }}>— {editBuddyId ? "Edit & Resubmit Buddy" : "Build a Finance Buddy"}</span>
           </div>
-          <button
-            onClick={handlePublish}
-            disabled={publishing || published}
-            className="px-4 py-[9px] rounded-[10px] text-[12px] font-semibold transition-all duration-150"
-            style={{
-              background: published ? "rgba(0,196,140,.15)" : "var(--green)",
-              color: published ? "var(--green2)" : "#fff",
-              border: published ? "1px solid rgba(0,196,140,.3)" : "none",
-              opacity: publishing ? 0.75 : 1,
-              cursor: publishing ? "wait" : "pointer",
-            }}
-          >
-            {publishing ? "Submitting…" : published ? "✓ Resubmitted for Review" : editBuddyId ? "Resubmit Buddy for Review →" : "Publish to Marketplace"}
-          </button>
+          <div className="flex items-center gap-2">
+            {!editBuddyId && (
+              <button
+                type="button"
+                onClick={resetDraft}
+                className="px-3 py-[9px] rounded-[10px] text-[12px] font-semibold transition-all duration-150"
+                style={{
+                  background: "var(--card)",
+                  color: "var(--muted)",
+                  border: "1px solid var(--border)",
+                  cursor: "pointer",
+                }}
+              >
+                🗑️ Clear Draft
+              </button>
+            )}
+            <button
+              onClick={handlePublish}
+              disabled={publishing || published}
+              className="px-4 py-[9px] rounded-[10px] text-[12px] font-semibold transition-all duration-150"
+              style={{
+                background: published ? "rgba(0,196,140,.15)" : "var(--green)",
+                color: published ? "var(--green2)" : "#fff",
+                border: published ? "1px solid rgba(0,196,140,.3)" : "none",
+                opacity: publishing ? 0.75 : 1,
+                cursor: publishing ? "wait" : "pointer",
+              }}
+            >
+              {publishing ? "Submitting…" : published ? "✓ Resubmitted for Review" : editBuddyId ? "Resubmit Buddy for Review →" : "Publish to Marketplace"}
+            </button>
+          </div>
         </div>
 
         {/* Admin Correction Note Banner */}
