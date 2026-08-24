@@ -296,9 +296,21 @@ export type BuddySubmission = {
   customPrice: string;
 };
 
-export async function submitBuddy(config: BuddySubmission & { editBuddyId?: string }, creatorId: string): Promise<string> {
+export async function submitBuddy(
+  config: BuddySubmission & { editBuddyId?: string },
+  creatorId: string,
+  isAdmin: boolean = false
+): Promise<string> {
   const db = getClient();
-  const slug = config.editBuddyId || (config.buddyName
+  const editId = config.editBuddyId?.trim();
+  let existingBuddy: any = null;
+
+  if (editId) {
+    const { data: found } = await db.from("buddies").select("*").eq("id", editId).maybeSingle();
+    existingBuddy = found;
+  }
+
+  const slug = editId || (config.buddyName
     ? config.buddyName.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") + "-" + Date.now().toString(36)
     : "custom-buddy-" + Date.now().toString(36));
 
@@ -327,6 +339,12 @@ export async function submitBuddy(config: BuddySubmission & { editBuddyId?: stri
 
   const fullPhilosophy = philosophyParts.join("\n");
 
+  const targetStatus = isAdmin
+    ? "approved"
+    : existingBuddy
+    ? (existingBuddy.status === "approved" || existingBuddy.status === "live" ? "approved" : "pending")
+    : "pending";
+
   const record = {
     id: slug,
     name: config.buddyName || "Untitled Buddy",
@@ -342,10 +360,10 @@ export async function submitBuddy(config: BuddySubmission & { editBuddyId?: stri
     philosophy: fullPhilosophy,
     ai_model: modelVal,
     price_monthly: isNaN(priceMonthly) ? 0 : priceMonthly,
-    rating: 5.0,
-    review_count: 0,
-    creator_id: creatorId || null,
-    status: "pending",
+    rating: existingBuddy?.rating ?? 5.0,
+    review_count: existingBuddy?.review_count ?? 0,
+    creator_id: existingBuddy?.creator_id || creatorId || null,
+    status: targetStatus,
     rejection_reason: null,
   };
 

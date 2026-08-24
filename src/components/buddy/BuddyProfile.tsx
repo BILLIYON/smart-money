@@ -118,10 +118,35 @@ export function BuddyProfile({ buddy }: { buddy: Buddy }) {
     isFanSim, disclaimer, philosophy, samples, reviews, categories,
   } = buddy;
 
+  const [canEdit, setCanEdit] = useState(false);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      const u = data.user;
+      if (u) {
+        fetch("/api/user/profile")
+          .then((r) => r.json())
+          .then((res) => {
+            const isAdmin = res.user?.role === "admin" || res.user?.is_admin || res.user?.email === "admin@smartmoney.com";
+            const isCreator = (buddy as any).creator_id === u.id || (buddy as any).creatorId === u.id;
+            if (isAdmin || isCreator) {
+              setCanEdit(true);
+            }
+          })
+          .catch(() => {
+            if ((buddy as any).creator_id === u.id || (buddy as any).creatorId === u.id) {
+              setCanEdit(true);
+            }
+          });
+      }
+    });
+  }, [buddy]);
+
   return (
     <div className="px-5 py-6 md:px-8 max-w-[1200px] mx-auto">
-      {/* Back link */}
-      <div className="mb-4">
+      {/* Back link & Edit button */}
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <Link
           href="/"
           className="inline-flex items-center gap-1 text-[13px] transition-colors duration-200"
@@ -129,6 +154,15 @@ export function BuddyProfile({ buddy }: { buddy: Buddy }) {
         >
           ← Back to Marketplace
         </Link>
+        {canEdit && (
+          <Link
+            href={`/studio?edit=${buddy.id}`}
+            className="inline-flex items-center gap-1 px-4 py-[7px] rounded-[9px] text-[12px] font-semibold text-white transition-all shadow-sm"
+            style={{ background: "var(--navy)" }}
+          >
+            ✏️ Edit Buddy in AI Studio
+          </Link>
+        )}
       </div>
 
       {/* Two-column layout on md+ */}

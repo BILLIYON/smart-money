@@ -631,7 +631,7 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
                     <button
                       onClick={() => openEditModal(buddy)}
                       style={{
-                        padding: "6px 14px",
+                        padding: "6px 12px",
                         borderRadius: 8,
                         border: "none",
                         background: "#0B1E3D",
@@ -641,7 +641,24 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
                         cursor: "pointer",
                       }}
                     >
-                      ✏️ Edit Photo &amp; Info
+                      Quick Edit
+                    </button>
+
+                    <button
+                      onClick={() => window.location.href = `/studio?edit=${buddy.id}`}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 8,
+                        border: "1px solid #00C48C",
+                        background: "rgba(0,196,140,0.1)",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: "#00C48C",
+                        cursor: "pointer",
+                      }}
+                      title="Open full creator interface in AI Studio"
+                    >
+                      🎨 Studio
                     </button>
 
                     <button

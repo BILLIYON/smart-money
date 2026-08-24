@@ -451,13 +451,20 @@ export default function StudioPage() {
         return;
       }
 
-      if (!res.ok || !data.ok) {
-        popup.alert("Submission Failed", data.error || "Failed to submit buddy for review. Please try again.");
-        return;
-      }
-
       setPublished(true);
-      popup.success("Submitted for Review", "🎉 Your buddy has been submitted successfully and is awaiting admin approval!");
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(DRAFT_KEY);
+      }
+      if (editBuddyId) {
+        popup.success("Buddy Updated", "🎉 Your buddy has been updated successfully!");
+        setTimeout(() => {
+          if (typeof window !== "undefined") {
+            window.location.href = `/buddies/${data.buddyId || editBuddyId}`;
+          }
+        }, 1200);
+      } else {
+        popup.success("Submitted for Review", "🎉 Your buddy has been submitted successfully!");
+      }
     } catch (err: any) {
       popup.alert("Submission Error", err.message || "An error occurred while submitting your buddy.");
     } finally {

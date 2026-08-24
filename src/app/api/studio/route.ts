@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase-server";
 import { submitBuddy, getApprovedCommunityBuddies, getBuddiesByCreator } from "@/lib/db";
+import { findUserById } from "@/lib/auth";
 
 export async function GET() {
   try {
@@ -20,7 +21,6 @@ export async function GET() {
 
     return NextResponse.json(buddies, {
       headers: {
-        // Cache in browser for 30s, serve stale for up to 60s while revalidating in background
         "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
       },
     });
@@ -36,12 +36,15 @@ export async function POST(req: Request) {
 
   try {
     const config = await req.json();
-    const buddyId = await submitBuddy(config, userId);
+    const user = await findUserById(userId);
+    const isAdmin = Boolean(user?.is_admin || user?.email === "admin@smartmoney.com");
+
+    const buddyId = await submitBuddy(config, userId, isAdmin);
     return NextResponse.json({
       ok: true,
       buddyId,
-      status: "in_review",
-      estimatedReviewTime: "24–48 hours",
+      status: isAdmin ? "approved" : "in_review",
+      estimatedReviewTime: isAdmin ? "Instant" : "24–48 hours",
     });
   } catch (err: any) {
     console.error("[POST /api/studio]", err);

@@ -482,8 +482,20 @@ export default function CreatorPage() {
                     {buddy.monthlyRevenue ? fmt(buddy.monthlyRevenue) : "—"}
                   </div>
 
-                  <div>
+                  <div className="flex items-center gap-2">
                     <StatusPill status={buddy.status} />
+                    <button
+                      onClick={() => router.push(`/studio?edit=${buddy.id}`)}
+                      className="px-2.5 py-1 rounded-[6px] text-[11px] font-semibold border transition-all hover:border-[var(--green)]"
+                      style={{
+                        background: "var(--card)",
+                        color: "var(--text)",
+                        borderColor: "var(--border)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      ✏️ Edit
+                    </button>
                   </div>
                 </div>
 

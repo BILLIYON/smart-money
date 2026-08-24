@@ -425,52 +425,51 @@ export async function sendMessage(params: {
   const system = getBuddySystemPrompt(buddy, contextStr, databankContext.currency ?? "NGN", crossSessionMemory);
   const resolvedModel = resolveModel(buddy, modelOverride);
 
-  // Define order of fallback prioritizing active keys
-  const modelsToTry: Array<"claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma" | "bedrock"> = [];
+  type ModelType = "claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma" | "bedrock" | "bedrock-haiku" | "bedrock-llama" | "bedrock-nova";
+  const modelsToTry: ModelType[] = [];
 
-  const hasNvidiaKey = Boolean(process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY);
+  // ALWAYS start with the exact model selected for this buddy upon creation!
+  modelsToTry.push(resolvedModel);
 
-  // Add active working engines (Gemini & NVIDIA Gemma) as immediate high-priority fallbacks
-  if (!modelsToTry.includes("gemini")) {
-    modelsToTry.push("gemini");
-  }
-  if (hasNvidiaKey && !modelsToTry.includes("gemma")) {
-    modelsToTry.push("gemma");
-  }
-  if (hasNvidiaKey && !modelsToTry.includes("nvidia")) {
-    modelsToTry.push("nvidia");
-  }
+  // Append fallbacks in order of active availability
+  const fallbacks: ModelType[] = [
+    "gemini",
+    "gemma",
+    "nvidia",
+    "bedrock",
+    "groq",
+    "gpt4",
+    "claude",
+  ];
 
-  // Add Bedrock & Groq
-  if (!modelsToTry.includes("bedrock")) {
-    modelsToTry.push("bedrock");
+  for (const fb of fallbacks) {
+    if (!modelsToTry.includes(fb)) {
+      modelsToTry.push(fb);
+    }
   }
-  if (process.env.GROQ_API_KEY && !modelsToTry.includes("groq")) {
-    modelsToTry.push("groq");
-  }
-
-  // Add remaining non-depleted keys
-  if (!modelsToTry.includes("gpt4") && !depletedKeys.gpt4) {
-    modelsToTry.push("gpt4");
-  }
-  if (!modelsToTry.includes("claude") && !depletedKeys.claude) {
-    modelsToTry.push("claude");
-  }
-
-  // Append depleted keys at the very end as absolute fallbacks
-  if (!modelsToTry.includes("gpt4")) modelsToTry.push("gpt4");
-  if (!modelsToTry.includes("claude")) modelsToTry.push("claude");
 
   let lastError: any = null;
   for (const modelName of modelsToTry) {
     try {
-      console.log(`[AI] Attempting stream with model: ${modelName}`);
-      if (modelName === "gemini") {
-        return await streamGemini(system, messages);
-      } else if (modelName === "gemma") {
-        return await streamNvidia(system, messages, "google/gemma-4-31b-it");
-      } else if (modelName === "nvidia") {
-        return await streamNvidia(system, messages, "meta/llama-3.3-70b-instruct");
+      console.log(`[AI Engine] Streaming response for buddy "${buddy.name}" using assigned model: ${modelName}`);
+      if (modelName === "bedrock-haiku") {
+        return await streamBedrockToReadableStream({
+          systemPrompt: system,
+          messages,
+          modelId: BEDROCK_MODELS["claude-3-5-haiku"],
+        });
+      } else if (modelName === "bedrock-llama") {
+        return await streamBedrockToReadableStream({
+          systemPrompt: system,
+          messages,
+          modelId: BEDROCK_MODELS["llama-3-3-70b"],
+        });
+      } else if (modelName === "bedrock-nova") {
+        return await streamBedrockToReadableStream({
+          systemPrompt: system,
+          messages,
+          modelId: BEDROCK_MODELS["nova-pro"],
+        });
       } else if (modelName === "bedrock") {
         return await streamBedrockToReadableStream({
           systemPrompt: system,
@@ -491,7 +490,7 @@ export async function sendMessage(params: {
         return await streamGemini(system, messages);
       }
     } catch (err) {
-      console.error(`[AI] Model ${modelName} failed, trying next fallback:`, err);
+      console.error(`[AI Engine] Primary model ${modelName} failed for buddy "${buddy.name}", trying fallback:`, err);
       lastError = err;
     }
   }
