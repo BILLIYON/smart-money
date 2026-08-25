@@ -1326,63 +1326,22 @@ export default function StudioPage() {
                   borderColor: config.dnaBuilt ? "rgba(0,196,140,0.3)" : "rgba(123,104,238,0.3)",
                 }}
               >
-                <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
+                <div className="flex items-center justify-between flex-wrap gap-3">
                   <div>
                     <div className="text-[13px] font-bold flex items-center gap-2" style={{ color: "var(--text)" }}>
                       <span className="text-[16px]">🧬</span>
-                      <span>Synthesize Buddy Digital DNA</span>
+                      <span>Digital Persona DNA Knowledge Sources</span>
                     </div>
                     <div className="text-[11px] mt-0.5" style={{ color: "var(--muted)" }}>
-                      Extracts persona rules, links, and documents into a unified vector DNA for live testing
+                      All uploaded files, URLs, text &amp; keywords will be compiled into vector DNA when you click Build &amp; Test below.
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={buildBuddyDna}
-                      disabled={isBuildingDna}
-                      className="px-5 py-[9px] rounded-[10px] text-[12px] font-bold text-white transition-all shadow-md flex items-center gap-2"
-                      style={{
-                        background: config.dnaBuilt
-                          ? "linear-gradient(135deg, #00C48C 0%, #009E70 100%)"
-                          : "linear-gradient(135deg, #7B68EE 0%, #5B48CE 100%)",
-                        cursor: isBuildingDna ? "wait" : "pointer",
-                        opacity: isBuildingDna ? 0.75 : 1,
-                      }}
-                    >
-                      {isBuildingDna ? (
-                        <>
-                          <span className="inline-block animate-spin">⚡</span>
-                          <span>Building DNA ({buildStep}/4)…</span>
-                        </>
-                      ) : config.dnaBuilt ? (
-                        <>
-                          <span>⚡ Re-Build Buddy DNA</span>
-                        </>
-                      ) : (
-                        <>
-                          <span>⚡ Build & Synthesize Buddy DNA</span>
-                        </>
-                      )}
-                    </button>
-
-                    {config.dnaBuilt && (
-                      <button
-                        type="button"
-                        onClick={() => setShowTestModal(true)}
-                        className="px-4 py-[9px] rounded-[10px] text-[12px] font-bold border transition-all flex items-center gap-1.5 shadow-sm"
-                        style={{
-                          background: "var(--card)",
-                          borderColor: "var(--green)",
-                          color: "var(--green2)",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <span>🧪 Test Sandbox →</span>
-                      </button>
-                    )}
-                  </div>
+                  {config.dnaBuilt && (
+                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold" style={{ background: "rgba(0,196,140,0.12)", color: "var(--green2)" }}>
+                      ✓ DNA Synthesized ({config.dnaFidelityScore}%)
+                    </div>
+                  )}
                 </div>
 
                 {/* Synthesis Output Summary Card */}
@@ -1573,9 +1532,9 @@ export default function StudioPage() {
                     type="button"
                     onClick={buildBuddyDna}
                     disabled={isBuildingDna}
-                    className="w-full py-[12px] rounded-[10px] text-[13px] font-bold text-white transition-all shadow-md flex items-center justify-center gap-2"
+                    className="w-full py-[14px] rounded-[12px] text-[14px] font-bold text-white transition-all shadow-lg flex items-center justify-center gap-2"
                     style={{
-                      background: "var(--green)",
+                      background: "linear-gradient(135deg, #00C48C 0%, #009E70 100%)",
                       opacity: isBuildingDna ? 0.75 : 1,
                       cursor: isBuildingDna ? "wait" : "pointer",
                     }}
@@ -1583,40 +1542,27 @@ export default function StudioPage() {
                     {isBuildingDna ? (
                       <>
                         <span className="inline-block animate-spin">⚡</span>
-                        <span>Building Buddy DNA ({buildStep}/4)…</span>
+                        <span>Building &amp; Synthesizing Buddy DNA ({buildStep}/4)…</span>
                       </>
                     ) : (
                       <>
-                        <span>⚡ Build & Test Buddy →</span>
+                        <span>⚡ Build &amp; Test Buddy →</span>
                       </>
                     )}
                   </button>
                   <div className="mt-2 text-[11px] text-center" style={{ color: "var(--muted)" }}>
-                    Build persona DNA & test your buddy live before publishing.
+                    Build persona DNA and review live testing before publishing.
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col gap-2.5">
+                <div className="flex flex-col gap-3">
                   <button
                     type="button"
-                    onClick={() => setShowTestModal(true)}
-                    className="w-full py-[10px] rounded-[10px] text-[12px] font-bold border transition-all flex items-center justify-center gap-1.5 shadow-sm"
-                    style={{
-                      background: "var(--card)",
-                      borderColor: "var(--green)",
-                      color: "var(--green2)",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <span>🧪 Open Sandbox to Test ({config.dnaFidelityScore}% Fidelity)</span>
-                  </button>
-
-                  <button
                     onClick={handlePublish}
                     disabled={publishing || published}
-                    className="w-full py-[12px] rounded-[10px] text-[13px] font-bold transition-all duration-150 shadow-md flex items-center justify-center gap-2"
+                    className="w-full py-[14px] rounded-[12px] text-[14px] font-bold transition-all shadow-lg flex items-center justify-center gap-2"
                     style={{
-                      background: published ? "rgba(0,196,140,.15)" : "var(--green)",
+                      background: published ? "rgba(0,196,140,.15)" : "linear-gradient(135deg, #00C48C 0%, #009E70 100%)",
                       color: published ? "var(--green2)" : "#fff",
                       border: published ? "1px solid rgba(0,196,140,.3)" : "none",
                       opacity: publishing ? 0.75 : 1,
@@ -1630,6 +1576,20 @@ export default function StudioPage() {
                       : editBuddyId
                       ? "✓ Tested & Ready — Update Buddy →"
                       : "✓ Tested & Ready — Submit for Review →"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowTestModal(true)}
+                    className="w-full py-[8px] rounded-[8px] text-[11px] font-semibold transition-all text-center"
+                    style={{
+                      background: "transparent",
+                      color: "var(--muted)",
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    🧪 Re-open Live Testing Sandbox ({config.dnaFidelityScore}% Fidelity)
                   </button>
                 </div>
               )}
