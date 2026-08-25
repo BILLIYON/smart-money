@@ -8,6 +8,8 @@ const localPool = new Pool({
   connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
 });
 
+import { dbCache } from "@/lib/cache";
+
 async function handleStatusChange(formData: FormData) {
   "use server";
   const buddyId = formData.get("buddyId") as string;
@@ -19,7 +21,10 @@ async function handleStatusChange(formData: FormData) {
       `UPDATE buddies SET status = $1, rejection_reason = $2 WHERE id = $3;`,
       [newStatus, revisionNote || null, buddyId]
     );
+    dbCache.clear();
     revalidatePath("/admin/approvals");
+    revalidatePath("/admin/buddies");
+    revalidatePath("/marketplace");
   }
 }
 

@@ -335,6 +335,9 @@ export async function submitBuddy(
     `• Register: ${registerLabel}`,
     config.signaturePhrase?.trim() ? `• Signature Phrase: "${config.signaturePhrase.trim()}"` : null,
     config.willNotAdviseOn?.trim() ? `• Strict Boundaries (Will NOT advise on): ${config.willNotAdviseOn.trim()}` : null,
+    (config as any).dnaKeywords?.length ? `• Ingested Persona DNA Tags: ${(config as any).dnaKeywords.map((k: string) => `#${k}`).join(", ")}` : null,
+    (config as any).rawDnaText?.trim() ? `\n[Ingested Biography & Transcript DNA]\n${(config as any).rawDnaText.trim()}` : null,
+    (config as any).urls?.length ? `\n[Ingested Article & Web DNA]\n${(config as any).urls.map((u: any) => `• ${u.title || u.url}`).join("\n")}` : null,
   ].filter(Boolean);
 
   const fullPhilosophy = philosophyParts.join("\n");
@@ -381,6 +384,9 @@ export async function submitBuddy(
     console.error("[submitBuddy] Insert error:", error);
     throw error;
   }
+  
+  dbCache.clear();
+  dbCache.invalidatePattern("buddies");
   return data?.id || slug;
 }
 

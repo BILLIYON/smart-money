@@ -61,6 +61,9 @@ type StudioConfig = {
   willNotAdviseOn?: string;
   model?: string;
   knowledgeSummary?: string;
+  urls?: { url: string; title: string; snippet?: string }[];
+  rawDnaText?: string;
+  dnaKeywords?: string[];
 };
 
 // ── Stream Handlers per Provider ──────────────────────────
@@ -333,6 +336,9 @@ export async function POST(req: Request) {
       `- Register: ${registerLabel} (${register}/100)`,
       config.signaturePhrase ? `- Signature Catchphrase: "${config.signaturePhrase}" (incorporate naturally when appropriate)` : "",
       config.willNotAdviseOn ? `- Strict Boundary (Will NOT advise on): ${config.willNotAdviseOn}` : "",
+      config.dnaKeywords?.length ? `- Persona DNA Keywords & Core Tags: ${config.dnaKeywords.map((k) => `#${k}`).join(", ")}` : "",
+      config.rawDnaText ? `- Raw Biography & Transcripts DNA:\n${config.rawDnaText}` : "",
+      config.urls?.length ? `- Ingested Article & Web Links:\n${config.urls.map((u) => `• ${u.title || u.url}`).join("\n")}` : "",
       config.knowledgeSummary ? `- Ingested Knowledge Base Context: ${config.knowledgeSummary}` : "",
       "",
       "Respond strictly as this persona in 2–4 concise sentences. Use ₦ for Naira currency amounts.",
