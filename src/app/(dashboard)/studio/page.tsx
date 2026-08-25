@@ -1567,26 +1567,72 @@ export default function StudioPage() {
                 </div>
               )}
 
-              <button
-                onClick={handlePublish}
-                disabled={publishing || published}
-                className="w-full py-[11px] rounded-[10px] text-[13px] font-semibold transition-all duration-150 shadow-sm"
-                style={{
-                  background: published ? "rgba(0,196,140,.15)" : "var(--green)",
-                  color: published ? "var(--green2)" : "#fff",
-                  border: published ? "1px solid rgba(0,196,140,.3)" : "none",
-                  opacity: publishing ? 0.75 : 1,
-                  cursor: publishing ? "wait" : "pointer",
-                }}
-              >
-                {publishing
-                  ? "Submitting…"
-                  : published
-                  ? (editBuddyId ? "✓ Buddy Updated" : "✓ Submitted for Review")
-                  : editBuddyId
-                  ? "Update Buddy →"
-                  : "Submit for Review & Publish →"}
-              </button>
+              {!config.dnaBuilt ? (
+                <div>
+                  <button
+                    type="button"
+                    onClick={buildBuddyDna}
+                    disabled={isBuildingDna}
+                    className="w-full py-[12px] rounded-[10px] text-[13px] font-bold text-white transition-all shadow-md flex items-center justify-center gap-2"
+                    style={{
+                      background: "var(--green)",
+                      opacity: isBuildingDna ? 0.75 : 1,
+                      cursor: isBuildingDna ? "wait" : "pointer",
+                    }}
+                  >
+                    {isBuildingDna ? (
+                      <>
+                        <span className="inline-block animate-spin">⚡</span>
+                        <span>Building Buddy DNA ({buildStep}/4)…</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>⚡ Build & Test Buddy →</span>
+                      </>
+                    )}
+                  </button>
+                  <div className="mt-2 text-[11px] text-center" style={{ color: "var(--muted)" }}>
+                    Build persona DNA & test your buddy live before publishing.
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowTestModal(true)}
+                    className="w-full py-[10px] rounded-[10px] text-[12px] font-bold border transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                    style={{
+                      background: "var(--card)",
+                      borderColor: "var(--green)",
+                      color: "var(--green2)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span>🧪 Open Sandbox to Test ({config.dnaFidelityScore}% Fidelity)</span>
+                  </button>
+
+                  <button
+                    onClick={handlePublish}
+                    disabled={publishing || published}
+                    className="w-full py-[12px] rounded-[10px] text-[13px] font-bold transition-all duration-150 shadow-md flex items-center justify-center gap-2"
+                    style={{
+                      background: published ? "rgba(0,196,140,.15)" : "var(--green)",
+                      color: published ? "var(--green2)" : "#fff",
+                      border: published ? "1px solid rgba(0,196,140,.3)" : "none",
+                      opacity: publishing ? 0.75 : 1,
+                      cursor: publishing ? "wait" : "pointer",
+                    }}
+                  >
+                    {publishing
+                      ? "Submitting…"
+                      : published
+                      ? (editBuddyId ? "✓ Buddy Updated" : "✓ Submitted for Review")
+                      : editBuddyId
+                      ? "✓ Tested & Ready — Update Buddy →"
+                      : "✓ Tested & Ready — Submit for Review →"}
+                  </button>
+                </div>
+              )}
 
               {published && (
                 <div className="mt-3 text-[11px] text-center" style={{ color: "var(--muted)" }}>
@@ -2059,10 +2105,23 @@ export default function StudioPage() {
                     setShowTestModal(false);
                     handlePublish();
                   }}
+                  disabled={publishing || published}
                   className="px-6 py-2 rounded-[10px] text-[12px] font-bold text-white transition-all shadow-lg flex items-center gap-2"
-                  style={{ background: "var(--green)", cursor: "pointer" }}
+                  style={{
+                    background: published ? "rgba(0,196,140,.15)" : "var(--green)",
+                    color: published ? "var(--green2)" : "#fff",
+                    cursor: publishing ? "wait" : "pointer",
+                  }}
                 >
-                  <span>✓ Tested & Ready — Publish to Marketplace →</span>
+                  <span>
+                    {publishing
+                      ? "Submitting…"
+                      : published
+                      ? (editBuddyId ? "✓ Buddy Updated" : "✓ Submitted for Review")
+                      : editBuddyId
+                      ? "✓ Tested & Ready — Update Buddy →"
+                      : "✓ Tested & Ready — Submit for Review →"}
+                  </span>
                 </button>
               </div>
             </div>
