@@ -268,7 +268,7 @@ export default function StudioPage() {
   const [buildStep, setBuildStep] = useState(0);
 
   const [showTestModal, setShowTestModal] = useState(false);
-  const [testModalTab, setTestModalTab] = useState<"extracted_data" | "live_test">("extracted_data");
+  const [testModalTab, setTestModalTab] = useState<"extracted_data" | "live_test">("live_test");
   const [testChatMsgs, setTestChatMsgs] = useState<PreviewMsg[]>([]);
   const [testChatInput, setTestChatInput] = useState("");
   const [testChatStreaming, setTestChatStreaming] = useState(false);
@@ -401,6 +401,7 @@ export default function StudioPage() {
           content: `👋 Hello! I am ${config.buddyName || "your AI Buddy"}. My Digital Persona DNA has been synthesized at ${score}% fidelity! Ask me any question to test my voice, tone, and financial directives.`,
         },
       ]);
+      setTestModalTab("live_test");
       setShowTestModal(true);
       popup.success("🧬 Buddy DNA Synthesized!", `Your buddy is now ${score}% synthesized and ready for live sandbox testing!`);
     }, 1200);
@@ -1817,18 +1818,22 @@ export default function StudioPage() {
           >
             {/* Header */}
             <div className="px-6 py-4 border-b flex items-center justify-between flex-wrap gap-3" style={{ borderColor: "var(--border)", background: "var(--bg)" }}>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center text-[20px]" style={{ background: config.avatarBg || "var(--navy)" }}>
-                  {config.avatarContent || "🎯"}
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center text-[20px] overflow-hidden flex-shrink-0" style={{ background: config.avatarBg || "var(--navy)" }}>
+                  {isImageAvatar(config.avatarContent) ? (
+                    <img src={config.avatarContent} alt="avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    config.avatarContent || "🎯"
+                  )}
                 </div>
-                <div>
+                <div className="min-w-0">
                   <div className="text-[16px] font-bold flex items-center gap-2" style={{ color: "var(--text)" }}>
-                    <span>{config.buddyName || "AI Buddy"}</span>
-                    <span className="px-2 py-[2px] rounded-full text-[10px] font-bold border" style={{ background: "rgba(0,196,140,0.12)", color: "var(--green2)", borderColor: "rgba(0,196,140,0.3)" }}>
+                    <span className="truncate">{config.buddyName || "AI Buddy"}</span>
+                    <span className="px-2 py-[2px] rounded-full text-[10px] font-bold border flex-shrink-0" style={{ background: "rgba(0,196,140,0.12)", color: "var(--green2)", borderColor: "rgba(0,196,140,0.3)" }}>
                       ✓ {config.dnaFidelityScore || 98}% Fidelity
                     </span>
                   </div>
-                  <div className="text-[11px]" style={{ color: "var(--muted)" }}>
+                  <div className="text-[11px] truncate" style={{ color: "var(--muted)" }}>
                     Model: <strong style={{ color: "var(--text)" }}>{config.model}</strong> · Built at {config.dnaBuildTimestamp || "Just now"}
                   </div>
                 </div>
@@ -1837,7 +1842,7 @@ export default function StudioPage() {
               <button
                 type="button"
                 onClick={() => setShowTestModal(false)}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-[18px] transition-all hover:bg-slate-800"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-[18px] transition-all hover:bg-slate-800 flex-shrink-0"
                 style={{ color: "var(--muted)", border: "1px solid var(--border)", background: "transparent", cursor: "pointer" }}
               >
                 ✕
@@ -1846,6 +1851,20 @@ export default function StudioPage() {
 
             {/* Sub-header Tabs */}
             <div className="flex border-b px-6 gap-6 text-[13px] font-semibold" style={{ borderColor: "var(--border)", background: "var(--card)" }}>
+              <button
+                type="button"
+                onClick={() => setTestModalTab("live_test")}
+                className="py-3 border-b-2 transition-all flex items-center gap-2"
+                style={{
+                  borderColor: testModalTab === "live_test" ? "var(--green)" : "transparent",
+                  color: testModalTab === "live_test" ? "var(--green2)" : "var(--muted)",
+                  cursor: "pointer",
+                }}
+              >
+                <span>💬 Interactive Sandbox Test</span>
+                <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: "var(--green)" }} />
+              </button>
+
               <button
                 type="button"
                 onClick={() => setTestModalTab("extracted_data")}
@@ -1860,20 +1879,6 @@ export default function StudioPage() {
                 <span className="px-2 py-[1px] rounded-full text-[10px]" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
                   {files.length + (config.urls || []).length + (config.dnaKeywords || []).length} items
                 </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setTestModalTab("live_test")}
-                className="py-3 border-b-2 transition-all flex items-center gap-2"
-                style={{
-                  borderColor: testModalTab === "live_test" ? "var(--green)" : "transparent",
-                  color: testModalTab === "live_test" ? "var(--green2)" : "var(--muted)",
-                  cursor: "pointer",
-                }}
-              >
-                <span>💬 Interactive Sandbox Test</span>
-                <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: "var(--green)" }} />
               </button>
             </div>
 
