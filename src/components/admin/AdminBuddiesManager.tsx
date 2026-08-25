@@ -281,6 +281,8 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
         ? true
         : statusFilter === "hidden"
         ? isHidden
+        : statusFilter === "pending"
+        ? (b.status === "pending" || b.status === "in_review") && !isHidden
         : b.status === statusFilter && !isHidden;
 
     const matchesCategory =
@@ -298,40 +300,23 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
   return (
     <div>
       {/* Top Header & Actions */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: 16,
-          marginBottom: 24,
-        }}
-      >
+      <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#0B1E3D", margin: 0 }}>
-            🤖 Marketplace Buddies Manager
+          <h1 className="text-[22px] font-bold tracking-tight" style={{ color: "var(--text)" }}>
+            🤖 Marketplace Buddy Catalogue
           </h1>
-          <p style={{ fontSize: 14, color: "#6B7A99", marginTop: 4, margin: 0 }}>
+          <p className="text-[13px] mt-1" style={{ color: "var(--muted)" }}>
             {buddies.length} Total Buddies in Database · {hiddenIds.size} Hidden from Marketplace
           </p>
         </div>
 
         <button
+          type="button"
           onClick={openCreateModal}
+          className="px-5 py-2.5 rounded-[10px] text-[13px] font-bold text-white transition-all shadow-md flex items-center gap-2"
           style={{
-            padding: "10px 20px",
-            background: "#00C48C",
-            color: "#ffffff",
-            border: "none",
-            borderRadius: 10,
-            fontSize: 14,
-            fontWeight: 700,
+            background: "linear-gradient(135deg, #00C48C 0%, #009E70 100%)",
             cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            boxShadow: "0 2px 8px rgba(0,196,140,0.3)",
           }}
         >
           <span>＋</span> Add New Buddy
@@ -340,104 +325,89 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
 
       {/* Filter Bar */}
       <div
+        className="p-4 rounded-[14px] border mb-6 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between"
         style={{
-          background: "#ffffff",
-          padding: 16,
-          borderRadius: 14,
-          boxShadow: "0 1px 4px rgba(11,30,61,.06)",
-          display: "flex",
-          gap: 12,
-          flexWrap: "wrap",
-          alignItems: "center",
-          marginBottom: 24,
+          background: "var(--card)",
+          borderColor: "var(--border)",
+          boxShadow: "0 2px 8px var(--shadow)",
         }}
       >
-        <input
-          type="text"
-          placeholder="Search buddies by name, tag, or description..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{
-            flex: 1,
-            minWidth: 260,
-            padding: "9px 14px",
-            borderRadius: 8,
-            border: "1px solid #CBD5E1",
-            fontSize: 13,
-            outline: "none",
-          }}
-        />
+        <div className="relative flex-1 min-w-[240px]">
+          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[14px]" style={{ color: "var(--muted)" }}>🔍</span>
+          <input
+            type="text"
+            placeholder="Search buddies by name, tag, or description..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 rounded-[10px] text-[13px] outline-none transition-all"
+            style={{
+              background: "var(--bg)",
+              border: "1px solid var(--border)",
+              color: "var(--text)",
+            }}
+          />
+        </div>
 
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          style={{
-            padding: "9px 14px",
-            borderRadius: 8,
-            border: "1px solid #CBD5E1",
-            fontSize: 13,
-            background: "#ffffff",
-            cursor: "pointer",
-          }}
-        >
-          <option value="all">All Statuses</option>
-          <option value="live">Live</option>
-          <option value="approved">Approved</option>
-          <option value="pending">Pending Review</option>
-          <option value="rejected">Rejected</option>
-          <option value="hidden">Hidden Only</option>
-        </select>
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-3 py-2 rounded-[10px] text-[12px] font-semibold outline-none border cursor-pointer"
+            style={{
+              background: "var(--bg)",
+              borderColor: "var(--border)",
+              color: "var(--text)",
+            }}
+          >
+            <option value="all">Status: All</option>
+            <option value="live">Live Only</option>
+            <option value="approved">Approved</option>
+            <option value="pending">Pending Review</option>
+            <option value="rejected">Rejected</option>
+            <option value="hidden">Hidden Only</option>
+          </select>
 
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          style={{
-            padding: "9px 14px",
-            borderRadius: 8,
-            border: "1px solid #CBD5E1",
-            fontSize: 13,
-            background: "#ffffff",
-            cursor: "pointer",
-          }}
-        >
-          <option value="all">All Types / Categories</option>
-          <option value="archetype">Archetypes Only</option>
-          <option value="fan_sim">Celebrity Sims Only</option>
-          <option value="Investing">Investing</option>
-          <option value="Budgeting">Budgeting</option>
-          <option value="Entrepreneurship">Entrepreneurship</option>
-          <option value="Real Estate">Real Estate</option>
-        </select>
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="px-3 py-2 rounded-[10px] text-[12px] font-semibold outline-none border cursor-pointer"
+            style={{
+              background: "var(--bg)",
+              borderColor: "var(--border)",
+              color: "var(--text)",
+            }}
+          >
+            <option value="all">Category: All</option>
+            <option value="archetype">Archetypes Only</option>
+            <option value="fan_sim">Celebrity Sims</option>
+            <option value="Investing">Investing</option>
+            <option value="Budgeting">Budgeting</option>
+            <option value="Entrepreneurship">Entrepreneurship</option>
+            <option value="Real Estate">Real Estate</option>
+          </select>
+        </div>
       </div>
 
       {/* Grid of Buddies */}
       {filteredBuddies.length === 0 ? (
         <div
+          className="rounded-[16px] p-12 text-center border"
           style={{
-            background: "#ffffff",
-            borderRadius: 16,
-            padding: "60px 24px",
-            textAlign: "center",
-            color: "#6B7A99",
-            boxShadow: "0 1px 4px rgba(11,30,61,.06)",
+            background: "var(--card)",
+            borderColor: "var(--border)",
+            color: "var(--muted)",
           }}
         >
-          <div style={{ fontSize: 36, marginBottom: 12 }}>🤖</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "#0B1E3D", marginBottom: 4 }}>
+          <div className="text-[36px] mb-2">🤖</div>
+          <div className="text-[16px] font-bold mb-1" style={{ color: "var(--text)" }}>
             No Buddies Found
           </div>
-          <div style={{ fontSize: 13 }}>
+          <div className="text-[13px]">
             {search ? `No buddy matches "${search}".` : "Try resetting your search or filter parameters."}
           </div>
         </div>
       ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-            gap: 20,
-          }}
-        >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
           {filteredBuddies.map((buddy) => {
             const isHidden = hiddenIds.has(buddy.id);
             const priceLabel =
@@ -448,79 +418,43 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
             return (
               <div
                 key={buddy.id}
+                className="rounded-[16px] overflow-hidden border flex flex-col transition-all duration-200 shadow-sm hover:shadow-md"
                 style={{
-                  background: "#ffffff",
-                  borderRadius: 16,
-                  overflow: "hidden",
-                  boxShadow: "0 2px 8px rgba(11,30,61,.08)",
-                  display: "flex",
-                  flexDirection: "column",
-                  opacity: isHidden ? 0.6 : 1,
-                  transition: "all .2s",
-                  border: isHidden ? "1px dashed #E24B4A" : "1px solid #E2E8F0",
+                  background: "var(--card)",
+                  borderColor: isHidden ? "rgba(226,75,74,0.5)" : "var(--border)",
+                  opacity: isHidden ? 0.65 : 1,
                 }}
               >
                 {/* Banner */}
-                <div style={{ height: 60, background: buddy.banner_color || "#0B1E3D", position: "relative" }}>
+                <div className="h-16 relative" style={{ background: buddy.banner_color || "var(--navy)" }}>
                   {isHidden && (
-                    <span
-                      style={{
-                        position: "absolute",
-                        top: 8,
-                        right: 8,
-                        fontSize: 10,
-                        fontWeight: 700,
-                        padding: "2px 8px",
-                        borderRadius: 20,
-                        background: "#E24B4A",
-                        color: "#fff",
-                        textTransform: "uppercase",
-                      }}
-                    >
+                    <span className="absolute top-2 right-2 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider" style={{ background: "#E24B4A", color: "#fff" }}>
                       Hidden
                     </span>
                   )}
                   <span
+                    className="absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider"
                     style={{
-                      position: "absolute",
-                      top: 8,
-                      left: 8,
-                      fontSize: 10,
-                      fontWeight: 700,
-                      padding: "2px 8px",
-                      borderRadius: 20,
                       background: "rgba(0,0,0,0.5)",
                       color: "#fff",
-                      textTransform: "uppercase",
                     }}
                   >
                     {buddy.status}
                   </span>
                   <div
+                    className="absolute -bottom-4 left-4 w-11 h-11 rounded-full border-2 flex items-center justify-center text-[18px] font-bold overflow-hidden"
                     style={{
-                      position: "absolute",
-                      bottom: -18,
-                      left: 16,
-                      width: 44,
-                      height: 44,
-                      borderRadius: "50%",
-                      background: buddy.avatar_bg || "#1A3A6E",
-                      border: "2px solid #ffffff",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 18,
+                      background: buddy.avatar_bg || "var(--navy)",
+                      borderColor: "var(--card)",
                       color: "#fff",
-                      fontFamily: buddy.avatar_is_serif ? "serif" : "inherit",
-                      fontWeight: 700,
-                      overflow: "hidden",
+                      fontFamily: buddy.avatar_is_serif ? "var(--font-dm-serif), serif" : "inherit",
                     }}
                   >
                     {isImageAvatar(buddy.avatar_content) ? (
                       <img
                         src={buddy.avatar_content!}
                         alt={buddy.name}
-                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        className="w-full h-full object-cover"
                       />
                     ) : (
                       buddy.avatar_content || "🤖"
@@ -529,40 +463,33 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
                 </div>
 
                 {/* Body */}
-                <div style={{ padding: "26px 16px 16px", display: "flex", flexDirection: "column", flex: 1 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 4 }}>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: "#0B1E3D" }}>
+                <div className="p-4 pt-6 flex flex-col flex-1">
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <div className="text-[15px] font-bold truncate" style={{ color: "var(--text)" }}>
                       {buddy.name}
                     </div>
                     <span
+                      className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
                       style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        padding: "2px 8px",
-                        borderRadius: 12,
                         background: buddy.price_monthly === 0 ? "rgba(0,196,140,0.12)" : "rgba(123,104,238,0.12)",
-                        color: buddy.price_monthly === 0 ? "#00C48C" : "#7B68EE",
-                        whiteSpace: "nowrap",
+                        color: buddy.price_monthly === 0 ? "var(--green2)" : "#7B68EE",
                       }}
                     >
                       {priceLabel}
                     </span>
                   </div>
 
-                  <div style={{ fontSize: 12, color: "#6B7A99", marginBottom: 10, lineHeight: 1.4 }}>
+                  <div className="text-[12px] mb-3 line-clamp-1" style={{ color: "var(--muted)" }}>
                     {buddy.tag}
                   </div>
 
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+                  <div className="flex gap-1.5 flex-wrap mb-4">
                     <span
+                      className="text-[10px] font-bold px-2 py-0.5 rounded-[6px] uppercase"
                       style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        padding: "2px 8px",
-                        borderRadius: 6,
-                        background: "#F1F5F9",
-                        color: "#475569",
-                        textTransform: "uppercase",
+                        background: "var(--bg)",
+                        color: "var(--muted)",
+                        border: "1px solid var(--border)",
                       }}
                     >
                       {buddy.ai_model}
@@ -570,14 +497,11 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
                     {(buddy.category || []).slice(0, 2).map((cat) => (
                       <span
                         key={cat}
+                        className="text-[10px] font-semibold px-2 py-0.5 rounded-[6px]"
                         style={{
-                          fontSize: 10,
-                          fontWeight: 600,
-                          padding: "2px 8px",
-                          borderRadius: 6,
-                          background: "#F8FAFC",
-                          color: "#64748B",
-                          border: "1px solid #E2E8F0",
+                          background: "var(--bg)",
+                          color: "var(--muted)",
+                          border: "1px solid var(--border)",
                         }}
                       >
                         {cat}
@@ -585,11 +509,8 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
                     ))}
                     {buddy.is_fan_sim && (
                       <span
+                        className="text-[10px] font-semibold px-2 py-0.5 rounded-[6px]"
                         style={{
-                          fontSize: 10,
-                          fontWeight: 600,
-                          padding: "2px 8px",
-                          borderRadius: 6,
                           background: "rgba(245,166,35,.12)",
                           color: "#C47F00",
                         }}
@@ -601,27 +522,17 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
 
                   {/* Actions Footer */}
                   <div
-                    style={{
-                      marginTop: "auto",
-                      paddingTop: 12,
-                      borderTop: "1px solid #E2E8F0",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 8,
-                    }}
+                    className="mt-auto pt-3 border-t flex items-center justify-between gap-1.5"
+                    style={{ borderColor: "var(--border)" }}
                   >
                     <button
+                      type="button"
                       onClick={() => handleToggleHide(buddy.id)}
+                      className="flex-1 py-1.5 px-2 rounded-[8px] text-[11px] font-bold border transition-all text-center"
                       style={{
-                        flex: 1,
-                        padding: "6px 10px",
-                        borderRadius: 8,
-                        border: "1px solid #CBD5E1",
-                        background: isHidden ? "#F8FAFC" : "#ffffff",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: isHidden ? "#00C48C" : "#64748B",
+                        background: "var(--bg)",
+                        borderColor: "var(--border)",
+                        color: isHidden ? "var(--green2)" : "var(--muted)",
                         cursor: "pointer",
                       }}
                     >
@@ -629,15 +540,11 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
                     </button>
 
                     <button
+                      type="button"
                       onClick={() => openEditModal(buddy)}
+                      className="py-1.5 px-3 rounded-[8px] text-[11px] font-bold text-white transition-all text-center"
                       style={{
-                        padding: "6px 12px",
-                        borderRadius: 8,
-                        border: "none",
-                        background: "#0B1E3D",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: "#ffffff",
+                        background: "var(--navy)",
                         cursor: "pointer",
                       }}
                     >
@@ -645,31 +552,26 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
                     </button>
 
                     <button
+                      type="button"
                       onClick={() => window.location.href = `/studio?edit=${buddy.id}`}
+                      className="py-1.5 px-2.5 rounded-[8px] text-[11px] font-bold border transition-all text-center"
                       style={{
-                        padding: "6px 12px",
-                        borderRadius: 8,
-                        border: "1px solid #00C48C",
-                        background: "rgba(0,196,140,0.1)",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: "#00C48C",
+                        background: "rgba(0,196,140,0.12)",
+                        borderColor: "rgba(0,196,140,0.3)",
+                        color: "var(--green2)",
                         cursor: "pointer",
                       }}
-                      title="Open full creator interface in AI Studio"
                     >
-                      🎨 Studio
+                      Studio 🎨
                     </button>
 
                     <button
+                      type="button"
                       onClick={() => handleDelete(buddy)}
+                      className="py-1.5 px-2 rounded-[8px] text-[11px] font-bold border transition-all text-center"
                       style={{
-                        padding: "6px 10px",
-                        borderRadius: 8,
-                        border: "none",
                         background: "rgba(226,75,74,0.12)",
-                        fontSize: 12,
-                        fontWeight: 600,
+                        borderColor: "rgba(226,75,74,0.3)",
                         color: "#E24B4A",
                         cursor: "pointer",
                       }}
@@ -691,8 +593,8 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0,0,0,0.6)",
-            backdropFilter: "blur(4px)",
+            background: "rgba(0,0,0,0.65)",
+            backdropFilter: "blur(8px)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -701,24 +603,22 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
           }}
         >
           <div
+            className="rounded-[20px] p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto border shadow-2xl transition-colors duration-200"
             style={{
-              background: "#ffffff",
-              borderRadius: 20,
-              maxWidth: 680,
-              width: "100%",
-              padding: 24,
-              boxShadow: "0 20px 30px rgba(0,0,0,0.2)",
-              maxHeight: "90vh",
-              overflowY: "auto",
+              background: "var(--card)",
+              borderColor: "var(--border)",
+              color: "var(--text)",
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-              <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0B1E3D", margin: 0 }}>
+              <h2 className="text-[18px] font-bold margin-0" style={{ color: "var(--text)" }}>
                 {editingBuddy ? `✏️ Edit Buddy: ${editingBuddy.name}` : "✦ Create New Buddy"}
               </h2>
               <button
+                type="button"
                 onClick={() => setModalOpen(false)}
-                style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#64748B" }}
+                className="text-[22px] cursor-pointer bg-none border-none"
+                style={{ color: "var(--muted)" }}
               >
                 ×
               </button>

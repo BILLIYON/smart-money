@@ -26,27 +26,22 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div
+      className="flex h-screen w-screen overflow-hidden transition-colors duration-200"
       style={{
-        display: "flex",
-        height: "100vh",
-        width: "100vw",
-        overflow: "hidden",
-        background: "#0F172A",
-        color: "#F8FAFC",
-        fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+        background: "var(--bg)",
+        color: "var(--text)",
+        fontFamily: "var(--font-sora), Inter, sans-serif",
       }}
     >
       <AdminSidebar />
 
       <main
+        className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 transition-colors duration-200"
         style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "32px 40px",
-          background: "#0F172A",
+          background: "var(--bg)",
         }}
       >
-        <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+        <div className="max-w-7xl mx-auto">
           {children}
         </div>
       </main>

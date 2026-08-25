@@ -301,13 +301,16 @@ export async function submitBuddy(
   creatorId: string,
   isAdmin: boolean = false
 ): Promise<string> {
-  const db = getClient();
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+  });
+
   const editId = config.editBuddyId?.trim();
   let existingBuddy: any = null;
 
   if (editId) {
-    const { data: found } = await db.from("buddies").select("*").eq("id", editId).maybeSingle();
-    existingBuddy = found;
+    const { rows } = await pool.query("SELECT * FROM buddies WHERE id = $1 LIMIT 1;", [editId]).catch(() => ({ rows: [] }));
+    existingBuddy = rows[0] || null;
   }
 
   const slug = editId || (config.buddyName
@@ -348,46 +351,86 @@ export async function submitBuddy(
     ? (existingBuddy.status === "approved" || existingBuddy.status === "live" ? "approved" : "pending")
     : "pending";
 
-  const record = {
-    id: slug,
-    name: config.buddyName || "Untitled Buddy",
-    tag: config.tag || "",
-    description: config.desc || "",
-    avatar_content: config.avatarContent || "🤖",
-    avatar_bg: config.avatarBg || "#1A3A6E",
-    avatar_is_serif: config.avatarIsSerif ?? false,
-    banner_color: config.bannerColor || "linear-gradient(135deg,#0B1E3D,#1A3A6E)",
-    category: categories,
-    is_fan_sim: config.isFanSim ?? false,
-    fan_disclaimer: config.disclaimer || null,
-    philosophy: fullPhilosophy,
-    ai_model: modelVal,
-    price_monthly: isNaN(priceMonthly) ? 0 : priceMonthly,
-    rating: existingBuddy?.rating ?? 5.0,
-    review_count: existingBuddy?.review_count ?? 0,
-    creator_id: existingBuddy?.creator_id || creatorId || null,
-    status: targetStatus,
-    rejection_reason: null,
-  };
+  const isUuid = Boolean(creatorId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(creatorId));
+  const validCreatorId = isUuid ? creatorId : existingBuddy?.creator_id || null;
 
-  let { data, error } = await db.from("buddies").upsert(record).select("id").single();
+  const query = `
+    INSERT INTO buddies (
+      id, name, tag, description, avatar_content, avatar_bg, avatar_is_serif,
+      banner_color, category, is_fan_sim, fan_disclaimer, philosophy, ai_model,
+      price_monthly, rating, review_count, creator_id, status, rejection_reason, created_at
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW()
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      name = EXCLUDED.name,
+      tag = EXCLUDED.tag,
+      description = EXCLUDED.description,
+      avatar_content = EXCLUDED.avatar_content,
+      avatar_bg = EXCLUDED.avatar_bg,
+      avatar_is_serif = EXCLUDED.avatar_is_serif,
+      banner_color = EXCLUDED.banner_color,
+      category = EXCLUDED.category,
+      is_fan_sim = EXCLUDED.is_fan_sim,
+      fan_disclaimer = EXCLUDED.fan_disclaimer,
+      philosophy = EXCLUDED.philosophy,
+      ai_model = EXCLUDED.ai_model,
+      price_monthly = EXCLUDED.price_monthly,
+      status = EXCLUDED.status,
+      rejection_reason = EXCLUDED.rejection_reason;
+  `;
 
-  if (error && (error.code === "23514" || error.message?.includes("check constraint"))) {
-    console.warn("[submitBuddy] Postgres check constraint failed for model:", modelVal, "falling back to 'claude'");
-    record.ai_model = "claude";
-    const res = await db.from("buddies").upsert(record).select("id").single();
-    data = res.data;
-    error = res.error;
+  const values = [
+    slug,
+    config.buddyName || "Untitled Buddy",
+    config.tag || "",
+    config.desc || "",
+    config.avatarContent || "🤖",
+    config.avatarBg || "#1A3A6E",
+    config.avatarIsSerif ?? false,
+    config.bannerColor || "linear-gradient(135deg,#0B1E3D,#1A3A6E)",
+    categories,
+    config.isFanSim ?? false,
+    config.disclaimer || null,
+    fullPhilosophy,
+    modelVal,
+    isNaN(priceMonthly) ? 0 : priceMonthly,
+    existingBuddy?.rating ?? 5.0,
+    existingBuddy?.review_count ?? 0,
+    validCreatorId,
+    targetStatus,
+    null,
+  ];
+
+  await pool.query(query, values);
+  await pool.end();
+
+  try {
+    const db = getClient();
+    await db.from("buddies").upsert({
+      id: slug,
+      name: config.buddyName || "Untitled Buddy",
+      tag: config.tag || "",
+      description: config.desc || "",
+      avatar_content: config.avatarContent || "🤖",
+      avatar_bg: config.avatarBg || "#1A3A6E",
+      avatar_is_serif: config.avatarIsSerif ?? false,
+      banner_color: config.bannerColor || "linear-gradient(135deg,#0B1E3D,#1A3A6E)",
+      category: categories,
+      is_fan_sim: config.isFanSim ?? false,
+      fan_disclaimer: config.disclaimer || null,
+      philosophy: fullPhilosophy,
+      ai_model: modelVal,
+      price_monthly: isNaN(priceMonthly) ? 0 : priceMonthly,
+      status: targetStatus,
+    });
+  } catch (err) {
+    console.warn("[submitBuddy] Supabase sync optional warning:", err);
   }
 
-  if (error) {
-    console.error("[submitBuddy] Insert error:", error);
-    throw error;
-  }
-  
   dbCache.clear();
   dbCache.invalidatePattern("buddies");
-  return data?.id || slug;
+  return slug;
 }
 
 export type CommunityBuddyRow = {

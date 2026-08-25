@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTheme } from "next-themes";
+import { useEffect, useState } from "react";
 
 const NAV_ITEMS = [
   { label: "Overview", href: "/admin/overview", icon: "📊" },
@@ -14,123 +16,118 @@ const NAV_ITEMS = [
 
 export function AdminSidebar() {
   const pathname = usePathname();
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   return (
     <aside
+      className="flex flex-col h-screen sticky top-0 z-50 border-r transition-colors duration-200"
       style={{
         width: 240,
         minWidth: 240,
-        height: "100vh",
-        background: "#1E293B",
-        display: "flex",
-        flexDirection: "column",
-        borderRight: "1px solid #334155",
-        position: "sticky",
-        top: 0,
-        zIndex: 50,
+        background: "var(--card)",
+        borderColor: "var(--border)",
       }}
     >
       {/* Brand & System Status Header */}
       <div
-        style={{
-          padding: "20px 20px 16px",
-          borderBottom: "1px solid #334155",
-        }}
+        className="p-5 pb-4 border-b"
+        style={{ borderColor: "var(--border)" }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyBetween: "space-between", marginBottom: 4 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: "#94A3B8", letterSpacing: "1px", textTransform: "uppercase" }}>
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "var(--muted)" }}>
             Smart Money Enterprise
           </span>
           <span
+            className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full border"
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              fontSize: 10,
-              fontWeight: 600,
-              color: "#10B981",
-              padding: "2px 6px",
-              borderRadius: 4,
-              background: "rgba(16, 185, 129, 0.1)",
-              border: "1px solid rgba(16, 185, 129, 0.2)",
-              marginLeft: "auto",
+              color: "var(--green2)",
+              background: "rgba(0,196,140,0.1)",
+              borderColor: "rgba(0,196,140,0.25)",
             }}
           >
-            <span
-              style={{
-                width: 5,
-                height: 5,
-                borderRadius: "50%",
-                background: "#10B981",
-              }}
-            />
+            <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "var(--green)" }} />
             ONLINE
           </span>
         </div>
-        <div style={{ fontSize: 15, fontWeight: 700, color: "#F8FAFC", letterSpacing: "-0.2px" }}>
+        <div className="text-[15px] font-bold tracking-tight" style={{ color: "var(--text)" }}>
           Admin Console
         </div>
       </div>
 
       {/* Navigation Menu */}
-      <nav style={{ padding: "16px 12px", flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+      <nav className="p-3 flex-1 flex flex-col gap-1 overflow-y-auto">
         {NAV_ITEMS.map(({ label, href, icon }) => {
           const isActive = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
               key={href}
               href={href}
+              className="flex items-center gap-3 px-3.5 py-2.5 text-[13px] rounded-[10px] transition-all duration-150"
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                padding: "10px 14px",
-                fontSize: 13,
                 fontWeight: isActive ? 600 : 500,
-                color: isActive ? "#F8FAFC" : "#94A3B8",
-                textDecoration: "none",
-                borderRadius: 8,
-                background: isActive ? "#334155" : "transparent",
-                border: isActive ? "1px solid #475569" : "1px solid transparent",
-                transition: "all 0.15s ease",
+                color: isActive ? "var(--green2)" : "var(--muted)",
+                background: isActive ? "rgba(0,196,140,0.08)" : "transparent",
+                border: isActive ? "1px solid rgba(0,196,140,0.25)" : "1px solid transparent",
               }}
             >
-              <span
-                style={{
-                  fontSize: 14,
-                  width: 20,
-                  height: 20,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
+              <span className="text-[15px] w-5 h-5 flex items-center justify-center flex-shrink-0">
                 {icon}
               </span>
-              <span>{label}</span>
+              <span className="truncate">{label}</span>
             </Link>
           );
         })}
       </nav>
 
-      {/* Database & Infrastructure Telemetry Footer */}
-      <div
-        style={{
-          padding: "16px",
-          borderTop: "1px solid #334155",
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-        }}
-      >
-        <div style={{ background: "#0F172A", border: "1px solid #334155", borderRadius: 8, padding: "10px 12px" }}>
-          <div style={{ fontSize: 10, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+      {/* Theme Switcher & Footer */}
+      <div className="p-4 border-t flex flex-col gap-3" style={{ borderColor: "var(--border)" }}>
+        {/* Theme Mode Switcher */}
+        {mounted && (
+          <div className="flex items-center gap-1 p-1 rounded-[10px] border" style={{ background: "var(--bg)", borderColor: "var(--border)" }}>
+            <button
+              type="button"
+              onClick={() => setTheme("light")}
+              className="flex-1 py-1.5 px-2 rounded-[8px] text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all"
+              style={{
+                background: theme === "light" ? "var(--card)" : "transparent",
+                color: theme === "light" ? "var(--green2)" : "var(--muted)",
+                border: theme === "light" ? "1px solid var(--border)" : "none",
+                boxShadow: theme === "light" ? "0 1px 3px var(--shadow)" : "none",
+                cursor: "pointer",
+              }}
+            >
+              <span>☀️</span> Light
+            </button>
+            <button
+              type="button"
+              onClick={() => setTheme("dark")}
+              className="flex-1 py-1.5 px-2 rounded-[8px] text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all"
+              style={{
+                background: theme === "dark" ? "var(--card)" : "transparent",
+                color: theme === "dark" ? "var(--green2)" : "var(--muted)",
+                border: theme === "dark" ? "1px solid var(--border)" : "none",
+                boxShadow: theme === "dark" ? "0 1px 3px var(--shadow)" : "none",
+                cursor: "pointer",
+              }}
+            >
+              <span>🌙</span> Dark
+            </button>
+          </div>
+        )}
+
+        {/* DB Telemetry */}
+        <div className="rounded-[10px] p-3 border text-[11px]" style={{ background: "var(--bg)", borderColor: "var(--border)" }}>
+          <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted)" }}>
             Database Cluster
           </div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#F8FAFC", marginTop: 2, display: "flex", alignItems: "center", justifyBetween: "space-between" }}>
+          <div className="font-bold flex items-center justify-between" style={{ color: "var(--text)" }}>
             <span>PostgreSQL 16</span>
-            <span style={{ fontSize: 10, color: "#10B981", background: "rgba(16,185,129,0.1)", padding: "1px 5px", borderRadius: 4, marginLeft: "auto" }}>
+            <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: "rgba(0,196,140,0.12)", color: "var(--green2)" }}>
               Native EC2
             </span>
           </div>
@@ -138,20 +135,11 @@ export function AdminSidebar() {
 
         <Link
           href="/marketplace"
+          className="flex items-center justify-center gap-2 py-2 px-3 rounded-[10px] text-[12px] font-semibold border transition-all text-center"
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 6,
-            padding: "8px 12px",
             background: "transparent",
-            border: "1px solid #334155",
-            borderRadius: 8,
-            color: "#94A3B8",
-            fontSize: 12,
-            fontWeight: 500,
-            textDecoration: "none",
-            transition: "all 0.15s",
+            borderColor: "var(--border)",
+            color: "var(--muted)",
           }}
         >
           <span>←</span> Back to User App
