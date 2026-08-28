@@ -14,12 +14,18 @@ function redirectOrPopup(url: string, type: "GMAIL_CONNECTED" | "GMAIL_ERROR") {
     <html>
       <body>
         <script>
-          if (window.opener) {
-            window.opener.postMessage({ type: "${type}" }, "*");
-            window.close();
-          } else {
-            window.location.href = "${url}";
-          }
+          try {
+            if (window.opener) {
+              window.opener.postMessage({ type: "${type}" }, "*");
+            }
+          } catch(e) {}
+          setTimeout(function() {
+            if (window.opener) {
+              window.close();
+            } else {
+              window.location.href = "${url}";
+            }
+          }, 350);
         </script>
       </body>
     </html>`,

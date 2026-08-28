@@ -445,7 +445,7 @@ function GmailCard() {
             const left = window.screenX + (window.outerWidth - width) / 2;
             const top = window.screenY + (window.outerHeight - height) / 2;
 
-            const popup = window.open(
+            const popupWin = window.open(
               `/api/auth/gmail`,
               "Connect Gmail",
               `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes`
@@ -455,21 +455,36 @@ function GmailCard() {
               if (event.origin !== window.location.origin) return;
               if (event.data?.type === "GMAIL_CONNECTED") {
                 loadStatus();
-                window.removeEventListener("message", handleOAuthMessage);
+                useDatabankStore.getState().loadContext().catch(() => {});
+                popup.success("Gmail Connected 🚀", "Your Gmail account was linked successfully!");
+                cleanup();
               } else if (event.data?.type === "GMAIL_ERROR") {
-                console.error("Gmail connection failed in popup");
-                window.removeEventListener("message", handleOAuthMessage);
+                popup.error("Connection Failed", "Could not authorize your Gmail account. Please try again.");
+                cleanup();
               }
             };
 
+            const handleWindowFocus = () => {
+              loadStatus();
+              useDatabankStore.getState().loadContext().catch(() => {});
+            };
+
+            const cleanup = () => {
+              window.removeEventListener("message", handleOAuthMessage);
+              window.removeEventListener("focus", handleWindowFocus);
+              if (timer) clearInterval(timer);
+            };
+
             window.addEventListener("message", handleOAuthMessage);
+            window.addEventListener("focus", handleWindowFocus);
 
             const timer = setInterval(() => {
-              if (popup?.closed) {
-                clearInterval(timer);
-                window.removeEventListener("message", handleOAuthMessage);
+              if (popupWin?.closed) {
+                cleanup();
+                loadStatus();
+                useDatabankStore.getState().loadContext().catch(() => {});
               }
-            }, 1000);
+            }, 500);
           }}
           className="flex items-center justify-center gap-2 w-full py-[10px] rounded-[10px] text-[13px] font-semibold mb-3 transition-colors duration-150 border-none cursor-pointer"
           style={{ background: "var(--green)", color: "#fff", textDecoration: "none" }}

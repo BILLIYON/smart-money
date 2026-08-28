@@ -72,9 +72,9 @@ export async function getGmailClient(userId: string) {
   );
 
   oauth2.setCredentials({
-    access_token: decrypt(data.access_token),
-    refresh_token: decrypt(data.refresh_token),
-    expiry_date: new Date(data.token_expiry).getTime(),
+    access_token: data.access_token ? decrypt(data.access_token) : undefined,
+    refresh_token: (data.refresh_token && data.refresh_token.trim()) ? decrypt(data.refresh_token) : undefined,
+    expiry_date: data.token_expiry ? new Date(data.token_expiry).getTime() : undefined,
   });
 
   oauth2.on("tokens", async (newTokens) => {
@@ -459,53 +459,65 @@ export async function syncGmailForUser(
       }
 
       const batch = uniqueIds.slice(i, i + BATCH);
-      const emails = await Promise.all(batch.map((id) => getEmailBody(gmail, id)));
+      const emails = await Promise.all(
+        batch.map((id) =>
+          getEmailBody(gmail, id).catch((err) => {
+            console.warn(`[syncGmailForUser] Failed to fetch email ${id}:`, err?.message || err);
+            return null;
+          })
+        )
+      );
 
       // Parse emails in parallel via user-selected AI engine (default: Groq Llama)
       const extractedData = await Promise.all(
         emails.map(async (email) => {
           if (!email) return null;
-          const cleanBody = stripHtml(email.body);
-          const data = await extractFinancialDataFromEmail(
-            cleanBody,
-            email.subject,
-            email.from,
-            syncMode,
-            aiPrompt,
-            aiEngine,
-            { enableFallback, fallbackEngine }
-          );
-          if (!data) return null;
+          try {
+            const cleanBody = stripHtml(email.body);
+            const data = await extractFinancialDataFromEmail(
+              cleanBody,
+              email.subject,
+              email.from,
+              syncMode,
+              aiPrompt,
+              aiEngine,
+              { enableFallback, fallbackEngine }
+            );
+            if (!data) return null;
 
-          let entryDate = new Date().toISOString().split("T")[0];
-          if (email.date) {
-            const parsed = new Date(email.date);
-            if (!Number.isNaN(parsed.getTime())) {
-              entryDate = parsed.toISOString().split("T")[0];
+            let entryDate = new Date().toISOString().split("T")[0];
+            if (email.date) {
+              const parsed = new Date(email.date);
+              if (!Number.isNaN(parsed.getTime())) {
+                entryDate = parsed.toISOString().split("T")[0];
+              }
             }
-          }
 
-          const metadataVal: Record<string, unknown> = {
-            email_from: email.from,
-            email_subject: email.subject,
-          };
-          if (data.provider) metadataVal.provider = data.provider;
-          if (data.bank) metadataVal.bank = data.bank;
-          if (typeof data.account_balance === "number" && data.account_balance > 0) {
-            metadataVal.account_balance = Math.round(data.account_balance * 100);
-          }
+            const metadataVal: Record<string, unknown> = {
+              email_from: email.from,
+              email_subject: email.subject,
+            };
+            if (data.provider) metadataVal.provider = data.provider;
+            if (data.bank) metadataVal.bank = data.bank;
+            if (typeof data.account_balance === "number" && data.account_balance > 0) {
+              metadataVal.account_balance = Math.round(data.account_balance * 100);
+            }
 
-          return {
-            source: "gmail",
-            entry_type: data.entry_type,
-            amount: Math.round(data.amount * 100),
-            description: data.description,
-            category: data.category,
-            entry_date: entryDate,
-            metadata: metadataVal,
-            user_id: userId,
-            gmail_message_id: email.messageId,
-          } as DataBankEntry;
+            return {
+              source: "gmail",
+              entry_type: data.entry_type,
+              amount: Math.round(data.amount * 100),
+              description: data.description,
+              category: data.category,
+              entry_date: entryDate,
+              metadata: metadataVal,
+              user_id: userId,
+              gmail_message_id: email.messageId,
+            } as DataBankEntry;
+          } catch (err: any) {
+            console.warn(`[syncGmailForUser] Extraction error for email ${email.messageId}:`, err?.message || err);
+            return null;
+          }
         })
       );
 
