@@ -17,9 +17,20 @@ function thirtyDaysAgo(): string {
   return d.toISOString().split("T")[0];
 }
 
+function safeIsoDate(d: any): string {
+  if (!d) return "";
+  try {
+    const parsed = new Date(d);
+    return isNaN(parsed.getTime()) ? "" : parsed.toISOString();
+  } catch {
+    return "";
+  }
+}
+
 export async function GET() {
-  const { supabase, userId, error } = await requireAuth();
-  if (error) return error;
+  try {
+    const { supabase, userId, error } = await requireAuth();
+    if (error) return error;
 
   const MONTH_START = monthStart();
   const PRIOR_MONTH_START = priorMonthStart();
@@ -461,7 +472,7 @@ export async function GET() {
         accountNumber: "•••• Main",
         balance: 0,
         source: e.source === "gmail" ? "Gmail Alert" : e.source === "upload" ? "Statement Upload" : "DataBank",
-        lastUpdated: e.entry_date ? new Date(e.entry_date).toISOString() : "",
+        lastUpdated: safeIsoDate(e.entry_date),
         hasExplicitBalance: false,
         transactions: [],
       };
@@ -491,16 +502,16 @@ export async function GET() {
       if (!acc.hasExplicitBalance || entryTs >= accTs) {
         acc.balance = toNairaVal(metaBalance as number);
         acc.hasExplicitBalance = true;
-        if (e.entry_date) acc.lastUpdated = new Date(e.entry_date).toISOString();
+        if (e.entry_date) acc.lastUpdated = safeIsoDate(e.entry_date);
       }
     } else if (!acc.hasExplicitBalance) {
       if (txnType === "income") acc.balance += amountNaira;
       else acc.balance -= amountNaira;
       if (e.entry_date && entryTs >= accTs) {
-        acc.lastUpdated = new Date(e.entry_date).toISOString();
+        acc.lastUpdated = safeIsoDate(e.entry_date);
       }
     } else if (e.entry_date && entryTs > accTs) {
-      acc.lastUpdated = new Date(e.entry_date).toISOString();
+      acc.lastUpdated = safeIsoDate(e.entry_date);
     }
   });
 
@@ -544,20 +555,8 @@ export async function GET() {
           back = t.balanceAfter;
           continue;
         }
-        // balance after this txn is unknown; we know balance after a later txn.
-        // Working backwards: undoing this txn from the next known balance is wrong
-        // here — we need balance AFTER this txn = balance BEFORE the next one.
-        // If next known is at index > i, back already holds balance after a later txn.
-        // Before that later chain, after THIS txn:
-        // We set balanceAfter for this txn by undoing subsequent txns... simpler:
-        // balance before txn i+1 equals balance after txn i.
-        // When moving back across txn i+1 that we already processed:
-        // Actually when balanceAfter is null and we're going newest→oldest:
-        // After setting from a known point, undoing the CURRENT txn gives prior balance,
-        // which is balanceAfter of the previous (older) txn.
         t.balanceAfter = Math.round(back * 100) / 100;
         t.balanceFromAlert = false;
-        // Undo this transaction to get balance before it (= after previous)
         back = t.type === "income" ? back - t.amount : back + t.amount;
       }
     } else {
@@ -611,4 +610,11 @@ export async function GET() {
     assetsList,
     liabilitiesList,
   });
+  } catch (err: any) {
+    console.error("[databank/context] Error generating context:", err);
+    return NextResponse.json(
+      { error: err.message || "Failed to load databank context" },
+      { status: 500 }
+    );
+  }
 }

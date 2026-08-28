@@ -126,7 +126,11 @@ export const useDatabankStore = create<DatabankStore>((set, get) => ({
         set({ context: null });
         return;
       }
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "Failed to fetch databank context");
+        console.error("[databankStore] loadContext server error:", res.status, errText);
+        return;
+      }
       const data = (await res.json()) as DatabankContextResponse;
       set({ context: data });
     } catch (e) {

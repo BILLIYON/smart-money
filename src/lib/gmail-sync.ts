@@ -93,11 +93,13 @@ export async function syncGmailForUser(userId: string): Promise<void> {
         }
       }
 
+      const gmailMsgId = msg.id && typeof msg.id === "string" && msg.id.trim() ? msg.id.trim() : null;
+
       await pool.query(
         `INSERT INTO databank_entries (
           user_id, source, entry_type, description, metadata, amount, currency, gmail_message_id, entry_date
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        ON CONFLICT (gmail_message_id) DO UPDATE SET
+        ON CONFLICT (gmail_message_id) WHERE gmail_message_id IS NOT NULL DO UPDATE SET
           description = EXCLUDED.description,
           metadata = EXCLUDED.metadata,
           entry_date = EXCLUDED.entry_date;`,
@@ -109,7 +111,7 @@ export async function syncGmailForUser(userId: string): Promise<void> {
           JSON.stringify({ from, date, gmail_message_id: msg.id }),
           0,
           currency,
-          msg.id,
+          gmailMsgId,
           entryDate,
         ]
       );

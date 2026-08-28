@@ -531,12 +531,23 @@ export async function syncGmailForUser(
     }
 
     if (saveToDb && entries.length > 0) {
+      await pool.query(
+        `CREATE UNIQUE INDEX IF NOT EXISTS databank_entries_gmail_message_id_key ON public.databank_entries (gmail_message_id);`
+      ).catch(() => {});
+
       for (const entry of entries) {
+        const gmailMsgId =
+          entry.gmail_message_id &&
+          typeof entry.gmail_message_id === "string" &&
+          entry.gmail_message_id.trim()
+            ? entry.gmail_message_id.trim()
+            : null;
+
         await pool.query(
           `INSERT INTO databank_entries (
             user_id, source, entry_type, amount, description, category, entry_date, metadata, gmail_message_id
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-          ON CONFLICT (gmail_message_id) DO UPDATE SET
+          ON CONFLICT (gmail_message_id) WHERE gmail_message_id IS NOT NULL DO UPDATE SET
             amount = EXCLUDED.amount,
             description = EXCLUDED.description,
             category = EXCLUDED.category,
@@ -551,7 +562,7 @@ export async function syncGmailForUser(
             entry.category,
             entry.entry_date,
             JSON.stringify(entry.metadata),
-            entry.gmail_message_id || null,
+            gmailMsgId,
           ]
         );
       }

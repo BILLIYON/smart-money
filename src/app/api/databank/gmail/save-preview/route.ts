@@ -21,12 +21,23 @@ export async function POST(req: Request) {
     }
 
     if (entries.length > 0) {
+      await pool.query(
+        `CREATE UNIQUE INDEX IF NOT EXISTS databank_entries_gmail_message_id_key ON public.databank_entries (gmail_message_id);`
+      ).catch(() => {});
+
       for (const entry of entries) {
+        const gmailMsgId =
+          entry.gmail_message_id &&
+          typeof entry.gmail_message_id === "string" &&
+          entry.gmail_message_id.trim()
+            ? entry.gmail_message_id.trim()
+            : null;
+
         await pool.query(
           `INSERT INTO databank_entries (
             user_id, source, entry_type, amount, description, category, entry_date, gmail_message_id, metadata
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-          ON CONFLICT (gmail_message_id) DO UPDATE SET
+          ON CONFLICT (gmail_message_id) WHERE gmail_message_id IS NOT NULL DO UPDATE SET
             entry_type = EXCLUDED.entry_type,
             amount = EXCLUDED.amount,
             description = EXCLUDED.description,
@@ -41,7 +52,7 @@ export async function POST(req: Request) {
             entry.description || "",
             entry.category || "Uncategorized",
             entry.entry_date || new Date().toISOString(),
-            entry.gmail_message_id || null,
+            gmailMsgId,
             JSON.stringify(entry.metadata || {}),
           ]
         );
