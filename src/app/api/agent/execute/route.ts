@@ -48,7 +48,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Failed to verify wallet balance" }, { status: 500 });
       }
 
-      const walletBalance = (walletEntries ?? []).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+      const walletBalance = ((walletEntries as any[]) ?? []).reduce((sum, entry: any) => sum + Number(entry.amount || 0), 0);
       if (actionAmount > walletBalance) {
         return NextResponse.json({ error: "Insufficient wallet balance to execute this action" }, { status: 400 });
       }
@@ -90,7 +90,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Failed to verify daily limit usage" }, { status: 500 });
       }
 
-      const todaySum = (todayActions ?? []).reduce((sum, a) => sum + Number(a.amount || 0), 0);
+      const todaySum = ((todayActions as any[]) ?? []).reduce((sum: number, a: any) => sum + Number(a.amount || 0), 0);
       if (todaySum + actionAmount > limitDaily) {
         return NextResponse.json({ error: "Action would exceed your daily transaction limit" }, { status: 400 });
       }
@@ -112,7 +112,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Failed to verify monthly limit usage" }, { status: 500 });
       }
 
-      const monthSum = (monthActions ?? []).reduce((sum, a) => sum + Number(a.amount || 0), 0);
+      const monthSum = ((monthActions as any[]) ?? []).reduce((sum: number, a: any) => sum + Number(a.amount || 0), 0);
       if (monthSum + actionAmount > limitMonthly) {
         return NextResponse.json({ error: "Action would exceed your monthly transaction limit" }, { status: 400 });
       }

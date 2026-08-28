@@ -19,7 +19,6 @@ import {
   MessageSquareHeart,
   Download,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 

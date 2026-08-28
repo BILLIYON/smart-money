@@ -55,7 +55,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Failed to fetch messages" }, { status: 500 });
     }
 
-    const formattedMessages = (rawMsgs ?? []).map((m) => ({
+    const formattedMessages = ((rawMsgs as any[]) ?? []).map((m: any) => ({
       id: m.id,
       role: m.role === "assistant" ? ("ai" as const) : ("user" as const),
       content: m.content,

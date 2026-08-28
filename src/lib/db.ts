@@ -1,16 +1,11 @@
-/**
- * All Supabase database calls go through this module.
- * Never query Supabase inline in components or pages.
- */
-import { createClient } from "@supabase/supabase-js";
 import { Pool } from "pg";
 import { dbCache } from "@/lib/cache";
+import { hashPassword, updateUserPassword } from "@/lib/auth";
 
-// Server-side client (service role when available, anon key as fallback)
-function getClient() {
-  const url = process.env.LOCAL_DB_URL || "http://127.0.0.1:3001";
-  const key = "anon";
-  return createClient(url, key, { auth: { persistSession: false } });
+function getPool() {
+  return new Pool({
+    connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+  });
 }
 
 export type OnboardingPayload = {
@@ -21,29 +16,25 @@ export type OnboardingPayload = {
 };
 
 export async function completeOnboarding(payload: OnboardingPayload) {
-  const db = getClient();
-  const { error } = await db
-    .from("users")
-    .update({
-      onboarding_complete: true,
-      primary_goal: payload.goal,
-      selected_buddy_id: payload.buddyId,
-      connected_sources: payload.connectedSources,
-      onboarded_at: new Date().toISOString(),
-    })
-    .eq("id", payload.userId);
-
-  if (error) throw error;
+  const pool = getPool();
+  try {
+    await pool.query(
+      `UPDATE public.users SET onboarding_complete = true, primary_goal = $1, selected_buddy_id = $2, connected_sources = $3, onboarded_at = NOW() WHERE id = $4;`,
+      [payload.goal, payload.buddyId, payload.connectedSources, payload.userId]
+    );
+  } finally {
+    await pool.end();
+  }
 }
 
 export async function isAdmin(userId: string): Promise<boolean> {
-  const db = getClient();
-  const { data } = await db
-    .from("users")
-    .select("is_admin")
-    .eq("id", userId)
-    .single();
-  return data?.is_admin ?? false;
+  const pool = getPool();
+  try {
+    const { rows } = await pool.query(`SELECT is_admin FROM public.users WHERE id = $1 LIMIT 1;`, [userId]);
+    return Boolean(rows[0]?.is_admin);
+  } finally {
+    await pool.end();
+  }
 }
 
 // ── Admin queries ──────────────────────────────────────────
@@ -127,57 +118,71 @@ export async function getAdminUsers(
   page: number,
   search: string
 ): Promise<{ users: AdminUser[]; total: number }> {
-  const db = getClient();
-  const from = (page - 1) * ADMIN_PAGE_SIZE;
-  const to = from + ADMIN_PAGE_SIZE - 1;
+  const pool = getPool();
+  const limit = ADMIN_PAGE_SIZE;
+  const offset = (page - 1) * ADMIN_PAGE_SIZE;
+  try {
+    const searchPattern = `%${search.trim().toLowerCase()}%`;
+    const countRes = await pool.query(
+      `SELECT count(*)::int as count FROM public.users ${search.trim() ? "WHERE LOWER(email) LIKE $1" : ""};`,
+      search.trim() ? [searchPattern] : []
+    );
+    const total = countRes.rows[0]?.count ?? 0;
 
-  let query = db
-    .from("users")
-    .select("id, email, plan, created_at, is_admin, chat_sessions(last_message_at)", { count: "exact" })
-    .order("created_at", { ascending: false })
-    .range(from, to);
+    const dataRes = await pool.query(
+      `SELECT id, email, plan, created_at, is_admin FROM public.users
+       ${search.trim() ? "WHERE LOWER(email) LIKE $1" : ""}
+       ORDER BY created_at DESC LIMIT ${search.trim() ? "$2" : "$1"} OFFSET ${search.trim() ? "$3" : "$2"};`,
+      search.trim() ? [searchPattern, limit, offset] : [limit, offset]
+    );
 
-  if (search.trim()) {
-    query = query.ilike("email", `%${search.trim()}%`);
+    const users = dataRes.rows.map((row) => ({
+      id: row.id,
+      email: row.email,
+      plan: row.plan || "free",
+      created_at: row.created_at,
+      last_active: row.created_at,
+      is_admin: row.is_admin ?? false,
+    }));
+
+    return { users, total };
+  } finally {
+    await pool.end();
   }
-
-  const { data, count, error } = await query;
-  if (error) throw error;
-
-  const users = (data ?? []).map((row) => {
-    const sessions = (row.chat_sessions ?? []) as { last_message_at: string | null }[];
-    const lastActive =
-      sessions.map((s) => s.last_message_at).filter(Boolean).sort().at(-1) ?? null;
-    return { id: row.id, email: row.email, plan: row.plan, created_at: row.created_at, last_active: lastActive, is_admin: row.is_admin ?? false };
-  });
-
-  return { users, total: count ?? 0 };
 }
 
 export async function deleteUser(userId: string): Promise<void> {
-  const db = getClient();
-  const { error } = await db.auth.admin.deleteUser(userId);
-  if (error) throw error;
+  const pool = getPool();
+  try {
+    await pool.query(`DELETE FROM public.users WHERE id = $1;`, [userId]);
+    await pool.query(`DELETE FROM auth.users WHERE id = $1;`, [userId]).catch(() => {});
+  } finally {
+    await pool.end();
+  }
 }
 
 export async function changeUserPassword(userId: string, password: string): Promise<void> {
-  const db = getClient();
-  const { error } = await db.auth.admin.updateUserById(userId, { password });
-  if (error) throw error;
+  const hash = await hashPassword(password);
+  await updateUserPassword(userId, hash);
 }
 
 export async function toggleAdminRole(userId: string, isAdmin: boolean): Promise<void> {
-  const db = getClient();
-  const { error } = await db
-    .from("users")
-    .update({ is_admin: isAdmin })
-    .eq("id", userId);
-  if (error) throw error;
+  const pool = getPool();
+  try {
+    await pool.query(`UPDATE public.users SET is_admin = $1 WHERE id = $2;`, [isAdmin, userId]);
+  } finally {
+    await pool.end();
+  }
 }
 
 export async function bulkDeleteUsers(userIds: string[]): Promise<void> {
-  const db = getClient();
-  await Promise.all(userIds.map((id) => db.auth.admin.deleteUser(id)));
+  const pool = getPool();
+  try {
+    await pool.query(`DELETE FROM public.users WHERE id = ANY($1);`, [userIds]);
+    await pool.query(`DELETE FROM auth.users WHERE id = ANY($1);`, [userIds]).catch(() => {});
+  } finally {
+    await pool.end();
+  }
 }
 
 export type PendingBuddy = {
@@ -202,71 +207,75 @@ export type PendingBuddy = {
 };
 
 export async function getPendingBuddies(): Promise<PendingBuddy[]> {
-  const db = getClient();
-  const { data, error } = await db
-    .from("buddies")
-    .select("id, name, tag, description, philosophy, avatar_bg, avatar_content, avatar_is_serif, banner_color, category, is_fan_sim, fan_disclaimer, ai_model, price_monthly, created_at, status, rejection_reason, creator:users!creator_id(email)")
-    .in("status", ["pending", "revision_requested", "flagged", "rejected"])
-    .order("created_at", { ascending: false });
+  const pool = getPool();
+  try {
+    const { rows } = await pool.query(
+      `SELECT b.id, b.name, b.tag, b.description, b.philosophy, b.avatar_bg, b.avatar_content, b.avatar_is_serif, b.banner_color, b.category, b.is_fan_sim, b.fan_disclaimer, b.ai_model, b.price_monthly, b.created_at, b.status, b.rejection_reason, u.email as creator_email
+       FROM buddies b
+       LEFT JOIN users u ON u.id = b.creator_id
+       WHERE b.status IN ('pending', 'revision_requested', 'flagged', 'rejected', 'in_review', 'review')
+       ORDER BY b.created_at DESC;`
+    );
 
-  if (error) throw error;
-
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    name: row.name,
-    tag: row.tag,
-    description: row.description,
-    philosophy: row.philosophy,
-    avatar_bg: row.avatar_bg,
-    avatar_content: row.avatar_content,
-    avatar_is_serif: row.avatar_is_serif,
-    banner_color: row.banner_color,
-    category: Array.isArray(row.category) ? row.category : row.category ? [row.category] : [],
-    is_fan_sim: row.is_fan_sim,
-    fan_disclaimer: row.fan_disclaimer,
-    ai_model: row.ai_model,
-    price_monthly: row.price_monthly,
-    created_at: row.created_at,
-    status: row.status,
-    rejection_reason: row.rejection_reason,
-    creator_email: (row.creator as unknown as { email: string | null } | null)?.email ?? null,
-  }));
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      tag: row.tag,
+      description: row.description,
+      philosophy: row.philosophy,
+      avatar_bg: row.avatar_bg,
+      avatar_content: row.avatar_content,
+      avatar_is_serif: row.avatar_is_serif,
+      banner_color: row.banner_color,
+      category: Array.isArray(row.category) ? row.category : row.category ? [row.category] : [],
+      is_fan_sim: row.is_fan_sim,
+      fan_disclaimer: row.fan_disclaimer,
+      ai_model: row.ai_model,
+      price_monthly: row.price_monthly,
+      created_at: row.created_at,
+      status: row.status,
+      rejection_reason: row.rejection_reason,
+      creator_email: row.creator_email ?? null,
+    }));
+  } finally {
+    await pool.end();
+  }
 }
 
 export async function approveBuddy(id: string): Promise<void> {
-  const db = getClient();
-  const { error } = await db
-    .from("buddies")
-    .update({ status: "approved", rejection_reason: null })
-    .eq("id", id);
-  if (error) throw error;
+  const pool = getPool();
+  try {
+    await pool.query(`UPDATE buddies SET status = 'approved', rejection_reason = NULL WHERE id = $1;`, [id]);
+  } finally {
+    await pool.end();
+  }
 }
 
 export async function requestBuddyRevision(id: string, feedback: string): Promise<void> {
-  const db = getClient();
-  const { error } = await db
-    .from("buddies")
-    .update({ status: "revision_requested", rejection_reason: feedback })
-    .eq("id", id);
-  if (error) throw error;
+  const pool = getPool();
+  try {
+    await pool.query(`UPDATE buddies SET status = 'revision_requested', rejection_reason = $1 WHERE id = $2;`, [feedback, id]);
+  } finally {
+    await pool.end();
+  }
 }
 
 export async function flagBuddyViolation(id: string, reason: string): Promise<void> {
-  const db = getClient();
-  const { error } = await db
-    .from("buddies")
-    .update({ status: "flagged", rejection_reason: reason })
-    .eq("id", id);
-  if (error) throw error;
+  const pool = getPool();
+  try {
+    await pool.query(`UPDATE buddies SET status = 'flagged', rejection_reason = $1 WHERE id = $2;`, [reason, id]);
+  } finally {
+    await pool.end();
+  }
 }
 
 export async function rejectBuddy(id: string, reason: string): Promise<void> {
-  const db = getClient();
-  const { error } = await db
-    .from("buddies")
-    .update({ status: "rejected", rejection_reason: reason })
-    .eq("id", id);
-  if (error) throw error;
+  const pool = getPool();
+  try {
+    await pool.query(`UPDATE buddies SET status = 'rejected', rejection_reason = $1 WHERE id = $2;`, [reason, id]);
+  } finally {
+    await pool.end();
+  }
 }
 
 export type BuddySubmission = {
@@ -345,10 +354,8 @@ export async function submitBuddy(
 
   const fullPhilosophy = philosophyParts.join("\n");
 
-  const targetStatus = isAdmin
-    ? "approved"
-    : existingBuddy
-    ? (existingBuddy.status === "approved" || existingBuddy.status === "live" ? "approved" : "pending")
+  const targetStatus = existingBuddy
+    ? (existingBuddy.status === "approved" || existingBuddy.status === "live" ? existingBuddy.status : "pending")
     : "pending";
 
   const isUuid = Boolean(creatorId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(creatorId));
@@ -404,29 +411,6 @@ export async function submitBuddy(
 
   await pool.query(query, values);
   await pool.end();
-
-  try {
-    const db = getClient();
-    await db.from("buddies").upsert({
-      id: slug,
-      name: config.buddyName || "Untitled Buddy",
-      tag: config.tag || "",
-      description: config.desc || "",
-      avatar_content: config.avatarContent || "🤖",
-      avatar_bg: config.avatarBg || "#1A3A6E",
-      avatar_is_serif: config.avatarIsSerif ?? false,
-      banner_color: config.bannerColor || "linear-gradient(135deg,#0B1E3D,#1A3A6E)",
-      category: categories,
-      is_fan_sim: config.isFanSim ?? false,
-      fan_disclaimer: config.disclaimer || null,
-      philosophy: fullPhilosophy,
-      ai_model: modelVal,
-      price_monthly: isNaN(priceMonthly) ? 0 : priceMonthly,
-      status: targetStatus,
-    });
-  } catch (err) {
-    console.warn("[submitBuddy] Supabase sync optional warning:", err);
-  }
 
   dbCache.clear();
   dbCache.invalidatePattern("buddies");
@@ -559,7 +543,7 @@ export async function createDbBuddy(payload: Partial<DbBuddy>): Promise<DbBuddy>
     is_fan_sim: payload.is_fan_sim ?? false,
     fan_disclaimer: payload.fan_disclaimer || null,
     creator_id: payload.creator_id || null,
-    status: payload.status || "live",
+    status: payload.status || "pending",
     category: payload.category || ["General"],
   };
 
@@ -747,48 +731,51 @@ export async function getBuddiesByCreator(creatorId: string): Promise<CommunityB
 }
 
 export async function deleteTestUsers(): Promise<number> {
-  const db = getClient();
-  const { data } = await db
-    .from("users")
-    .select("id")
-    .or("email.ilike.%+test%,email.ilike.%@example.com%");
-
-  if (!data || data.length === 0) return 0;
-  await Promise.all(data.map(({ id }) => db.auth.admin.deleteUser(id)));
-  return data.length;
+  const pool = getPool();
+  try {
+    const { rowCount } = await pool.query(
+      `DELETE FROM users WHERE email ILIKE '%+test%' OR email ILIKE '%@example.com%';`
+    );
+    return rowCount ?? 0;
+  } finally {
+    await pool.end();
+  }
 }
 
 export async function clearDummyTransactions(): Promise<number> {
-  const db = getClient();
-  const { data, error } = await db
-    .from("databank_entries")
-    .delete()
-    .eq("is_dummy", true)
-    .select("id");
-  if (error) throw error;
-  return (data ?? []).length;
+  const pool = getPool();
+  try {
+    const { rowCount } = await pool.query(
+      `DELETE FROM databank_entries WHERE is_dummy = true;`
+    );
+    return rowCount ?? 0;
+  } finally {
+    await pool.end();
+  }
 }
 
 export async function resetDatabank(): Promise<number> {
-  const db = getClient();
-  const { data, error } = await db
-    .from("databank_entries")
-    .delete()
-    .eq("is_fixture", true)
-    .select("id");
-  if (error) throw error;
-  return (data ?? []).length;
+  const pool = getPool();
+  try {
+    const { rowCount } = await pool.query(
+      `DELETE FROM databank_entries WHERE is_fixture = true;`
+    );
+    return rowCount ?? 0;
+  } finally {
+    await pool.end();
+  }
 }
 
-export async function getUserOnboardingStatus(userId: string) {
-  const db = getClient();
-  const { data, error } = await db
-    .from("users")
-    .select("onboarding_complete")
-    .eq("id", userId)
-    .single();
-
-  if (error) throw error;
-  return data?.onboarding_complete ?? false;
+export async function getUserOnboardingStatus(userId: string): Promise<boolean> {
+  const pool = getPool();
+  try {
+    const { rows } = await pool.query(
+      `SELECT onboarding_complete FROM users WHERE id = $1 LIMIT 1;`,
+      [userId]
+    );
+    return rows[0]?.onboarding_complete ?? false;
+  } finally {
+    await pool.end();
+  }
 }
 

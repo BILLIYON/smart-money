@@ -51,8 +51,8 @@ export async function GET() {
       .single(),
   ]);
 
-  const entries = entriesRes.data ?? [];
-  const goals = goalsRes.data ?? [];
+  const entries: any[] = (entriesRes.data as any[]) ?? [];
+  const goals: any[] = (goalsRes.data as any[]) ?? [];
   const integrations = integrationsRes.data ?? [];
   const currency = userRes.data?.currency ?? "NGN";
 

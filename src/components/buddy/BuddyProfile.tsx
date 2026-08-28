@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { getCategoryStyle, type Buddy } from "@/lib/buddies";
 import { useBuddyStore } from "@/store/buddyStore";
 import { PaymentModal } from "@/components/buddy/PaymentModal";
-import { createClient } from "@/lib/supabase/client";
 import { isImageAvatar } from "@/lib/utils";
 
 function ModelDot({ color }: { color: string }) {
@@ -29,10 +28,12 @@ function SubscriptionPanel({ buddy }: { buddy: Buddy }) {
 
   useEffect(() => {
     loadSubscribedBuddies();
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      setUser(data.user);
-    });
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.user) setUser(data.user);
+      })
+      .catch(() => {});
   }, [loadSubscribedBuddies]);
 
   const isSubscribed = badgeType === "free" || subscribedBuddies.some((b) => b.id === buddy.id);
@@ -121,26 +122,28 @@ export function BuddyProfile({ buddy }: { buddy: Buddy }) {
   const [canEdit, setCanEdit] = useState(false);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      const u = data.user;
-      if (u) {
-        fetch("/api/user/profile")
-          .then((r) => r.json())
-          .then((res) => {
-            const isAdmin = res.user?.role === "admin" || res.user?.is_admin || res.user?.email === "admin@smartmoney.com";
-            const isCreator = (buddy as any).creator_id === u.id || (buddy as any).creatorId === u.id;
-            if (isAdmin || isCreator) {
-              setCanEdit(true);
-            }
-          })
-          .catch(() => {
-            if ((buddy as any).creator_id === u.id || (buddy as any).creatorId === u.id) {
-              setCanEdit(true);
-            }
-          });
-      }
-    });
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const u = data?.user;
+        if (u) {
+          fetch("/api/user/profile")
+            .then((r) => r.json())
+            .then((res) => {
+              const isAdmin = res.user?.role === "admin" || res.user?.is_admin || res.user?.email === "admin@smartmoney.com";
+              const isCreator = (buddy as any).creator_id === u.id || (buddy as any).creatorId === u.id;
+              if (isAdmin || isCreator) {
+                setCanEdit(true);
+              }
+            })
+            .catch(() => {
+              if ((buddy as any).creator_id === u.id || (buddy as any).creatorId === u.id) {
+                setCanEdit(true);
+              }
+            });
+        }
+      })
+      .catch(() => {});
   }, [buddy]);
 
   return (

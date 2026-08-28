@@ -42,7 +42,7 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
   const [formPhilosophy, setFormPhilosophy] = useState("");
   const [formPriceNaira, setFormPriceNaira] = useState(0);
   const [formAiModel, setFormAiModel] = useState("claude");
-  const [formStatus, setFormStatus] = useState("live");
+  const [formStatus, setFormStatus] = useState("pending");
   const [formAvatarContent, setFormAvatarContent] = useState("🤖");
   const [formAvatarBg, setFormAvatarBg] = useState("#1A3A6E");
   const [formAvatarIsSerif, setFormAvatarIsSerif] = useState(false);
@@ -98,7 +98,7 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
     setFormPhilosophy("");
     setFormPriceNaira(0);
     setFormAiModel("claude");
-    setFormStatus("live");
+    setFormStatus("pending");
     setFormAvatarContent("🤖");
     setFormAvatarBg("#1A3A6E");
     setFormAvatarIsSerif(false);

@@ -174,7 +174,7 @@ export async function POST(req: Request) {
             .single();
 
           if (sessRow && !sessRow.session_name) {
-            const domainUrl = process.env.NEXT_PUBLIC_APP_URL || "https://smart-money-livid.vercel.app";
+            const domainUrl = process.env.NEXT_PUBLIC_APP_URL || "https://smartmoney.technology";
             await fetch(`${domainUrl}/api/chat/title`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },

@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef } from "react";
 import { X, ShieldCheck, AlertCircle } from "lucide-react";
 import type { Buddy } from "@/lib/buddies";
-import { createClient } from "@/lib/supabase/client";
 
 // Helper for dynamic script loading
 function loadExternalScript(src: string): Promise<boolean> {
@@ -42,10 +41,12 @@ export function PaymentModal({ buddy, onSuccess, onClose }: PaymentModalProps) {
 
   // 1. Fetch pricing and check user authentication
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      setUser(data.user);
-    });
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.user) setUser(data.user);
+      })
+      .catch(() => {});
 
     fetch(`/api/subscriptions/price?buddyId=${buddy.id}`)
       .then((r) => r.json())

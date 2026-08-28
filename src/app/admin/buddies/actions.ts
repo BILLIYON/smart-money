@@ -25,6 +25,7 @@ export async function unhideBuddyAction(id: string): Promise<void> {
 export async function createBuddyAction(payload: Partial<DbBuddy>): Promise<DbBuddy> {
   const newBuddy = await createDbBuddy(payload);
   revalidatePath("/admin/buddies");
+  revalidatePath("/admin/approvals");
   revalidatePath("/admin/overview");
   revalidatePath("/marketplace");
   return newBuddy;

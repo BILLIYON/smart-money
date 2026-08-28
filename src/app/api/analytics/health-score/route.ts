@@ -65,9 +65,9 @@ export async function GET() {
       .eq("status", "active"),
   ]);
 
-  const entries = entriesRes.data ?? [];
-  const prevEntries = prevEntriesRes.data ?? [];
-  const goals = goalsRes.data ?? [];
+  const entries: any[] = (entriesRes.data as any[]) ?? [];
+  const prevEntries: any[] = (prevEntriesRes.data as any[]) ?? [];
+  const goals: any[] = (goalsRes.data as any[]) ?? [];
 
   // ── 1. Savings rate (35%) ──────────────────────────────
   const income = entries.filter((e) => e.entry_type === "income").reduce((s, e) => s + e.amount, 0);
@@ -94,7 +94,7 @@ export async function GET() {
     .select("entry_type, amount")
     .eq("user_id", userId);
 
-  const allEntries = allEntriesRes.data ?? [];
+  const allEntries: any[] = (allEntriesRes.data as any[]) ?? [];
   const totalAssets = allEntries.filter((e) => e.entry_type === "asset").reduce((s, e) => s + e.amount, 0);
   const totalDebt = allEntries.filter((e) => e.entry_type === "debt").reduce((s, e) => s + Math.abs(e.amount), 0);
   let debtScore = 75; // neutral if no debt data

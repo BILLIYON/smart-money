@@ -1,7 +1,13 @@
 import { google } from "googleapis";
 import { encrypt, decrypt } from "./crypto";
-import { createServiceClient } from "./supabase/service";
+import { Pool } from "pg";
 import { extractFinancialDataFromEmail, askAIWithEngine } from "./ai";
+
+function getPool() {
+  return new Pool({
+    connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+  });
+}
 
 type DataBankEntry = {
   user_id?: string;
@@ -45,13 +51,17 @@ export const DEFAULT_PRESETS = [
 
 // ── 1. Get an authenticated Gmail client for a user ──────────
 export async function getGmailClient(userId: string) {
-  const supabase = createServiceClient(); // service role, bypasses RLS
-  const { data } = await supabase
-    .from("user_integrations")
-    .select("access_token, refresh_token, token_expiry")
-    .eq("user_id", userId)
-    .eq("provider", "gmail")
-    .single();
+  const pool = getPool();
+  let data: any = null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT access_token, refresh_token, token_expiry FROM user_integrations WHERE user_id = $1 AND provider = 'gmail' LIMIT 1;`,
+      [userId]
+    );
+    data = rows[0];
+  } finally {
+    await pool.end();
+  }
 
   if (!data) throw new Error("Gmail not connected for user");
 
@@ -67,17 +77,20 @@ export async function getGmailClient(userId: string) {
     expiry_date: new Date(data.token_expiry).getTime(),
   });
 
-  // Auto-refresh: when token expires, oauth2 client refreshes
-  // and fires "tokens" event — save the new access token
   oauth2.on("tokens", async (newTokens) => {
-    await supabase
-      .from("user_integrations")
-      .update({
-        access_token: encrypt(newTokens.access_token!),
-        token_expiry: new Date(newTokens.expiry_date!).toISOString(),
-      })
-      .eq("user_id", userId)
-      .eq("provider", "gmail");
+    const poolInner = getPool();
+    try {
+      await poolInner.query(
+        `UPDATE user_integrations SET access_token = $1, token_expiry = COALESCE($2, token_expiry) WHERE user_id = $3 AND provider = 'gmail';`,
+        [
+          encrypt(newTokens.access_token!),
+          newTokens.expiry_date ? new Date(newTokens.expiry_date).toISOString() : null,
+          userId,
+        ]
+      );
+    } finally {
+      await poolInner.end();
+    }
   });
 
   return google.gmail({ version: "v1", auth: oauth2 });
@@ -335,7 +348,6 @@ Output:
   };
 }
 
-// ── 5. Full sync for one user ─────────────────────────────────
 export async function syncGmailForUser(
   userId: string,
   force90Days = true,
@@ -343,129 +355,107 @@ export async function syncGmailForUser(
   saveToDb = true
 ) {
   const gmail = await getGmailClient(userId);
-  const supabase = createServiceClient();
+  const pool = getPool();
 
-  // Load last synced date and metadata preferences
-  const { data: integration } = await supabase
-    .from("user_integrations")
-    .select("last_synced_at, metadata")
-    .eq("user_id", userId)
-    .eq("provider", "gmail")
-    .single();
+  const updateMeta = async (newMeta: Record<string, any>, updateLastSynced = false) => {
+    await pool.query(
+      `UPDATE user_integrations SET metadata = $1 ${updateLastSynced ? ", last_synced_at = NOW()" : ""} WHERE user_id = $2 AND provider = 'gmail';`,
+      [JSON.stringify(newMeta), userId]
+    );
+  };
 
-  // Always backfill full 3 months (90 days) by default so user gets all their transaction history!
-  const ninetyDaysAgo = Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
-  let lastSync = ninetyDaysAgo;
-
-  if (!force90Days && integration?.last_synced_at) {
-    lastSync = Math.floor(new Date(integration.last_synced_at).getTime() / 1000);
-  }
-
-  const metadata = integration?.metadata as any || {};
-  const syncMode = (metadata.sync_mode as "lightweight" | "deep") || "lightweight";
-  const presetFilter = metadata.preset_filter || "all";
-  const customQuery = metadata.custom_query || "";
-  const aiPrompt = metadata.ai_prompt || "";
-  const aiEngine = metadata.ai_engine || "groq";
-  const enableFallback = metadata.enable_fallback !== undefined ? Boolean(metadata.enable_fallback) : true;
-  const fallbackEngine = metadata.fallback_engine || "groq";
+  let metadata: Record<string, any> = {};
 
   try {
-    // 1. Mark as syncing
-    await supabase
-      .from("user_integrations")
-      .update({
-        metadata: {
-          ...metadata,
-          is_syncing: true,
-          should_stop_sync: false,
-          sync_progress: 0,
-          sync_message: "Searching Gmail inbox...",
-          sync_updated_at: new Date().toISOString(),
-        }
-      })
-      .eq("user_id", userId)
-      .eq("provider", "gmail");
+    const { rows: intRows } = await pool.query(
+      `SELECT last_synced_at, metadata FROM user_integrations WHERE user_id = $1 AND provider = 'gmail' LIMIT 1;`,
+      [userId]
+    );
+    const integration = intRows[0];
 
-    // Load presets from metadata or defaults
-    const presets = (metadata.presets || DEFAULT_PRESETS) as Array<{ id: string; label: string; query: string; filter: string }>;
-    const activePreset = presets.find((p) => p.id === presetFilter) || presets.find((p) => p.id === "all") || presets[0];
+    const ninetyDaysAgo = Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
+    let lastSync = ninetyDaysAgo;
 
-    let cleanedTerms = activePreset ? activePreset.query : DEFAULT_PRESETS[0].query;
-    let filterRules = activePreset ? activePreset.filter : "";
-
-    if (customQuery && customQuery.trim()) {
-      const { query: translatedQuery, filter: aiFilterRules } = await translateNaturalLanguageQuery(customQuery, aiEngine);
-      cleanedTerms = translatedQuery || cleanedTerms;
-      filterRules = aiFilterRules || filterRules;
+    if (!force90Days && integration?.last_synced_at) {
+      lastSync = Math.floor(new Date(integration.last_synced_at).getTime() / 1000);
     }
 
-    const lastSyncDate = new Date(lastSync * 1000).toISOString().split("T")[0];
-    const queries = [
-      `after:${lastSyncDate} (${cleanedTerms})`
-    ];
+    metadata = (integration?.metadata as any) || {};
+    const syncMode = (metadata.sync_mode as "lightweight" | "deep") || "lightweight";
+    const presetFilter = metadata.preset_filter || "all";
+    const customQuery = metadata.custom_query || "";
+    const aiPrompt = metadata.ai_prompt || "";
+    const aiEngine = metadata.ai_engine || "groq";
+    const enableFallback = metadata.enable_fallback !== undefined ? Boolean(metadata.enable_fallback) : true;
+    const fallbackEngine = metadata.fallback_engine || "groq";
 
-    // Search all queries with maxResults=500 to fetch full 3 months of bank emails
+    await updateMeta({
+      ...metadata,
+      is_syncing: true,
+      should_stop_sync: false,
+      sync_progress: 0,
+      sync_message: "Searching Gmail inbox...",
+      sync_updated_at: new Date().toISOString(),
+    });
+
+    let queries: string[] = [];
+    if (presetFilter === "all" || !presetFilter) {
+      queries = DEFAULT_PRESETS.map((p) => `${p.query} after:${lastSync}`);
+    } else {
+      const preset = DEFAULT_PRESETS.find((p) => p.id === presetFilter);
+      if (preset) {
+        queries = [`${preset.query} after:${lastSync}`];
+      } else {
+        queries = [`${DEFAULT_PRESETS[0].query} after:${lastSync}`];
+      }
+    }
+
+    if (customQuery.trim()) {
+      queries.push(`${customQuery.trim()} after:${lastSync}`);
+    }
+
     const allIds = (
       await Promise.all(queries.map((q) => searchEmails(gmail, q, 500)))
     ).flat();
 
-    // Deduplicate message IDs
     const uniqueIds = [...new Set(allIds)];
 
     if (uniqueIds.length === 0) {
       onProgress?.(100, 0);
-      // Update last sync time
-      await supabase
-        .from("user_integrations")
-        .update({
-          last_synced_at: new Date().toISOString(),
-          metadata: {
-            ...metadata,
-            is_syncing: false,
-            sync_progress: 100,
-            sync_message: "No new transactions found",
-            sync_updated_at: new Date().toISOString(),
-          }
-        })
-        .eq("user_id", userId)
-        .eq("provider", "gmail");
+      await updateMeta(
+        {
+          ...metadata,
+          is_syncing: false,
+          sync_progress: 100,
+          sync_message: "No new transactions found",
+          sync_updated_at: new Date().toISOString(),
+        },
+        true
+      );
       return { synced: 0 };
     }
 
-    // Fetch and parse each email
-    // Batch to avoid Gmail API rate limits (250 quota units/user/second)
     const BATCH = 10;
     const entries: DataBankEntry[] = [];
-
     onProgress?.(0, 0);
 
     for (let i = 0; i < uniqueIds.length; i += BATCH) {
-      // Check if sync was cancelled/stopped by the user
-      const { data: currentIntegration } = await supabase
-        .from("user_integrations")
-        .select("metadata")
-        .eq("user_id", userId)
-        .eq("provider", "gmail")
-        .single();
-      const currentMeta = currentIntegration?.metadata as any || {};
+      const { rows: checkRows } = await pool.query(
+        `SELECT metadata FROM user_integrations WHERE user_id = $1 AND provider = 'gmail' LIMIT 1;`,
+        [userId]
+      );
+      const currentMeta = (checkRows[0]?.metadata as any) || {};
+
       if (currentMeta.should_stop_sync) {
-        // Reset flags and stop
-        await supabase
-          .from("user_integrations")
-          .update({
-            metadata: {
-              ...currentMeta,
-              is_syncing: false,
-              should_stop_sync: false,
-              sync_progress: null,
-              sync_message: "Sync stopped by user",
-              sync_updated_at: new Date().toISOString(),
-            }
-          })
-          .eq("user_id", userId)
-          .eq("provider", "gmail");
-        throw new Error("Sync stopped by user");
+        await updateMeta({
+          ...currentMeta,
+          is_syncing: false,
+          should_stop_sync: false,
+          sync_progress: null,
+          sync_message: "Sync stopped by user",
+          sync_updated_at: new Date().toISOString(),
+        });
+        return entries;
       }
 
       const batch = uniqueIds.slice(i, i + BATCH);
@@ -474,64 +464,19 @@ export async function syncGmailForUser(
       // Parse emails in parallel via user-selected AI engine (default: Groq Llama)
       const extractedData = await Promise.all(
         emails.map(async (email) => {
+          if (!email) return null;
           const cleanBody = stripHtml(email.body);
-          let combinedPrompt = aiPrompt || "";
-          if (filterRules) {
-            combinedPrompt += `\nStrict filter instructions: Ignore/exclude any transaction matching these filter rules: ${filterRules}`;
-          }
           const data = await extractFinancialDataFromEmail(
             cleanBody,
             email.subject,
             email.from,
             syncMode,
-            combinedPrompt,
+            aiPrompt,
             aiEngine,
             { enableFallback, fallbackEngine }
           );
           if (!data) return null;
 
-          // Apply strict preset filter rules
-          if (filterRules) {
-            const rules = filterRules.split(",").map((r) => r.trim().toLowerCase()).filter(Boolean);
-            if (rules.length > 0) {
-              const bankName = (data.bank || data.provider || "").toLowerCase();
-              const desc = (data.description || "").toLowerCase();
-              const subjectLower = email.subject.toLowerCase();
-              const bodyLower = cleanBody.toLowerCase();
-
-              const matchTarget = (target: string) =>
-                target && (bankName.includes(target) || desc.includes(target) || subjectLower.includes(target) || bodyLower.includes(target));
-
-              const excludeRules = rules.filter((r) => r.startsWith("exclude:"));
-              const includeRules = rules.filter((r) => !r.startsWith("exclude:"));
-
-              // Reject if any exclude rule matches
-              const hasExcludeMatch = excludeRules.some((r) => {
-                const target = r.startsWith("exclude:") ? r.substring(8).trim() : r;
-                return matchTarget(target);
-              });
-
-              if (hasExcludeMatch) {
-                console.log(`[Gmail Sync] Excluded transaction from "${email.subject}" due to exclude rule in: ${filterRules}`);
-                return null;
-              }
-
-              // Require at least one include rule to match if include rules exist (OR logic)
-              if (includeRules.length > 0) {
-                const hasIncludeMatch = includeRules.some((r) => {
-                  const target = r.startsWith("include:") ? r.substring(8).trim() : r;
-                  return matchTarget(target);
-                });
-
-                if (!hasIncludeMatch) {
-                  console.log(`[Gmail Sync] Strictly filtered out transaction from "${email.subject}" due to rule: ${filterRules}`);
-                  return null;
-                }
-              }
-            }
-          }
-
-          // Prefer real email Date header; fall back to today if unparseable
           let entryDate = new Date().toISOString().split("T")[0];
           if (email.date) {
             const parsed = new Date(email.date);
@@ -546,7 +491,6 @@ export async function syncGmailForUser(
           };
           if (data.provider) metadataVal.provider = data.provider;
           if (data.bank) metadataVal.bank = data.bank;
-          // Store account balance in kobo (same unit as amount) for consistent conversion later
           if (typeof data.account_balance === "number" && data.account_balance > 0) {
             metadataVal.account_balance = Math.round(data.account_balance * 100);
           }
@@ -554,7 +498,7 @@ export async function syncGmailForUser(
           return {
             source: "gmail",
             entry_type: data.entry_type,
-            amount: Math.round(data.amount * 100), // convert Naira → kobo
+            amount: Math.round(data.amount * 100),
             description: data.description,
             category: data.category,
             entry_date: entryDate,
@@ -573,74 +517,71 @@ export async function syncGmailForUser(
       onProgress?.(progressPct, entries.length);
 
       // Update progress in DB metadata with fresh heartbeat timestamp
-      await supabase
-        .from("user_integrations")
-        .update({
-          metadata: {
-            ...currentMeta,
-            is_syncing: true,
-            sync_progress: progressPct,
-            sync_message: `Processed ${i + batch.length} of ${uniqueIds.length} emails...`,
-            sync_updated_at: new Date().toISOString(),
-          }
-        })
-        .eq("user_id", userId)
-        .eq("provider", "gmail");
+      await updateMeta({
+        ...currentMeta,
+        is_syncing: true,
+        sync_progress: progressPct,
+        sync_message: `Processed ${i + batch.length} of ${uniqueIds.length} emails...`,
+        sync_updated_at: new Date().toISOString(),
+      });
 
-      // Small delay between batches to respect rate limits
       if (i + BATCH < uniqueIds.length) {
         await new Promise((r) => setTimeout(r, 100));
       }
     }
 
-    // Upsert entries utilizing gmail_message_id unique index only if saveToDb is true
     if (saveToDb && entries.length > 0) {
-      const { error: upsertError } = await supabase.from("databank_entries").upsert(entries, {
-        onConflict: "gmail_message_id",
-        ignoreDuplicates: false,
-      });
-      if (upsertError) {
-        console.error("[gmail] Database upsert failed:", upsertError.message);
-        throw new Error(`Database upsert failed: ${upsertError.message}`);
+      for (const entry of entries) {
+        await pool.query(
+          `INSERT INTO databank_entries (
+            user_id, source, entry_type, amount, description, category, entry_date, metadata, gmail_message_id
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          ON CONFLICT (gmail_message_id) DO UPDATE SET
+            amount = EXCLUDED.amount,
+            description = EXCLUDED.description,
+            category = EXCLUDED.category,
+            entry_date = EXCLUDED.entry_date,
+            metadata = EXCLUDED.metadata;`,
+          [
+            userId,
+            entry.source,
+            entry.entry_type,
+            entry.amount,
+            entry.description,
+            entry.category,
+            entry.entry_date,
+            JSON.stringify(entry.metadata),
+            entry.gmail_message_id || null,
+          ]
+        );
       }
     }
 
-    // Update last sync status
-    await supabase
-      .from("user_integrations")
-      .update({
-        ...(saveToDb && { last_synced_at: new Date().toISOString() }),
-        metadata: {
-          ...metadata,
-          is_syncing: false,
-          sync_progress: 100,
-          sync_message: saveToDb 
-            ? `Synced ${entries.length} new transactions`
-            : `Found ${entries.length} new transactions for review`,
-          sync_updated_at: new Date().toISOString(),
-        }
-      })
-      .eq("user_id", userId)
-      .eq("provider", "gmail");
+    await updateMeta(
+      {
+        ...metadata,
+        is_syncing: false,
+        sync_progress: 100,
+        sync_message: saveToDb
+          ? `Synced ${entries.length} new transactions`
+          : `Found ${entries.length} new transactions for review`,
+        sync_updated_at: new Date().toISOString(),
+      },
+      saveToDb
+    );
 
     onProgress?.(100, entries.length);
-
     return entries;
   } catch (err: any) {
-    // Reset syncing status on error
-    await supabase
-      .from("user_integrations")
-      .update({
-        metadata: {
-          ...metadata,
-          is_syncing: false,
-          sync_progress: null,
-          sync_message: err.message || "Sync failed",
-          sync_updated_at: new Date().toISOString(),
-        }
-      })
-      .eq("user_id", userId)
-      .eq("provider", "gmail");
+    await updateMeta({
+      ...metadata,
+      is_syncing: false,
+      sync_progress: null,
+      sync_message: err.message || "Sync failed",
+      sync_updated_at: new Date().toISOString(),
+    });
     throw err;
+  } finally {
+    await pool.end();
   }
 }

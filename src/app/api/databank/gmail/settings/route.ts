@@ -1,8 +1,12 @@
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth";
+import { Pool } from "pg";
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+});
 
 export async function POST(req: Request) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCurrentUser(req);
 
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -11,15 +15,13 @@ export async function POST(req: Request) {
   try {
     const { sync_mode, preset_filter, custom_query, ai_prompt, ai_engine, enable_fallback, fallback_engine, presets } = await req.json();
 
-    // Fetch existing metadata to merge
-    const { data: integration, error: fetchErr } = await supabase
-      .from("user_integrations")
-      .select("metadata")
-      .eq("user_id", user.id)
-      .eq("provider", "gmail")
-      .single();
+    const { rows } = await pool.query(
+      `SELECT metadata FROM user_integrations WHERE user_id = $1 AND provider = 'gmail' LIMIT 1;`,
+      [user.id]
+    );
 
-    if (fetchErr || !integration) {
+    const integration = rows[0];
+    if (!integration) {
       return Response.json({ error: "Gmail integration not connected" }, { status: 404 });
     }
 
@@ -38,15 +40,10 @@ export async function POST(req: Request) {
       updatedMetadata.presets = presets;
     }
 
-    const { error: updateErr } = await supabase
-      .from("user_integrations")
-      .update({ metadata: updatedMetadata })
-      .eq("user_id", user.id)
-      .eq("provider", "gmail");
-
-    if (updateErr) {
-      throw updateErr;
-    }
+    await pool.query(
+      `UPDATE user_integrations SET metadata = $1 WHERE user_id = $2 AND provider = 'gmail';`,
+      [JSON.stringify(updatedMetadata), user.id]
+    );
 
     return Response.json({ ok: true, metadata: updatedMetadata });
   } catch (err: unknown) {

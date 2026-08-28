@@ -8,8 +8,6 @@ import { useNotificationStore, type Notification, type NotificationType } from "
 import { useCompareStore } from "@/store/compareStore";
 import { useBuddyStore } from "@/store/buddyStore";
 import { getBuddy } from "@/lib/buddies";
-import { createClient } from "@/lib/supabase/client";
-
 // ── Helpers ────────────────────────────────────────────────
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -29,7 +27,6 @@ function typeToIcon(type: NotificationType, buddyId?: string): IconSpec {
   if (type === "signal") return { icon: "⚡", iconBg: "rgba(74,144,217,.1)" };
   if (type === "agent")  return { icon: "⚙️", iconBg: "rgba(0,196,140,.1)" };
   if (type === "goal")   return { icon: "🎯", iconBg: "rgba(0,196,140,.1)" };
-  // Use buddy emoji as icon when available
   const buddy = buddyId ? getBuddy(buddyId) : undefined;
   if (buddy && !buddy.avatarIsSerif) return { icon: buddy.avatarContent, iconBg: "rgba(107,122,153,.1)" };
   return { icon: "🔔", iconBg: "rgba(107,122,153,.1)" };
@@ -62,12 +59,10 @@ export function Topbar() {
   };
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => setIsLoggedIn(!!data.user));
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
-      setIsLoggedIn(!!session?.user);
-    });
-    return () => subscription.unsubscribe();
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setIsLoggedIn(!!data?.user))
+      .catch(() => setIsLoggedIn(false));
   }, []);
 
   const notifications  = useNotificationStore((s) => s.notifications);

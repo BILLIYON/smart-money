@@ -1,5 +1,5 @@
 import { google } from "googleapis";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth";
 import { encrypt } from "@/lib/crypto";
 import { getAppOrigin } from "@/lib/auth-utils";
 
@@ -18,11 +18,9 @@ export async function GET(req: Request) {
       redirectUri
     );
 
-    // Get current user session safely
     let userId = "guest";
     try {
-      const supabase = await createClient();
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getCurrentUser(req);
       if (user?.id) userId = user.id;
     } catch {
       // Fallback for guest mode
@@ -31,13 +29,12 @@ export async function GET(req: Request) {
     const { searchParams } = urlObj;
     const returnPath = searchParams.get("return") ?? "/databank";
 
-    // Encrypt the user's ID and target return path inside state
     const statePayload = JSON.stringify({ userId, returnPath });
     const state = encrypt(statePayload);
 
     const url = oauth2Client.generateAuthUrl({
-      access_type: "offline",  // gets refresh_token for background sync
-      prompt: "consent",       // always show consent (ensures refresh token)
+      access_type: "offline",
+      prompt: "consent",
       scope: [
         "https://www.googleapis.com/auth/gmail.readonly",
         "https://www.googleapis.com/auth/gmail.labels",

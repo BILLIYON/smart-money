@@ -13,7 +13,7 @@ export async function GET() {
       supabase.from("databank_entries").select("id").eq("user_id", userId).eq("source", "upload").limit(1),
     ]);
 
-    const integrations = integrationsRes.data ?? [];
+    const integrations: any[] = (integrationsRes.data as any[]) ?? [];
     const hasUploads = (uploadsRes.data ?? []).length > 0;
 
     const list = [];

@@ -64,6 +64,10 @@ export async function GET(req: Request) {
       });
     }
 
+    if (!user) {
+      return NextResponse.redirect(`${origin}/login?error=google_auth_failed`);
+    }
+
     // Set HTTP-only session cookie
     await setSessionCookie(user);
 

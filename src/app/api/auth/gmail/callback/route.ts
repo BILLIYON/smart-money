@@ -1,9 +1,12 @@
 import { google } from "googleapis";
-import { createClient } from "@/lib/supabase/server";
-import { createServiceSupabaseClient } from "@/lib/supabase-server";
+import { getCurrentUser } from "@/lib/auth";
 import { decrypt, encrypt } from "@/lib/crypto";
-import { syncGmailForUser } from "@/lib/gmail";
 import { getAppOrigin } from "@/lib/auth-utils";
+import { Pool } from "pg";
+
+const localPool = new Pool({
+  connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+});
 
 function redirectOrPopup(url: string, type: "GMAIL_CONNECTED" | "GMAIL_ERROR") {
   return new Response(
@@ -47,7 +50,6 @@ export async function GET(req: Request) {
       return redirectOrPopup(`${baseUrl}/databank?gmail=error`, "GMAIL_ERROR");
     }
 
-    // Exchange code for tokens
     let tokens: {
       access_token?: string | null;
       refresh_token?: string | null;
@@ -66,7 +68,6 @@ export async function GET(req: Request) {
       return redirectOrPopup(`${baseUrl}/databank?gmail=error`, "GMAIL_ERROR");
     }
 
-    // Decrypt the state parameter if present to resolve the user ID and redirect path
     const state = searchParams.get("state");
     let stateUserId: string | null = null;
     let returnPath = "/databank";
@@ -86,27 +87,30 @@ export async function GET(req: Request) {
       }
     }
 
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    const targetUserId = stateUserId || user?.id || "guest";
+    const currentUser = await getCurrentUser(req);
+    const targetUserId = (stateUserId && stateUserId !== "guest") ? stateUserId : (currentUser?.id || "guest");
 
     if (targetUserId && targetUserId !== "guest") {
       try {
-        const serviceSupabase = createServiceSupabaseClient();
-        await serviceSupabase.from("user_integrations").upsert(
-          {
-            user_id:      targetUserId,
-            provider:     "gmail",
-            access_token: encrypt(tokens.access_token),
-            refresh_token: tokens.refresh_token ? encrypt(tokens.refresh_token) : "",
-            token_expiry: tokens.expiry_date
-              ? new Date(tokens.expiry_date).toISOString()
-              : null,
-            connected_at: new Date().toISOString(),
-            scopes:       ["gmail.readonly", "gmail.labels"],
-          },
-          { onConflict: "user_id,provider" }
+        const tokenExpiry = tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null;
+        await localPool.query(
+          `INSERT INTO user_integrations (
+            user_id, provider, access_token, refresh_token, token_expiry, connected_at, scopes
+          ) VALUES ($1, $2, $3, $4, $5, NOW(), $6)
+          ON CONFLICT (user_id, provider) DO UPDATE SET
+            access_token = EXCLUDED.access_token,
+            refresh_token = CASE WHEN EXCLUDED.refresh_token != '' THEN EXCLUDED.refresh_token ELSE user_integrations.refresh_token END,
+            token_expiry = COALESCE(EXCLUDED.token_expiry, user_integrations.token_expiry),
+            connected_at = NOW(),
+            scopes = EXCLUDED.scopes;`,
+          [
+            targetUserId,
+            "gmail",
+            encrypt(tokens.access_token),
+            tokens.refresh_token ? encrypt(tokens.refresh_token) : "",
+            tokenExpiry,
+            ["gmail.readonly", "gmail.labels"],
+          ]
         );
       } catch (dbErr) {
         console.error("[gmail/callback] DB upsert failed:", dbErr);

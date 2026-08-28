@@ -80,23 +80,21 @@ export async function POST(req: Request) {
       chunk.map(async ({ user_id }: { user_id: string }) => {
         try {
           // Get user context and their most recently active buddy
-          const [userRes, sessionRes] = await Promise.all([
-            supabase
-              .from("users")
-              .select("income_range, primary_goal, risk_tolerance")
-              .eq("id", user_id)
-              .single(),
-            supabase
-              .from("chat_sessions")
-              .select("id, buddy_ids")
-              .eq("user_id", user_id)
-              .order("last_message_at", { ascending: false, nullsFirst: false })
-              .limit(1)
-              .single(),
-          ]);
+          const userRes: any = await supabase
+            .from("users")
+            .select("income_range, primary_goal, risk_tolerance")
+            .eq("id", user_id)
+            .single();
+          const sessionRes: any = await supabase
+            .from("chat_sessions")
+            .select("id, buddy_ids")
+            .eq("user_id", user_id)
+            .order("last_message_at", { ascending: false })
+            .limit(1)
+            .single();
 
-          const userProfile = userRes.data;
-          const session = sessionRes.data;
+          const userProfile = userRes?.data;
+          const session = sessionRes?.data;
           if (!session) return;
 
           const activeBuddyId = session.buddy_ids?.[0];
@@ -154,7 +152,6 @@ export async function POST(req: Request) {
           if (!relevant || !message) return;
 
           // Insert signal message into the user's active session
-          // Supabase Realtime will broadcast this to the subscribed client
           await supabase.from("messages").insert({
             session_id: session.id,
             role: "signal",
@@ -171,9 +168,9 @@ export async function POST(req: Request) {
           });
 
           // Update session's last_message_at so it surfaces at top of list
-          await supabase
+          await (supabase
             .from("chat_sessions")
-            .update({ last_message_at: new Date().toISOString() })
+            .update({ last_message_at: new Date().toISOString() }) as any)
             .eq("id", session.id);
 
           delivered++;

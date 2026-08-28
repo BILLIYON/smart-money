@@ -16,7 +16,7 @@ export async function GET() {
     return NextResponse.json({ error: "Failed to fetch wallet entries" }, { status: 500 });
   }
 
-  const balance = (data ?? []).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  const balance = ((data as any[]) ?? []).reduce((sum, entry: any) => sum + Number(entry.amount || 0), 0);
 
   return NextResponse.json({ balance });
 }

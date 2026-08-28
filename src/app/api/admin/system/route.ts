@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth";
 import { Pool } from "pg";
 
 const localPool = new Pool({
@@ -10,20 +10,13 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getCurrentUser();
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { data: profile } = await supabase
-      .from("users")
-      .select("is_admin")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile?.is_admin) {
+    if (!user.is_admin) {
       return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
     }
 
@@ -41,7 +34,7 @@ export async function GET() {
       localPool.query("SELECT count(*) as total, count(*) FILTER (WHERE plan = 'pro') as pro_count, count(*) FILTER (WHERE onboarding_complete = true) as onboarded FROM users;"),
       localPool.query("SELECT count(*) as total, count(*) FILTER (WHERE status = 'live') as live, count(*) FILTER (WHERE status = 'pending') as pending FROM buddies;"),
       localPool.query("SELECT count(*) as total, count(*) FILTER (WHERE created_at >= NOW() - INTERVAL '24 hours') as today FROM messages;"),
-      localPool.query("SELECT count(*) as total, count(*) FILTER (WHERE source_type = 'gmail') as gmail_count FROM databank_entries;"),
+      localPool.query("SELECT count(*) as total, count(*) FILTER (WHERE source = 'gmail') as gmail_count FROM databank_entries;"),
       localPool.query("SELECT count(*) as total, count(*) FILTER (WHERE status = 'completed') as completed FROM goals;"),
       localPool.query(`
         SELECT relname as table_name, n_live_tup as row_count

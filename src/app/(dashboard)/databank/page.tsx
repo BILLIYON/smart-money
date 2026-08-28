@@ -1289,7 +1289,7 @@ export default function DataBankPage() {
       .select("source_id")
       .eq("enabled", true);
     if (data && !error) {
-      setEnabledSources(new Set(data.map((s) => s.source_id)));
+      setEnabledSources(new Set((data as any[]).map((s: any) => s.source_id)));
     }
   }, []);
 
@@ -1308,7 +1308,7 @@ export default function DataBankPage() {
 
     // Group by file name stored in metadata
     const groups: Record<string, { count: number; date: string }> = {};
-    data.forEach((row) => {
+    (data as any[]).forEach((row: any) => {
       const meta = row.metadata as { fileName?: string };
       const fileName = meta?.fileName || "Unknown statement";
       if (!groups[fileName]) {

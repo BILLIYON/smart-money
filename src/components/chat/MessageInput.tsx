@@ -4,7 +4,6 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import { useChatStore, GROUPS } from "@/store/chatStore";
 import { getBuddy, ALL_BUDDIES, type Buddy } from "@/lib/buddies";
 import { isImageAvatar } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
 
 const INVESTING_SUGGESTIONS = [
   "How should I allocate my salary?",
@@ -75,10 +74,10 @@ export function MessageInput() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      setIsAuthenticated(!!data.user);
-    });
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setIsAuthenticated(!!data?.user))
+      .catch(() => setIsAuthenticated(false));
     fetch("/api/goals/list")
       .then((r) => r.json())
       .then((d) => {

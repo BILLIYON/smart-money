@@ -1,9 +1,15 @@
 import { google } from "googleapis";
-import { createServiceSupabaseClient } from "@/lib/supabase-server";
+import { Pool } from "pg";
 import { processSignalAlert, type SignalPayload } from "@/lib/ai";
 import { getBuddy } from "@/lib/buddies";
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+
+function getPool() {
+  return new Pool({
+    connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+  });
+}
 
 // Lazy-loaded clients
 let _anthropic: Anthropic | null = null;
@@ -254,40 +260,28 @@ export async function routeSignalToUser(
   sourceName: string,
   signal: SignalData
 ) {
-  const supabase = createServiceSupabaseClient();
+  const pool = getPool();
 
   try {
-    // 1. Get user context and their most recently active chat session
     const [userRes, sessionRes] = await Promise.all([
-      supabase
-        .from("users")
-        .select("income_range, primary_goal, risk_tolerance")
-        .eq("id", userId)
-        .single(),
-      supabase
-        .from("chat_sessions")
-        .select("id, buddy_ids")
-        .eq("user_id", userId)
-        .order("last_message_at", { ascending: false, nullsFirst: false })
-        .limit(1)
-        .single(),
+      pool.query(`SELECT income_range, primary_goal, risk_tolerance FROM users WHERE id = $1 LIMIT 1;`, [userId]),
+      pool.query(`SELECT id, buddy_ids FROM chat_sessions WHERE user_id = $1 ORDER BY last_message_at DESC LIMIT 1;`, [userId]),
     ]);
 
-    const userProfile = userRes.data;
-    const session = sessionRes.data;
+    const userProfile = userRes.rows[0];
+    const session = sessionRes.rows[0];
     if (!session) {
       console.warn(`[routeSignalToUser] No active session found for user ${userId}`);
       return;
     }
 
-    const activeBuddyId = session.buddy_ids?.[0];
+    const activeBuddyId = Array.isArray(session.buddy_ids) ? session.buddy_ids[0] : null;
     const activeBuddy = activeBuddyId ? getBuddy(activeBuddyId) : null;
     if (!activeBuddy) {
       console.warn(`[routeSignalToUser] No active buddy found for user ${userId}`);
       return;
     }
 
-    // 2. Evaluate relevance
     const { relevant, message } = await processSignalAlert({
       signal: {
         sourceId,
@@ -309,32 +303,29 @@ export async function routeSignalToUser(
       return;
     }
 
-    // 3. Insert signal message
-    const { error: msgError } = await supabase.from("messages").insert({
-      session_id: session.id,
-      role: "signal",
-      buddy_id: activeBuddyId,
-      content: message,
-      metadata: {
-        signalAlert: {
-          sourceId,
-          sourceName,
-          headline: signal.headline,
-          tags: signal.tags,
-        },
-      },
-    });
+    await pool.query(
+      `INSERT INTO messages (session_id, role, buddy_id, content, metadata) VALUES ($1, $2, $3, $4, $5);`,
+      [
+        session.id,
+        "signal",
+        activeBuddyId,
+        message,
+        JSON.stringify({
+          signalAlert: {
+            sourceId,
+            sourceName,
+            headline: signal.headline,
+            tags: signal.tags,
+          },
+        }),
+      ]
+    );
 
-    if (msgError) throw msgError;
-
-    // 4. Update session's last_message_at
-    await supabase
-      .from("chat_sessions")
-      .update({ last_message_at: new Date().toISOString() })
-      .eq("id", session.id);
-
+    await pool.query(`UPDATE chat_sessions SET last_message_at = NOW() WHERE id = $1;`, [session.id]);
     console.log(`[routeSignalToUser] Successfully delivered signal from ${sourceName} to user ${userId}`);
   } catch (err) {
     console.error(`[routeSignalToUser] Failed routing signal to user ${userId}:`, err);
+  } finally {
+    await pool.end();
   }
 }

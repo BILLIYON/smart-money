@@ -18,7 +18,7 @@ export async function GET() {
     console.error("[GET /api/creator] buddies query:", buddiesErr.message);
   }
 
-  const buddies = buddiesRaw ?? [];
+  const buddies: any[] = (buddiesRaw as any[]) ?? [];
   const buddyIds = buddies.map((b) => b.id);
 
   // ── 2. Subscriber counts per buddy ────────────────────────

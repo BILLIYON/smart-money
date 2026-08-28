@@ -110,7 +110,7 @@ export async function createUser(payload: {
   email: string;
   password_hash?: string | null;
   full_name?: string | null;
-}): Promise<AuthUser> {
+}): Promise<AuthUser & { password_hash: string | null }> {
   const pool = getPool();
   const cleanEmail = payload.email.trim().toLowerCase();
   try {
@@ -204,4 +204,17 @@ export async function getCurrentUser(req?: Request): Promise<AuthUser | null> {
 
   // Re-verify against database for current user state
   return findUserById(verified.id);
+}
+
+export async function requireAuth(req?: Request) {
+  const user = await getCurrentUser(req);
+  if (!user) {
+    const { NextResponse } = await import("next/server");
+    return {
+      userId: null,
+      user: null,
+      error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
+  }
+  return { userId: user.id, user, error: null };
 }

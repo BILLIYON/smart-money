@@ -1,68 +1,56 @@
-/**
- * Native Client Auth Stub for Client Components.
- * Routes authentication through /api/auth/* and /api/user/profile.
- */
+"use client";
+
 export function createClient() {
   return {
     auth: {
-      async signInWithPassword({ email, password }: { email: string; password: string }) {
-        const res = await fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        });
-        const data = await res.json();
-        if (!res.ok || data.error) {
-          return { data: null, error: new Error(data.error || "Authentication failed") };
+      async getUser() {
+        try {
+          const res = await fetch("/api/auth/me");
+          if (!res.ok) return { data: { user: null }, error: null };
+          const data = await res.json();
+          return { data: { user: data.user }, error: null };
+        } catch {
+          return { data: { user: null }, error: null };
         }
-        return { data, error: null };
+      },
+      async getSession() {
+        try {
+          const res = await fetch("/api/auth/me");
+          if (!res.ok) return { data: { session: null }, error: null };
+          const data = await res.json();
+          return { data: { session: data.user ? { user: data.user } : null }, error: null };
+        } catch {
+          return { data: { session: null }, error: null };
+        }
       },
       async signOut() {
         await fetch("/api/auth/logout", { method: "POST" });
         window.location.href = "/login";
-        return { error: null };
-      },
-      async getUser() {
-        try {
-          const res = await fetch("/api/user/profile");
-          const data = await res.json();
-          if (!res.ok || (!data.user && !data.email)) {
-            return { data: { user: null }, error: new Error("Unauthorized") };
-          }
-          const userObj = data.user || data;
-          return {
-            data: {
-              user: {
-                ...userObj,
-                user_metadata: { full_name: userObj.full_name || "" },
-              },
-            },
-            error: null,
-          };
-        } catch (err: any) {
-          return { data: { user: null }, error: err };
-        }
-      },
-      async getSession() {
-        const { data } = await this.getUser();
-        return { data: { session: data.user ? { user: data.user } : null }, error: null };
-      },
-      onAuthStateChange(callback: (event: string, session: any) => void) {
-        this.getUser().then(({ data }) => {
-          if (data.user) {
-            callback("SIGNED_IN", { user: data.user });
-          } else {
-            callback("SIGNED_OUT", null);
-          }
-        });
-        return {
-          data: {
-            subscription: {
-              unsubscribe: () => {},
-            },
-          },
-        };
       },
     },
+    from(_table: string) {
+      const chain: any = {
+        select() { return chain; },
+        eq() { return chain; },
+        in() { return chain; },
+        order() { return chain; },
+        limit() { return chain; },
+        single() { return chain; },
+        async then(resolve: any) {
+          resolve({ data: [], error: null });
+        },
+        async insert() { return { data: null, error: null }; },
+        async update() { return { data: null, error: null }; },
+        async delete() { return { data: null, error: null }; },
+      };
+      return chain;
+    },
+    channel() {
+      return {
+        on() { return this; },
+        subscribe() { return this; },
+      };
+    },
+    removeChannel() {},
   };
 }

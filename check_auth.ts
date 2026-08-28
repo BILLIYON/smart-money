@@ -1,16 +1,13 @@
-import { createClient } from '@supabase/supabase-js';
-import * as fs from 'fs';
+import { Pool } from "pg";
 
-const envFile = fs.readFileSync('.env.local', 'utf8');
-const envUrl = envFile.match(/^NEXT_PUBLIC_SUPABASE_URL=(.*)/m)?.[1];
-const envKey = envFile.match(/^SUPABASE_SERVICE_ROLE_KEY=(.*)/m)?.[1];
-
-const supabase = createClient(envUrl!, envKey!);
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+});
 
 async function run() {
-  const { data, error } = await supabase.auth.admin.listUsers();
-  if (error) console.log(error);
-  else console.log('Auth users:', data.users.map(u => u.email));
+  const { rows } = await pool.query("SELECT email FROM users;");
+  console.log('Auth users:', rows.map(u => u.email));
+  await pool.end();
 }
 
 run();

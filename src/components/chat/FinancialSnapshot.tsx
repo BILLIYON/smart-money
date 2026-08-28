@@ -1,6 +1,5 @@
 "use client";
 
-import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 
@@ -47,58 +46,30 @@ export function FinancialSnapshot() {
   useEffect(() => {
     async function loadActiveContext() {
       try {
-        const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-
-        if (!user) {
+        const res = await fetch("/api/databank/sources-summary");
+        if (!res.ok) {
           setSources([]);
-          setLoading(false);
           return;
         }
-
-        // Fetch user integrations, enabled signals, and statement uploads in parallel
-        const [integrationsRes, signalsRes, uploadsRes] = await Promise.all([
-          supabase.from("user_integrations").select("provider").eq("user_id", user.id),
-          supabase.from("user_signal_sources").select("source_id").eq("user_id", user.id).eq("enabled", true),
-          supabase.from("databank_entries").select("metadata").eq("user_id", user.id).eq("source", "upload").limit(3),
-        ]);
+        const data = await res.json();
 
         const activeList: ActiveSource[] = [];
 
-        // 1. Gmail Sync
-        const hasGmail = integrationsRes.data?.some(i => i.provider === "gmail");
-        if (hasGmail) {
+        if (data.hasGmail) {
           activeList.push({ label: "Gmail Sync", sub: "Auto-synced alerts", active: true });
         }
 
-        // 2. Uploaded Bank Statements
-        if (uploadsRes.data && uploadsRes.data.length > 0) {
-          const uniqueNames = new Set<string>();
-          uploadsRes.data.forEach((row) => {
-            const meta = row.metadata as { fileName?: string } | null;
-            if (meta?.fileName) {
-              const name = meta.fileName.length > 18 ? meta.fileName.substring(0, 15) + "..." : meta.fileName;
-              uniqueNames.add(name);
-            }
-          });
-
-          if (uniqueNames.size > 0) {
-            Array.from(uniqueNames).forEach((name) => {
-              activeList.push({ label: name, sub: "Uploaded statement", active: true });
-            });
-          } else {
-            activeList.push({ label: "Bank Statement", sub: "Uploaded", active: true });
-          }
+        if (data.hasUploads) {
+          activeList.push({ label: "Bank Statement", sub: "Uploaded statement", active: true });
         }
 
-        // 3. Signal Sources / Connected Banks
-        if (signalsRes.data && signalsRes.data.length > 0) {
-          signalsRes.data.forEach((row) => {
-            const mapped = STATIC_SOURCE_MAP[row.source_id];
+        if (Array.isArray(data.signals)) {
+          data.signals.forEach((sId: string) => {
+            const mapped = STATIC_SOURCE_MAP[sId];
             if (mapped) {
               activeList.push({ label: mapped.label, sub: mapped.sub, active: true });
-            } else if (row.source_id.startsWith("custom-")) {
-              const name = row.source_id.replace("custom-", "").split("-")[0].toUpperCase();
+            } else if (sId.startsWith("custom-")) {
+              const name = sId.replace("custom-", "").split("-")[0].toUpperCase();
               activeList.push({ label: `Custom ${name}`, sub: "Live Signal", active: true });
             }
           });

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
 import { OnboardingModal, type OnboardingResult, type RestoredState } from "./OnboardingModal";
 
 const SESSION_KEY = "onboarding_state";
@@ -31,21 +30,18 @@ export function OnboardingGate() {
       window.history.replaceState({}, "", url.toString());
     }
 
-    supabase.auth.getUser().then(({ data }) => {
-      const user = data?.user;
-      if (!user) return;
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const user = data?.user;
+        if (!user) return;
 
-      setUserId(user.id);
-
-      supabase
-        .from("users")
-        .select("onboarding_complete")
-        .eq("id", user.id)
-        .single()
-        .then(({ data: row }) => {
-          if (!row?.onboarding_complete) setShow(true);
-        });
-    });
+        setUserId(user.id);
+        if (!user.onboarding_complete) {
+          setShow(true);
+        }
+      })
+      .catch(() => {});
 
     const handleTriggerTour = () => {
       setShow(true);
@@ -70,7 +66,7 @@ export function OnboardingGate() {
       // non-blocking — user still proceeds
     } finally {
       setShow(false);
-      router.push(`/chat?buddy=${result.buddyId}`);
+      router.push(`/chat?buddy=${result.selectedBuddy || "buffett"}`);
     }
   }
 

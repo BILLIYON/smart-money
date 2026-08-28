@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useBuddyStore } from "@/store/buddyStore";
 import { useCompareStore } from "@/store/compareStore";
+import { getBuddy } from "@/lib/buddies";
 import { isImageAvatar } from "@/lib/utils";
 
 // ── Types ──────────────────────────────────────────────────

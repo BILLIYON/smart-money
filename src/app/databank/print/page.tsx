@@ -1,6 +1,5 @@
 "use client";
 
-import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
 
@@ -12,22 +11,25 @@ export default function PrintStatementPage() {
 
   useEffect(() => {
     async function init() {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-
+      const meRes = await fetch("/api/auth/me");
+      if (!meRes.ok) {
+        router.push("/login?next=/databank/print");
+        return;
+      }
+      const { user } = await meRes.json();
       if (!user) {
         router.push("/login?next=/databank/print");
         return;
       }
 
-      // Fetch user profile and databank entries
-      const [profileRes, entriesRes] = await Promise.all([
-        supabase.from("users").select("full_name, email").eq("id", user.id).single(),
-        supabase.from("databank_entries").select("*").eq("user_id", user.id).order("entry_date", { ascending: false }),
-      ]);
+      setProfile({ full_name: user.full_name || "Smart Money User", email: user.email || null });
 
-      setProfile(profileRes.data || { full_name: "Smart Money User", email: user.email || null });
-      setEntries(entriesRes.data ?? []);
+      const contextRes = await fetch("/api/databank/context");
+      if (contextRes.ok) {
+        const ctxData = await contextRes.json();
+        setEntries(ctxData.entries || []);
+      }
+
       setLoading(false);
 
       // Trigger print after rendering finishes

@@ -34,10 +34,10 @@ export async function GET() {
 
   const buddyMap = new Map<string, string>();
   if (!buddyError && buddies) {
-    buddies.forEach((b) => buddyMap.set(b.id, b.name));
+    (buddies as any[]).forEach((b: any) => buddyMap.set(b.id, b.name));
   }
 
-  const formatted = (actions ?? []).map((action) => {
+  const formatted = ((actions as any[]) ?? []).map((action: any) => {
     const buddyName = buddyMap.get(action.buddy_id || "") || "AI Buddy";
     const dateObj = new Date(action.executed_at || action.created_at);
     const dateStr = dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" }); // e.g. "Mar 3"

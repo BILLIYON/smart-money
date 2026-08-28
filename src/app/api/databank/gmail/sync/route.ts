@@ -1,12 +1,15 @@
-import { createClient } from "@/lib/supabase/server";
-import { createServiceSupabaseClient } from "@/lib/supabase-server";
+import { getCurrentUser } from "@/lib/auth";
 import { syncGmailForUser } from "@/lib/gmail";
+import { Pool } from "pg";
 
 export const maxDuration = 60;
 
-export async function POST() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+});
+
+export async function POST(req: Request) {
+  const user = await getCurrentUser(req);
 
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -64,43 +67,37 @@ export async function POST() {
   });
 }
 
-export async function DELETE() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+export async function DELETE(req: Request) {
+  const user = await getCurrentUser(req);
 
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const serviceSupabase = createServiceSupabaseClient();
+  try {
+    const { rows } = await pool.query(
+      `SELECT metadata FROM user_integrations WHERE user_id = $1 AND provider = 'gmail' LIMIT 1;`,
+      [user.id]
+    );
 
-  // Load current metadata via service role client
-  const { data: integration } = await serviceSupabase
-    .from("user_integrations")
-    .select("metadata")
-    .eq("user_id", user.id)
-    .eq("provider", "gmail")
-    .single();
+    const metadata = (rows[0]?.metadata as any) || {};
 
-  const metadata = (integration?.metadata as any) || {};
+    const updatedMeta = {
+      ...metadata,
+      is_syncing: false,
+      sync_progress: null,
+      sync_message: "Sync stopped by user",
+      sync_updated_at: new Date().toISOString(),
+      should_stop_sync: true,
+    };
 
-  // Set stop flag AND immediately clear is_syncing state
-  await serviceSupabase
-    .from("user_integrations")
-    .update({
-      metadata: {
-        ...metadata,
-        is_syncing: false,
-        sync_progress: null,
-        sync_message: "Sync stopped by user",
-        sync_updated_at: new Date().toISOString(),
-        should_stop_sync: true,
-      }
-    })
-    .eq("user_id", user.id)
-    .eq("provider", "gmail");
+    await pool.query(
+      `UPDATE user_integrations SET metadata = $1 WHERE user_id = $2 AND provider = 'gmail';`,
+      [JSON.stringify(updatedMeta), user.id]
+    );
 
-  return Response.json({ success: true });
+    return Response.json({ success: true });
+  } catch (err: any) {
+    return Response.json({ error: err.message }, { status: 500 });
+  }
 }
-
-

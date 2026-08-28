@@ -20,7 +20,7 @@ export async function GET(req: Request) {
     ]);
 
   if (format === "csv") {
-    const entries = entriesRes.data ?? [];
+    const entries: any[] = (entriesRes.data as any[]) ?? [];
     const formatted = entries.map((e) => ({
       ID: e.id,
       Source: e.source,

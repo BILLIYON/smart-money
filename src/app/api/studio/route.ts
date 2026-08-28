@@ -43,8 +43,8 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       buddyId,
-      status: isAdmin ? "approved" : "in_review",
-      estimatedReviewTime: isAdmin ? "Instant" : "24–48 hours",
+      status: "in_review",
+      estimatedReviewTime: "24–48 hours",
     });
   } catch (err: any) {
     console.error("[POST /api/studio]", err);

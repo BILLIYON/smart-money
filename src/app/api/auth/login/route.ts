@@ -44,6 +44,10 @@ export async function POST(request: Request) {
       }
     }
 
+    if (!user) {
+      return NextResponse.json({ error: "Failed to initialize session" }, { status: 500 });
+    }
+
     // Set HTTP-only session cookie
     await setSessionCookie(user);
 
