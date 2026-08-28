@@ -17,6 +17,20 @@ function thirtyDaysAgo(): string {
   return d.toISOString().split("T")[0];
 }
 
+function safeStrDate(val: any): string {
+  if (!val) return "";
+  if (typeof val === "string") return val;
+  if (val instanceof Date) {
+    return isNaN(val.getTime()) ? "" : val.toISOString().split("T")[0];
+  }
+  try {
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? String(val) : d.toISOString().split("T")[0];
+  } catch {
+    return String(val);
+  }
+}
+
 function safeIsoDate(d: any): string {
   if (!d) return "";
   try {
@@ -32,40 +46,44 @@ export async function GET() {
     const { supabase, userId, error } = await requireAuth();
     if (error) return error;
 
-  const MONTH_START = monthStart();
-  const PRIOR_MONTH_START = priorMonthStart();
-  const THIRTY_DAYS_AGO = thirtyDaysAgo();
+    const MONTH_START = monthStart();
+    const PRIOR_MONTH_START = priorMonthStart();
+    const THIRTY_DAYS_AGO = thirtyDaysAgo();
 
-  // ── All queries in parallel ──────────────────────────────
-  const [entriesRes, goalsRes, integrationsRes, userRes] = await Promise.all([
-    supabase
-      .from("databank_entries")
-      .select("entry_type, amount, description, category, entry_date, source, metadata")
-      .eq("user_id", userId)
-      .order("entry_date", { ascending: false }),
+    // ── All queries in parallel ──────────────────────────────
+    const [entriesRes, goalsRes, integrationsRes, userRes] = await Promise.all([
+      supabase
+        .from("databank_entries")
+        .select("entry_type, amount, description, category, entry_date, source, metadata")
+        .eq("user_id", userId)
+        .order("entry_date", { ascending: false }),
 
-    supabase
-      .from("goals")
-      .select("title, target_amount, current_amount, target_date, status")
-      .eq("user_id", userId)
-      .eq("status", "active"),
+      supabase
+        .from("goals")
+        .select("title, target_amount, current_amount, target_date, status")
+        .eq("user_id", userId)
+        .eq("status", "active"),
 
-    supabase
-      .from("user_integrations")
-      .select("provider, last_synced_at")
-      .eq("user_id", userId),
+      supabase
+        .from("user_integrations")
+        .select("provider, last_synced_at")
+        .eq("user_id", userId),
 
-    supabase
-      .from("users")
-      .select("currency")
-      .eq("id", userId)
-      .single(),
-  ]);
+      supabase
+        .from("users")
+        .select("currency")
+        .eq("id", userId)
+        .single(),
+    ]);
 
-  const entries: any[] = (entriesRes.data as any[]) ?? [];
-  const goals: any[] = (goalsRes.data as any[]) ?? [];
-  const integrations = integrationsRes.data ?? [];
-  const currency = userRes.data?.currency ?? "NGN";
+    const rawEntries: any[] = (entriesRes.data as any[]) ?? [];
+    const entries: any[] = rawEntries.map((e) => ({
+      ...e,
+      entry_date: safeStrDate(e.entry_date),
+    }));
+    const goals: any[] = (goalsRes.data as any[]) ?? [];
+    const integrations = integrationsRes.data ?? [];
+    const currency = userRes.data?.currency ?? "NGN";
 
   // ── Helpers ──────────────────────────────────────────────
   const thisMonth = entries.filter((e) => e.entry_date >= MONTH_START);
