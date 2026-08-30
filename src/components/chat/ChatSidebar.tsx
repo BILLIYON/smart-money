@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useChatStore, GROUPS } from "@/store/chatStore";
-import { ALL_BUDDIES, getBuddy, type Buddy, type BuddyCategory } from "@/lib/buddies";
+import { ALL_BUDDIES, getBuddy, getAllBuddies, type Buddy, type BuddyCategory } from "@/lib/buddies";
 import { FinancialSnapshot } from "./FinancialSnapshot";
 import { isImageAvatar } from "@/lib/utils";
 import type { CommunityBuddyRow } from "@/lib/db";
@@ -135,16 +135,18 @@ export function ChatSidebar() {
     fetch("/api/studio")
       .then((r) => r.json())
       .then((rows: CommunityBuddyRow[]) => {
-        setCommunityBuddies(rows.map(communityRowToBuddy));
+        if (Array.isArray(rows)) {
+          setCommunityBuddies(rows.map(communityRowToBuddy));
+        }
       })
       .catch(() => {});
     return () => clearTimeout(t);
   }, []);
 
-  // Use database buddies directly
-  const ALL_BUDDY_LIST: Buddy[] = communityBuddies;
+  // Combine static & community buddies
+  const ALL_BUDDY_LIST: Buddy[] = getAllBuddies(communityBuddies);
 
-  // Resolve active buddy from database list
+  // Resolve active buddy from complete buddy list
   const activeBuddy = ALL_BUDDY_LIST.find((b) => b.id === activeBuddyId)
     ?? ALL_BUDDY_LIST[0];
 

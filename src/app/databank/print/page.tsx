@@ -56,7 +56,7 @@ export default function PrintStatementPage() {
     const val = Number(e.amount) / 100;
     if (e.entry_type === "income") {
       totalIncome += val;
-    } else if (e.entry_type === "expense") {
+    } else if (e.entry_type === "expense" || e.entry_type === "subscription") {
       totalSpend += Math.abs(val);
     }
   });

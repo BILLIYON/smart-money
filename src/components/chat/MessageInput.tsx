@@ -2,7 +2,7 @@
 
 import { useRef, useState, useCallback, useEffect } from "react";
 import { useChatStore, GROUPS } from "@/store/chatStore";
-import { getBuddy, ALL_BUDDIES, type Buddy } from "@/lib/buddies";
+import { getBuddy, ALL_BUDDIES, getAllBuddies, type Buddy } from "@/lib/buddies";
 import { isImageAvatar } from "@/lib/utils";
 
 const INVESTING_SUGGESTIONS = [
@@ -104,7 +104,7 @@ export function MessageInput() {
   }, [getGuestMessageCount]);
 
   const isGroup = chatMode === "group";
-  const ALL_BUDDY_LIST = communityBuddies;
+  const ALL_BUDDY_LIST = getAllBuddies(communityBuddies);
   const buddy = ALL_BUDDY_LIST.find((b) => b.id === activeBuddyId) ?? ALL_BUDDY_LIST[0];
 
   // Buddies available for @ mention in the active group

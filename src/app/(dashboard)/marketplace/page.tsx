@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from "react";
 import { CelebrityHero } from "@/components/buddy/CelebrityHero";
 import { BuddyCard, CelebrityCard, CreateYourOwnCard } from "@/components/buddy/BuddyCard";
 import { useBuddyStore } from "@/store/buddyStore";
-import { type Buddy, type BuddyCategory } from "@/lib/buddies";
+import { type Buddy, type BuddyCategory, getAllBuddies } from "@/lib/buddies";
 import type { CommunityBuddyRow } from "@/lib/db";
 import Link from "next/link";
 
@@ -91,9 +91,9 @@ export default function MarketplacePage() {
       });
   }, []);
 
-  // Use database buddies exclusively so all dynamic edits/avatars take effect
   const { visibleArchetypes, visibleCelebs, extraCommunity } = useMemo(() => {
-    const activeFromDb = communityBuddies.filter((b) => !hiddenIds.has(b.id));
+    const allBuddies = getAllBuddies(communityBuddies);
+    const activeFromDb = allBuddies.filter((b) => !hiddenIds.has(b.id));
 
     const archetypes = activeFromDb.filter((b) => !b.isFanSim);
     const celebs = activeFromDb.filter((b) => b.isFanSim);

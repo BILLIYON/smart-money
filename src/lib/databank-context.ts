@@ -23,6 +23,12 @@ function thirtyDaysAgo(): string {
   return d.toISOString().split("T")[0];
 }
 
+function ninetyDaysAgo(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 90);
+  return d.toISOString().split("T")[0];
+}
+
 export async function getDatabankContextForUser(
   _clientOrUserId: any,
   userIdParam?: string
@@ -32,6 +38,7 @@ export async function getDatabankContextForUser(
   const MONTH_START       = monthStart();
   const PRIOR_MONTH_START = priorMonthStart();
   const THIRTY_DAYS_AGO   = thirtyDaysAgo();
+  const NINETY_DAYS_AGO   = ninetyDaysAgo();
 
   const pool = getPool();
 
@@ -39,10 +46,10 @@ export async function getDatabankContextForUser(
     // Fetch all user databank entries, goals, integrations, active signals, and currency in parallel
     const [entriesRes, goalsRes, integrationsRes, signalsRes, userRes] = await Promise.all([
       pool.query(
-        `SELECT entry_type, amount, description, category, entry_date, source, metadata
+        `SELECT entry_type, amount, description, category, entry_date, source, metadata, created_at
          FROM databank_entries
          WHERE user_id = $1
-         ORDER BY entry_date DESC;`,
+         ORDER BY entry_date DESC, created_at DESC;`,
         [userId]
       ),
 
@@ -87,30 +94,47 @@ export async function getDatabankContextForUser(
     const thisMonth  = entries.filter((e) => e.entry_date >= MONTH_START);
     const priorMonth = entries.filter((e) => e.entry_date >= PRIOR_MONTH_START && e.entry_date < MONTH_START);
     const recent30   = entries.filter((e) => e.entry_date >= THIRTY_DAYS_AGO);
+    const recent90   = entries.filter((e) => e.entry_date >= NINETY_DAYS_AGO);
 
     // Monthly summary
-    const incomeEntries   = thisMonth.filter((e) => e.entry_type === "income");
-    const expenseEntries  = thisMonth.filter((e) => e.entry_type === "expense");
+    const incomeEntries  = entries.filter((e) => e.entry_type === "income");
+    const expenseEntries = entries.filter((e) => e.entry_type === "expense" || e.entry_type === "subscription");
 
-    let totalIncome   = incomeEntries.reduce((s, e) => s + Number(e.amount), 0);
-    let totalExpenses = Math.abs(expenseEntries.reduce((s, e) => s + Number(e.amount), 0));
+    const thisMonthIncome = thisMonth
+      .filter((e) => e.entry_type === "income")
+      .reduce((s, e) => s + Math.abs(Number(e.amount)), 0);
+    const thisMonthExpenses = thisMonth
+      .filter((e) => e.entry_type === "expense" || e.entry_type === "subscription")
+      .reduce((s, e) => s + Math.abs(Number(e.amount)), 0);
 
-    // Fallback to rolling 30 days if calendar month is empty
-    const hasCalendarData = totalIncome > 0 || totalExpenses > 0;
-    const targetIncomeEntries = hasCalendarData ? incomeEntries : recent30.filter((e) => e.entry_type === "income");
-    const targetExpenseEntries = hasCalendarData ? expenseEntries : recent30.filter((e) => e.entry_type === "expense");
+    const hasThisMonthData = thisMonthIncome > 0 || thisMonthExpenses > 0;
 
-    if (!hasCalendarData) {
-      totalIncome = targetIncomeEntries.reduce((s, e) => s + Number(e.amount), 0);
-      totalExpenses = Math.abs(targetExpenseEntries.reduce((s, e) => s + Number(e.amount), 0));
-    }
+    const targetIncomeEntries = hasThisMonthData
+      ? thisMonth.filter((e) => e.entry_type === "income")
+      : recent30.filter((e) => e.entry_type === "income").length > 0
+        ? recent30.filter((e) => e.entry_type === "income")
+        : incomeEntries;
+
+    const targetExpenseEntries = hasThisMonthData
+      ? thisMonth.filter((e) => e.entry_type === "expense" || e.entry_type === "subscription")
+      : recent30.filter((e) => e.entry_type === "expense" || e.entry_type === "subscription").length > 0
+        ? recent30.filter((e) => e.entry_type === "expense" || e.entry_type === "subscription")
+        : expenseEntries;
+
+    const totalIncome = hasThisMonthData
+      ? thisMonthIncome
+      : targetIncomeEntries.reduce((s, e) => s + Math.abs(Number(e.amount)), 0);
+
+    const totalExpenses = hasThisMonthData
+      ? thisMonthExpenses
+      : targetExpenseEntries.reduce((s, e) => s + Math.abs(Number(e.amount)), 0);
 
     const savingsRate = totalIncome > 0
-      ? Math.round(((totalIncome - totalExpenses) / totalIncome) * 100) / 100
+      ? Math.max(0, Math.min(1, Math.round(((totalIncome - totalExpenses) / totalIncome) * 100) / 100))
       : 0;
 
     const largestCredit = targetIncomeEntries.reduce<typeof targetIncomeEntries[0] | null>(
-      (max, e) => (!max || Number(e.amount) > Number(max.amount) ? e : max), null
+      (max, e) => (!max || Math.abs(Number(e.amount)) > Math.abs(Number(max.amount)) ? e : max), null
     );
     const largestDebit = targetExpenseEntries.reduce<typeof targetExpenseEntries[0] | null>(
       (max, e) => (!max || Math.abs(Number(e.amount)) > Math.abs(Number(max.amount)) ? e : max), null
@@ -120,7 +144,7 @@ export async function getDatabankContextForUser(
     function categoryTotals(list: typeof entries): Record<string, number> {
       const map: Record<string, number> = {};
       list
-        .filter((e) => e.entry_type === "expense" && e.category)
+        .filter((e) => (e.entry_type === "expense" || e.entry_type === "subscription") && e.category)
         .forEach((e) => {
           const cat = e.category as string;
           map[cat] = (map[cat] ?? 0) + Math.abs(Number(e.amount));
@@ -130,9 +154,11 @@ export async function getDatabankContextForUser(
 
     const thisCats  = categoryTotals(thisMonth);
     const priorCats = categoryTotals(priorMonth);
-    const totalSpend = Object.values(thisCats).reduce((s, v) => s + v, 0);
+    const allCats   = categoryTotals(recent90.length > 0 ? recent90 : entries);
+    const activeCats = Object.keys(thisCats).length > 0 ? thisCats : allCats;
+    const totalSpend = Object.values(activeCats).reduce((s, v) => s + v, 0);
 
-    const topCategories = Object.entries(thisCats)
+    const topCategories = Object.entries(activeCats)
       .sort(([, a], [, b]) => b - a)
       .slice(0, 6)
       .map(([category, total]) => {
@@ -155,17 +181,17 @@ export async function getDatabankContextForUser(
       .filter((e) => e.entry_type === "subscription")
       .map((e) => ({
         name:        e.description || "Subscription",
-        amount:      Number(e.amount),
+        amount:      Math.abs(Number(e.amount)),
         frequency:   "monthly" as const,
         lastCharged: e.entry_date,
         source:      (e.source ?? "manual") as "gmail" | "upload" | "manual",
       }));
 
     // Recent transactions (last 30 days, max 30)
-    const recentTransactions = recent30.slice(0, 30).map((e) => ({
+    const recentTransactions = entries.slice(0, 30).map((e) => ({
       description: e.description || "Transaction",
-      amount:      Number(e.amount),
-      type:        e.entry_type as "income" | "expense",
+      amount:      Math.abs(Number(e.amount)),
+      type:        e.entry_type === "income" ? ("income" as const) : ("expense" as const),
       category:    e.category ?? "Uncategorized",
       date:        e.entry_date,
       source:      e.source ?? "manual",
@@ -174,8 +200,8 @@ export async function getDatabankContextForUser(
     // Active goals
     const activeGoals = goals.map((g) => ({
       title:           g.title,
-      targetAmount:    Number(g.target_amount),
-      currentAmount:   Number(g.current_amount),
+      targetAmount:    Math.abs(Number(g.target_amount)),
+      currentAmount:   Math.abs(Number(g.current_amount)),
       targetDate:      g.target_date || "",
       progressPercent: Number(g.target_amount) > 0
         ? Math.round((Number(g.current_amount) / Number(g.target_amount)) * 100)
@@ -203,16 +229,18 @@ export async function getDatabankContextForUser(
       .filter(Boolean) as string[];
 
     // Net worth & Savings calculations
-    const totalIncomeAllTime = entries.filter((e) => e.entry_type === "income").reduce((s, e) => s + Number(e.amount), 0);
-    const totalExpensesAllTime = entries.filter((e) => e.entry_type === "expense").reduce((s, e) => s + Math.abs(Number(e.amount)), 0);
+    const totalIncomeAllTime = incomeEntries.reduce((s, e) => s + Math.abs(Number(e.amount)), 0);
+    const totalExpensesAllTime = expenseEntries.reduce((s, e) => s + Math.abs(Number(e.amount)), 0);
     const netSavingsAllTime = totalIncomeAllTime - totalExpensesAllTime;
 
-    const totalAssets = entries.filter((e) => e.entry_type === "asset").reduce((s, e) => s + Number(e.amount), 0);
+    const totalAssets = entries.filter((e) => e.entry_type === "asset").reduce((s, e) => s + Math.abs(Number(e.amount)), 0);
     const totalDebt = entries.filter((e) => e.entry_type === "debt").reduce((s, e) => s + Math.abs(Number(e.amount)), 0);
 
     const bankBalancesRecord: Record<string, { balance: number; date: string }> = {};
     const sortedEntriesForBalances = [...entries].sort((a, b) => {
-      return (b.entry_date ?? "").localeCompare(a.entry_date ?? "");
+      const d = (b.entry_date ?? "").localeCompare(a.entry_date ?? "");
+      if (d !== 0) return d;
+      return (b.created_at ?? "").localeCompare(a.created_at ?? "");
     });
 
     for (const entry of sortedEntriesForBalances) {
@@ -252,10 +280,10 @@ export async function getDatabankContextForUser(
         totalExpenses,
         savingsRate,
         largestCredit: largestCredit
-          ? { amount: Number(largestCredit.amount), description: largestCredit.description || "Credit", date: largestCredit.entry_date }
+          ? { amount: Math.abs(Number(largestCredit.amount)), description: largestCredit.description || "Credit", date: largestCredit.entry_date }
           : null,
         largestDebit: largestDebit
-          ? { amount: Number(largestDebit.amount), description: largestDebit.description || "Debit", date: largestDebit.entry_date }
+          ? { amount: Math.abs(Number(largestDebit.amount)), description: largestDebit.description || "Debit", date: largestDebit.entry_date }
           : null,
       },
       topCategories,

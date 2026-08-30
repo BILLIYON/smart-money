@@ -560,6 +560,7 @@ export async function syncGmailForUser(
             user_id, source, entry_type, amount, description, category, entry_date, metadata, gmail_message_id
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
           ON CONFLICT (gmail_message_id) WHERE gmail_message_id IS NOT NULL DO UPDATE SET
+            entry_type = EXCLUDED.entry_type,
             amount = EXCLUDED.amount,
             description = EXCLUDED.description,
             category = EXCLUDED.category,

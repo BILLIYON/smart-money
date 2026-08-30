@@ -487,9 +487,15 @@ export const ALL_BUDDIES: Buddy[] = [
   },
 ];
 
-export function getBuddy(id: string): Buddy | undefined {
-  return ALL_BUDDIES.find((b) => b.id === id);
+export function getAllBuddies(communityBuddies: Buddy[] = []): Buddy[] {
+  const custom = communityBuddies.filter((cb) => !ALL_BUDDIES.some((sb) => sb.id === cb.id));
+  return [...ALL_BUDDIES, ...custom];
+}
+
+export function getBuddy(id: string, communityBuddies: Buddy[] = []): Buddy | undefined {
+  return ALL_BUDDIES.find((b) => b.id === id) || communityBuddies.find((b) => b.id === id);
 }
 
 export const ARCHETYPE_BUDDIES = ALL_BUDDIES.filter((b) => !b.isFanSim);
 export const CELEBRITY_BUDDIES = ALL_BUDDIES.filter((b) => b.isFanSim);
+

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useChatStore } from "@/store/chatStore";
+import { getAllBuddies } from "@/lib/buddies";
 
 const DEFAULT_PICKED = new Set(["contrarian", "buffett"]);
 
@@ -12,7 +13,7 @@ export function NewGroupModal() {
   const modalRef = useRef<HTMLDivElement>(null);
 
   const selectable = useMemo(() => {
-    return communityBuddies.map((b) => ({
+    return getAllBuddies(communityBuddies).map((b) => ({
       id: b.id,
       name: b.name.length > 14 ? b.name.split(" ").slice(0, 2).join(" ") : b.name,
       sub: b.isFanSim ? `${b.price} · Fan` : b.price,

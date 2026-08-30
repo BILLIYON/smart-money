@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useChatStore, GROUPS, type ChatMessage, type GoalCardData } from "@/store/chatStore";
-import { getBuddy, ALL_BUDDIES, type Buddy } from "@/lib/buddies";
+import { getBuddy, ALL_BUDDIES, getAllBuddies, type Buddy } from "@/lib/buddies";
 import { isImageAvatar } from "@/lib/utils";
 import { InChatGoalCard } from "./InChatGoalCard";
 import { InChatAgentCard } from "./InChatAgentCard";
@@ -907,8 +907,7 @@ export function MessageThread() {
     communityBuddies,
   } = useChatStore();
 
-  const isLoaded = communityBuddies.length > 0;
-  const ALL_BUDDY_LIST = communityBuddies;
+  const ALL_BUDDY_LIST = getAllBuddies(communityBuddies);
   const buddy = ALL_BUDDY_LIST.find((b) => b.id === activeBuddyId) ?? ALL_BUDDY_LIST[0];
   const messages = threads[activeBuddyId] ?? [];
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -917,27 +916,6 @@ export function MessageThread() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, messages[messages.length - 1]?.content]);
-
-  if (!isLoaded) {
-    return (
-      <div className="flex-1 flex flex-col h-full bg-[var(--bg)] animate-pulse">
-        {/* Header Skeleton */}
-        <div className="flex items-center gap-3 px-3 sm:px-5 py-[12px] border-b border-[var(--border)] bg-[var(--card)] flex-shrink-0">
-          <div className="w-[38px] h-[38px] rounded-[10px] bg-[var(--border)]" />
-          <div className="flex-1">
-            <div className="h-4 w-32 bg-[var(--border)] rounded mb-1" />
-            <div className="h-3 w-20 bg-[var(--border)] rounded" />
-          </div>
-        </div>
-        {/* Messages Skeleton */}
-        <div className="flex-1 px-3 sm:px-5 py-4 flex flex-col gap-4">
-          <div className="w-[60%] h-12 bg-[var(--border)] rounded-[14px]" />
-          <div className="w-[45%] h-16 bg-[var(--border)] rounded-[14px]" />
-          <div className="w-[30%] h-8 bg-[var(--border)] rounded-[14px] self-end" />
-        </div>
-      </div>
-    );
-  }
 
   const handleUseMyData = async () => {
     setShowDatabankNudge(true);

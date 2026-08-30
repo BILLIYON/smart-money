@@ -418,6 +418,23 @@ export function AnalyticsDashboard() {
   let avgYieldKpiDelta = "No data";
   let avgYieldKpiDeltaDir: "up" | "down" | "neutral" = "neutral";
 
+  function formatNairaKpi(val: number, isKobo = false): string {
+    const naira = isKobo ? Math.round(val / 100) : Math.round(val);
+    const abs = Math.abs(naira);
+    const sign = naira < 0 ? "-" : "";
+    if (abs >= 1_000_000) {
+      return `${sign}₦${(abs / 1_000_000).toFixed(2)}M`;
+    }
+    if (abs >= 100_000) {
+      return `${sign}₦${Math.round(abs / 1000)}k`;
+    }
+    if (abs >= 1000) {
+      const k = abs / 1000;
+      return `${sign}₦${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}k`;
+    }
+    return `${sign}₦${abs.toLocaleString("en-NG")}`;
+  }
+
   if (hasRealData && context) {
     const rawChartData = context.chartData;
     incomeVsSpendData = rawChartData.slice(-visibleCount);
@@ -426,6 +443,15 @@ export function AnalyticsDashboard() {
     
     trendMonthsList = rawChartData.slice(-Math.min(visibleCount, 6)).map(d => d.month);
     catTrendRows = context.catTrendRows ?? [];
+
+    const activeChartSlice = rawChartData.slice(-visibleCount);
+    const totalTfIncomeNaira = activeChartSlice.reduce((s, d) => s + (d.income || 0) * 1000, 0);
+    const totalTfSpentNaira = activeChartSlice.reduce((s, d) => s + (d.spent || 0) * 1000, 0);
+    const numMonths = Math.max(1, visibleCount);
+
+    const avgMonthlyIncomeNaira = totalTfIncomeNaira / numMonths;
+    const avgMonthlySpentNaira = totalTfSpentNaira / numMonths;
+    const effectiveSavingsRate = totalTfIncomeNaira > 0 ? Math.max(0, (totalTfIncomeNaira - totalTfSpentNaira) / totalTfIncomeNaira) : 0;
     
     categoryData = context.topCategories.map(c => {
       let color = "#E24B4A";
@@ -436,9 +462,17 @@ export function AnalyticsDashboard() {
       else if (catLower.includes("shop")) color = "#9B59B6";
       else color = "var(--muted)";
 
+      const nairaVal = Math.round(c.total / 100);
+      const formattedVal = nairaVal >= 1_000_000 
+        ? `${(nairaVal / 1_000_000).toFixed(2)}M` 
+        : nairaVal >= 1000 
+          ? `${(nairaVal / 1000).toFixed(nairaVal % 1000 === 0 ? 0 : 1)}k` 
+          : nairaVal.toLocaleString();
+
       return {
         name: c.category,
-        value: Math.round(c.total / 100000),
+        value: nairaVal,
+        formattedValue: formattedVal,
         pct: c.percentage,
         color,
         change: c.trend === "up" ? "+10%" : c.trend === "down" ? "-10%" : "—",
@@ -472,9 +506,9 @@ export function AnalyticsDashboard() {
       trend: "flat" as const
     }));
 
-    const sr = context.monthlySummary.savingsRate;
-    const ti = context.monthlySummary.totalIncome;
-    const te = context.monthlySummary.totalExpenses;
+    const sr = totalTfIncomeNaira > 0 ? effectiveSavingsRate : context.monthlySummary.savingsRate;
+    const ti = avgMonthlyIncomeNaira > 0 ? avgMonthlyIncomeNaira * 100 : context.monthlySummary.totalIncome;
+    const te = avgMonthlySpentNaira > 0 ? avgMonthlySpentNaira * 100 : context.monthlySummary.totalExpenses;
     const sb = context.savingsBalance;
     const totalDebtNaira = context.liabilitiesList.reduce((sum, l) => sum + l.value, 0);
     const incomeNaira = ti / 100;
@@ -503,7 +537,7 @@ export function AnalyticsDashboard() {
       ? `your largest single expense was ₦${Math.round(Math.abs(context.monthlySummary.largestDebit.amount) / 100).toLocaleString()} for "${context.monthlySummary.largestDebit.description}"`
       : "we don't see any large single expenses yet";
       
-    healthScoreDescription = `Your savings rate is at ${Math.round(context.monthlySummary.savingsRate * 100)}% this month. Based on your parsed DataBank, ${largestSpendText}. Start a chat below with your buddy to get personalized recommendations.`;
+    healthScoreDescription = `Your savings rate is at ${Math.round(sr * 100)}% (${timeframe} average). Based on your parsed DataBank, ${largestSpendText}. Start a chat below with your buddy to get personalized recommendations.`;
     if (debtKobo > 0) {
       holdingsData.push({
         name: "Outstanding Liabilities",
@@ -535,7 +569,8 @@ export function AnalyticsDashboard() {
 
       const dateObj = new Date(t.date);
       const dateStr = dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-      const amtStr = `${t.type === "income" ? "+" : "-"}₦${Math.round(Math.abs(t.amount) / 100).toLocaleString()}`;
+      const amtNaira = Math.round(Math.abs(t.amount) / 100);
+      const amtStr = `${t.type === "income" ? "+" : "-"}₦${amtNaira.toLocaleString("en-NG")}`;
 
       return {
         icon,
@@ -549,7 +584,7 @@ export function AnalyticsDashboard() {
       };
     });
 
-    const srScore = clamp(Math.round(context.monthlySummary.savingsRate * 280), 0, 100);
+    const srScore = clamp(Math.round(sr * 280), 0, 100);
     const goalProgress = context.activeGoals.length > 0
       ? Math.round(context.activeGoals.reduce((s, g) => s + g.progressPercent, 0) / context.activeGoals.length)
       : 50;
@@ -560,16 +595,16 @@ export function AnalyticsDashboard() {
       : healthScore >= 50 ? "Good foundation — a few key moves will accelerate this"
       : "Work in progress — focus on the fundamentals";
       
-    healthScoreBuddyTake = `You’re doing the fundamentals right — savings rate is at ${Math.round(context.monthlySummary.savingsRate * 100)}%. Discussions with your buddy will help you fine-tune allocations.`;
+    healthScoreBuddyTake = `You’re doing the fundamentals right — savings rate is at ${Math.round(sr * 100)}%. Discussions with your buddy will help you fine-tune allocations.`;
 
     insights = [
       {
         icon: "💰",
         label: "Savings Rate",
-        value: `${Math.round(context.monthlySummary.savingsRate * 100)}%`,
-        delta: context.monthlySummary.savingsRate >= 0.25 ? "↑ Exceeding target" : "Watch your expenses",
-        type: context.monthlySummary.savingsRate >= 0.2 ? "positive" as const : "warning" as const,
-        question: `My savings rate is ${Math.round(context.monthlySummary.savingsRate * 100)}%. How can I optimize it further?`
+        value: `${Math.round(sr * 100)}%`,
+        delta: sr >= 0.25 ? "↑ Exceeding target" : "Watch your expenses",
+        type: sr >= 0.2 ? "positive" as const : "warning" as const,
+        question: `My savings rate is ${Math.round(sr * 100)}%. How can I optimize it further?`
       }
     ];
 
@@ -578,10 +613,10 @@ export function AnalyticsDashboard() {
       insights.push({
         icon: "🍔",
         label: "Largest Spend",
-        value: `₦${Math.round(ld.amount / 100).toLocaleString()}`,
+        value: `₦${Math.round(Math.abs(ld.amount) / 100).toLocaleString()}`,
         delta: `${ld.description}`,
         type: "warning" as const,
-        question: `My largest single expense was ₦${Math.round(ld.amount / 100).toLocaleString()} for ${ld.description}. How can I plan better for this?`
+        question: `My largest single expense was ₦${Math.round(Math.abs(ld.amount) / 100).toLocaleString()} for ${ld.description}. How can I plan better for this?`
       });
     }
 
@@ -606,24 +641,19 @@ export function AnalyticsDashboard() {
       });
     }
 
-    totalIncomeKpi = `₦${Math.round(context.monthlySummary.totalIncome / 100000)}k`;
-    totalIncomeKpiDelta = "This month's income";
+    totalIncomeKpi = formatNairaKpi(avgMonthlyIncomeNaira > 0 ? avgMonthlyIncomeNaira : context.monthlySummary.totalIncome, avgMonthlyIncomeNaira > 0 ? false : true);
+    totalIncomeKpiDelta = `${timeframe} avg monthly income`;
     totalIncomeKpiDeltaDir = "neutral" as const;
 
-    totalExpensesKpi = `₦${Math.round(context.monthlySummary.totalExpenses / 100000)}k`;
-    totalExpensesKpiDelta = "This month's expenses";
+    totalExpensesKpi = formatNairaKpi(avgMonthlySpentNaira > 0 ? avgMonthlySpentNaira : context.monthlySummary.totalExpenses, avgMonthlySpentNaira > 0 ? false : true);
+    totalExpensesKpiDelta = `${timeframe} avg monthly spend`;
     totalExpensesKpiDeltaDir = "neutral" as const;
 
-    savingsRateKpi = `${Math.round(context.monthlySummary.savingsRate * 100)}%`;
-    savingsRateKpiDelta = context.monthlySummary.savingsRate >= 0.2 ? "↑ Healthy rate" : "Focus on saving";
-    savingsRateKpiDeltaDir = context.monthlySummary.savingsRate >= 0.2 ? "up" as const : "down" as const;
+    savingsRateKpi = `${Math.round(sr * 100)}%`;
+    savingsRateKpiDelta = sr >= 0.2 ? "↑ Healthy rate" : "Focus on saving";
+    savingsRateKpiDeltaDir = sr >= 0.2 ? "up" as const : "down" as const;
 
-    const nwVal = Math.round(context.netWorth / 100000);
-    netWorthKpi = context.netWorth >= 100000000
-      ? `₦${(context.netWorth / 100000000).toFixed(2)}M`
-      : nwVal < 0
-        ? `-₦${Math.abs(nwVal).toLocaleString()}k`
-        : `₦${nwVal.toLocaleString()}k`;
+    netWorthKpi = formatNairaKpi(context.netWorth, true);
     netWorthKpiDelta = "Current cash net worth";
     netWorthKpiDeltaDir = context.netWorth >= 0 ? "up" as const : "down" as const;
 
@@ -642,11 +672,11 @@ export function AnalyticsDashboard() {
       pct: l.pct
     }));
 
-    portfolioKpiValue = `₦${Math.round(savedKobo / 100000)}k`;
+    portfolioKpiValue = formatNairaKpi(savedKobo, true);
     portfolioKpiDelta = "Total cash savings";
     portfolioKpiDeltaDir = "neutral" as const;
 
-    totalInvestedKpiValue = `₦${Math.round(savedKobo / 100000)}k`;
+    totalInvestedKpiValue = formatNairaKpi(savedKobo, true);
     totalInvestedKpiDelta = "In DataBank";
 
     totalReturnKpiValue = "—";
@@ -975,7 +1005,7 @@ export function AnalyticsDashboard() {
                       <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: cat.color.startsWith("var(") ? (cat.color === "var(--green)" ? "#00C48C" : cat.color === "var(--gold)" ? "#F5A623" : "#6B7A99") : cat.color }} />
                       <div className="flex-1 text-[11px]" style={{ color: "var(--text)" }}>{cat.name}</div>
                       <div className="text-[10px] font-semibold" style={{ color: "var(--muted)" }}>{cat.pct}%</div>
-                      <div className="text-[11px] font-semibold" style={{ color: "var(--text)" }}>₦{cat.value}k</div>
+                      <div className="text-[11px] font-semibold" style={{ color: "var(--text)" }}>₦{cat.formattedValue}</div>
                     </div>
                   ))}
                 </div>
@@ -1000,7 +1030,7 @@ export function AnalyticsDashboard() {
                           transition={{ duration: 0.6, ease: "easeOut", delay: i * 0.06 }}
                         />
                       </div>
-                      <div className="text-[11px] font-semibold flex-shrink-0" style={{ color: "var(--text)", width: 36, textAlign: "right" }}>₦{cat.value}k</div>
+                      <div className="text-[11px] font-semibold flex-shrink-0" style={{ color: "var(--text)", minWidth: 44, textAlign: "right" }}>₦{cat.formattedValue}</div>
                       <div className="text-[10px] font-semibold flex-shrink-0" style={{ color: changeColor, width: 36, textAlign: "right" }}>{cat.change}</div>
                     </div>
                   );

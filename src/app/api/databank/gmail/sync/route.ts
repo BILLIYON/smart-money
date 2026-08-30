@@ -15,6 +15,10 @@ export async function POST(req: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const url = new URL(req.url);
+  const previewOnly = url.searchParams.get("preview") === "true";
+  const saveToDb = !previewOnly;
+
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
@@ -28,7 +32,7 @@ export async function POST(req: Request) {
           } catch (e) {
             // Client disconnected. Swallow the error to let sync continue in background.
           }
-        }, false);
+        }, saveToDb);
         try {
           controller.enqueue(
             encoder.encode(JSON.stringify({ progress: 100, entries: results }) + "\n")

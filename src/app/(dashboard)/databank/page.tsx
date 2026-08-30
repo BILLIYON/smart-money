@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, Suspense, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AnalyticsDashboard } from "@/components/analytics/AnalyticsDashboard";
+import { DatabankTransactionsTable } from "@/components/databank/DatabankTransactionsTable";
 import { createClient } from "@/lib/supabase/client";
 import { useDatabankStore } from "@/store/databankStore";
 import { popup } from "@/store/popupStore";
@@ -1257,7 +1258,7 @@ type UploadedFile = {
 
 // ── DataBank page ─────────────────────────────────────────
 export default function DataBankPage() {
-  const [tab, setTab] = useState<"sources" | "analytics">("sources");
+  const [tab, setTab] = useState<"sources" | "transactions" | "analytics">("sources");
   const [signalTab, setSignalTab] = useState<"news" | "social" | "podcasts" | "newsletters" | "api">("news");
   const [showExportMenu, setShowExportMenu] = useState(false);
   
@@ -1694,12 +1695,16 @@ export default function DataBankPage() {
         </div>
 
         {/* Main tabs */}
-        <div className="flex mb-6" style={{ borderBottom: "1px solid var(--border)" }}>
-          {[{ id: "sources", label: "📂 Data Sources" }, { id: "analytics", label: "📊 Spending Analytics" }].map((t) => (
+        <div className="flex mb-6 overflow-x-auto" style={{ borderBottom: "1px solid var(--border)" }}>
+          {[
+            { id: "sources", label: "📂 Data Sources" },
+            { id: "transactions", label: "💳 All Transactions" },
+            { id: "analytics", label: "📊 Spending Analytics" },
+          ].map((t) => (
             <button
               key={t.id}
-              onClick={() => setTab(t.id as "sources" | "analytics")}
-              className="py-[10px] px-5 text-[13px] font-semibold transition-all duration-150"
+              onClick={() => setTab(t.id as "sources" | "transactions" | "analytics")}
+              className="py-[10px] px-5 text-[13px] font-semibold transition-all duration-150 whitespace-nowrap"
               style={{
                 color: tab === t.id ? "var(--green)" : "var(--muted)",
                 background: "transparent",
@@ -2444,23 +2449,35 @@ export default function DataBankPage() {
                     </div>
                   </div>
 
-                  {/* For developers */}
-                  <div className="rounded-[12px] p-4 flex items-start gap-3" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
-                    <div className="text-[20px] flex-shrink-0">🔌</div>
-                    <div>
-                      <div className="text-[13px] font-semibold mb-1" style={{ color: "var(--text)" }}>Publish Your Own Signal Source</div>
-                      <div className="text-[12px] mb-3" style={{ color: "var(--muted)", lineHeight: 1.6 }}>
-                        Have a data feed — property listings, stock screener, deal alerts? Publish it as a Signal Source. Set a subscription price. Users enable it in their DataBank. Your API fires signals; Smart Money routes them to the right buddy conversations. You earn per subscriber per month.
-                      </div>
-                      <div className="flex gap-2 flex-wrap">
-                        <button className="px-4 py-[8px] rounded-[8px] text-[11px] font-semibold cursor-pointer" style={{ background: "var(--green)", color: "#fff", border: "none" }}>Start in AI Studio →</button>
-                        <button className="px-4 py-[8px] rounded-[8px] text-[11px] font-medium border cursor-pointer" style={{ color: "var(--muted)", borderColor: "var(--border)", background: "transparent" }}>Read API Docs</button>
+                    {/* For developers */}
+                    <div className="rounded-[12px] p-4 flex items-start gap-3" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
+                      <div className="text-[20px] flex-shrink-0">🔌</div>
+                      <div>
+                        <div className="text-[13px] font-semibold mb-1" style={{ color: "var(--text)" }}>Publish Your Own Signal Source</div>
+                        <div className="text-[12px] mb-3" style={{ color: "var(--muted)", lineHeight: 1.6 }}>
+                          Have a data feed — property listings, stock screener, deal alerts? Publish it as a Signal Source. Set a subscription price. Users enable it in their DataBank. Your API fires signals; Smart Money routes them to the right buddy conversations. You earn per subscriber per month.
+                        </div>
+                        <div className="flex gap-2 flex-wrap">
+                          <button className="px-4 py-[8px] rounded-[8px] text-[11px] font-semibold cursor-pointer" style={{ background: "var(--green)", color: "#fff", border: "none" }}>Start in AI Studio →</button>
+                          <button className="px-4 py-[8px] rounded-[8px] text-[11px] font-medium border cursor-pointer" style={{ color: "var(--muted)", borderColor: "var(--border)", background: "transparent" }}>Read API Docs</button>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+
+            {/* ── EMBEDDED TRANSACTIONS TABLE BELOW SOURCES ── */}
+            <div className="mt-8">
+              <DatabankTransactionsTable onDataChanged={() => useDatabankStore.getState().loadContext()} />
             </div>
+          </div>
+        )}
+
+        {/* ── ALL TRANSACTIONS PANEL ── */}
+        {tab === "transactions" && (
+          <div className="mb-6">
+            <DatabankTransactionsTable onDataChanged={() => useDatabankStore.getState().loadContext()} />
           </div>
         )}
 
