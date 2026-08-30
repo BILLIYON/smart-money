@@ -247,14 +247,48 @@ export default function CreatorPage() {
   const [showVerifyModal, setShowVerifyModal] = useState(false);
 
   const loadData = () => {
-    fetch("/api/creator").then((r) => r.json()).then(setData);
+    fetch("/api/creator")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && Array.isArray(d.buddies)) {
+          setData(d);
+        } else {
+          setData({
+            earnings: 0,
+            gross: 0,
+            sharePercent: 70,
+            totalSubscribers: 0,
+            newSubscribersThisMonth: 0,
+            avgRating: 0,
+            avgSessionMinutes: 0,
+            avgSessionDelta: 0,
+            verified: false,
+            buddies: [],
+          });
+        }
+      })
+      .catch((err) => {
+        console.error("Creator data fetch error:", err);
+        setData({
+          earnings: 0,
+          gross: 0,
+          sharePercent: 70,
+          totalSubscribers: 0,
+          newSubscribersThisMonth: 0,
+          avgRating: 0,
+          avgSessionMinutes: 0,
+          avgSessionDelta: 0,
+          verified: false,
+          buddies: [],
+        });
+      });
   };
 
   useEffect(() => { loadData(); }, []);
 
   if (!data) return <LoadingSkeleton />;
 
-  const liveBuddies = data.buddies.filter((b) => b.status === "live").length;
+  const liveBuddies = (data.buddies || []).filter((b) => b.status === "live").length;
 
   return (
     <div className="flex-1 overflow-y-auto" style={{ background: "var(--bg)" }}>
