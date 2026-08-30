@@ -2466,11 +2466,6 @@ export default function DataBankPage() {
                   </div>
                 )}
               </div>
-
-            {/* ── EMBEDDED TRANSACTIONS TABLE BELOW SOURCES ── */}
-            <div className="mt-8">
-              <DatabankTransactionsTable onDataChanged={() => useDatabankStore.getState().loadContext()} />
-            </div>
           </div>
         )}
 
