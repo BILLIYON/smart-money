@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useTransition } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDatabankStore } from "@/store/databankStore";
+import { SpendingExclusionsToolbar } from "@/components/analytics/SpendingExclusionsToolbar";
 
 type Transaction = {
   id: string;
@@ -38,8 +39,8 @@ const TYPE_CONFIG: Record<
   income: {
     label: "Income",
     bg: "rgba(0, 196, 140, 0.12)",
-    color: "var(--green, #00C48C)",
-    border: "rgba(0, 196, 140, 0.25)",
+    color: "#00A677",
+    border: "rgba(0, 196, 140, 0.3)",
     sign: "+",
     icon: "💰",
   },
@@ -47,31 +48,31 @@ const TYPE_CONFIG: Record<
     label: "Expense",
     bg: "rgba(226, 75, 74, 0.12)",
     color: "#E24B4A",
-    border: "rgba(226, 75, 74, 0.25)",
+    border: "rgba(226, 75, 74, 0.3)",
     sign: "-",
     icon: "💸",
   },
   subscription: {
     label: "Subscription",
     bg: "rgba(155, 89, 182, 0.12)",
-    color: "#9B59B6",
-    border: "rgba(155, 89, 182, 0.25)",
+    color: "#8E44AD",
+    border: "rgba(155, 89, 182, 0.3)",
     sign: "-",
     icon: "🔄",
   },
   asset: {
     label: "Asset",
     bg: "rgba(74, 144, 217, 0.12)",
-    color: "#4A90D9",
-    border: "rgba(74, 144, 217, 0.25)",
+    color: "#2980B9",
+    border: "rgba(74, 144, 217, 0.3)",
     sign: "+",
     icon: "💎",
   },
   debt: {
     label: "Debt",
     bg: "rgba(245, 166, 35, 0.12)",
-    color: "#F5A623",
-    border: "rgba(245, 166, 35, 0.25)",
+    color: "#D35400",
+    border: "rgba(245, 166, 35, 0.3)",
     sign: "-",
     icon: "⚠️",
   },
@@ -391,18 +392,21 @@ export function DatabankTransactionsTable({
 
   return (
     <div
-      className="rounded-[16px] p-5 flex flex-col gap-5 text-[13px]"
+      className="rounded-[16px] p-5 flex flex-col gap-5 text-[13px] shadow-sm"
       style={{
-        background: "var(--card, #131722)",
-        border: "1px solid var(--border, rgba(255,255,255,0.08))",
-        color: "var(--text, #fff)",
+        background: "var(--card)",
+        border: "1px solid var(--border)",
+        color: "var(--text)",
       }}
     >
       {/* ── 1. HEADER & KPI SUMMARY STRIP ── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[var(--border)]">
+      <div
+        className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4"
+        style={{ borderBottom: "1px solid var(--border)" }}
+      >
         <div>
           <div className="flex items-center gap-3">
-            <span className="text-[20px] font-bold" style={{ fontFamily: "var(--font-sora)" }}>
+            <span className="text-[20px] font-bold" style={{ color: "var(--text)" }}>
               DataBank <span style={{ color: "var(--green, #00C48C)" }}>Transactions</span>
             </span>
             <span
@@ -412,7 +416,7 @@ export function DatabankTransactionsTable({
               {stats.totalCount.toLocaleString()} Records
             </span>
           </div>
-          <p className="text-[12px] text-[var(--muted,#8b949e)] mt-1">
+          <p className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
             Complete database of financial transactions parsed from Gmail alerts, statements, and manual entries.
           </p>
         </div>
@@ -420,7 +424,7 @@ export function DatabankTransactionsTable({
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setIsAdding(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-[9px] text-[12px] font-semibold shadow-sm transition-all"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-[9px] text-[12px] font-semibold shadow-sm transition-all cursor-pointer hover:opacity-90"
             style={{
               background: "var(--green, #00C48C)",
               color: "#0B0E17",
@@ -430,10 +434,11 @@ export function DatabankTransactionsTable({
           </button>
           <button
             onClick={handleExportCsv}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-[9px] text-[12px] font-medium border transition-all hover:bg-[rgba(255,255,255,0.04)]"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-[9px] text-[12px] font-medium transition-all cursor-pointer hover:bg-[var(--border)]/30"
             style={{
-              borderColor: "var(--border)",
+              border: "1px solid var(--border)",
               color: "var(--text)",
+              background: "var(--bg)",
             }}
           >
             📥 Export CSV
@@ -441,42 +446,45 @@ export function DatabankTransactionsTable({
           <button
             onClick={() => fetchEntries()}
             title="Refresh transactions"
-            className="p-2 rounded-[9px] border transition-all hover:bg-[rgba(255,255,255,0.04)]"
-            style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+            className="p-2 rounded-[9px] transition-all cursor-pointer hover:bg-[var(--border)]/30"
+            style={{ border: "1px solid var(--border)", color: "var(--muted)", background: "var(--bg)" }}
           >
             🔄
           </button>
         </div>
       </div>
 
+      {/* ── SPENDING ANALYTICS EXCLUSIONS (CLICK-TO-TOGGLE PLATFORMS: PAYSTACK, OPAY, PALMPAY, ETC.) ── */}
+      <SpendingExclusionsToolbar />
+
       {/* ── 2. SUMMARY METRIC STRIP ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div
           className="rounded-[12px] p-3.5 flex flex-col"
-          style={{ background: "var(--bg, #0B0E17)", border: "1px solid var(--border)" }}
+          style={{ background: "var(--bg)", border: "1px solid var(--border)" }}
         >
-          <span className="text-[11px] text-[var(--muted)] font-medium">Total Inflows</span>
+          <span className="text-[11px] font-medium" style={{ color: "var(--muted)" }}>Total Inflows</span>
           <span className="text-[16px] font-bold mt-1" style={{ color: "var(--green, #00C48C)" }}>
             +{formatNaira(stats.totalInflowsNaira)}
           </span>
         </div>
         <div
           className="rounded-[12px] p-3.5 flex flex-col"
-          style={{ background: "var(--bg, #0B0E17)", border: "1px solid var(--border)" }}
+          style={{ background: "var(--bg)", border: "1px solid var(--border)" }}
         >
-          <span className="text-[11px] text-[var(--muted)] font-medium">Total Outflows</span>
+          <span className="text-[11px] font-medium" style={{ color: "var(--muted)" }}>Total Outflows</span>
           <span className="text-[16px] font-bold mt-1" style={{ color: "#E24B4A" }}>
             -{formatNaira(stats.totalOutflowsNaira)}
           </span>
         </div>
         <div
           className="rounded-[12px] p-3.5 flex flex-col"
-          style={{ background: "var(--bg, #0B0E17)", border: "1px solid var(--border)" }}
+          style={{ background: "var(--bg)", border: "1px solid var(--border)" }}
         >
-          <span className="text-[11px] text-[var(--muted)] font-medium">Net DataBank Flow</span>
+          <span className="text-[11px] font-medium" style={{ color: "var(--muted)" }}>Net DataBank Flow</span>
           <span
             className="text-[16px] font-bold mt-1"
-            style={{ color: stats.netCashflowNaira >= 0 ? "var(--green)" : "#E24B4A" }}
+            style={{ color: stats.netCashflowNaira >= 0 ? "var(--green, #00C48C)" : "#E24B4A" }}
           >
             {stats.netCashflowNaira >= 0 ? "+" : ""}
             {formatNaira(stats.netCashflowNaira)}
@@ -484,10 +492,10 @@ export function DatabankTransactionsTable({
         </div>
         <div
           className="rounded-[12px] p-3.5 flex flex-col"
-          style={{ background: "var(--bg, #0B0E17)", border: "1px solid var(--border)" }}
+          style={{ background: "var(--bg)", border: "1px solid var(--border)" }}
         >
-          <span className="text-[11px] text-[var(--muted)] font-medium">Database Records</span>
-          <span className="text-[16px] font-bold mt-1 text-[var(--text)]">
+          <span className="text-[11px] font-medium" style={{ color: "var(--muted)" }}>Database Records</span>
+          <span className="text-[16px] font-bold mt-1" style={{ color: "var(--text)" }}>
             {stats.totalCount.toLocaleString()}
           </span>
         </div>
@@ -503,9 +511,9 @@ export function DatabankTransactionsTable({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="🔍 Search transactions, merchants, bank alerts..."
-              className="w-full pl-9 pr-4 py-2 rounded-[10px] text-[12px] transition-all focus:outline-none"
+              className="w-full pl-9 pr-8 py-2 rounded-[10px] text-[12px] transition-all focus:outline-none"
               style={{
-                background: "var(--bg, #0B0E17)",
+                background: "var(--input-bg, var(--bg))",
                 border: "1px solid var(--border)",
                 color: "var(--text)",
               }}
@@ -513,7 +521,8 @@ export function DatabankTransactionsTable({
             {search && (
               <button
                 onClick={() => setSearch("")}
-                className="absolute right-3 top-2 text-[11px] text-[var(--muted)] hover:text-white"
+                className="absolute right-3 top-2 text-[11px] cursor-pointer"
+                style={{ color: "var(--muted)" }}
               >
                 ✕
               </button>
@@ -528,9 +537,9 @@ export function DatabankTransactionsTable({
                 setCategoryFilter(e.target.value);
                 setPage(1);
               }}
-              className="px-3 py-2 rounded-[10px] text-[12px] focus:outline-none"
+              className="px-3 py-2 rounded-[10px] text-[12px] focus:outline-none cursor-pointer"
               style={{
-                background: "var(--bg, #0B0E17)",
+                background: "var(--input-bg, var(--bg))",
                 border: "1px solid var(--border)",
                 color: "var(--text)",
               }}
@@ -550,9 +559,9 @@ export function DatabankTransactionsTable({
                 setSourceFilter(e.target.value);
                 setPage(1);
               }}
-              className="px-3 py-2 rounded-[10px] text-[12px] focus:outline-none"
+              className="px-3 py-2 rounded-[10px] text-[12px] focus:outline-none cursor-pointer"
               style={{
-                background: "var(--bg, #0B0E17)",
+                background: "var(--input-bg, var(--bg))",
                 border: "1px solid var(--border)",
                 color: "var(--text)",
               }}
@@ -578,9 +587,9 @@ export function DatabankTransactionsTable({
                 setLimit(Number(e.target.value));
                 setPage(1);
               }}
-              className="px-3 py-2 rounded-[10px] text-[12px] focus:outline-none"
+              className="px-3 py-2 rounded-[10px] text-[12px] focus:outline-none cursor-pointer"
               style={{
-                background: "var(--bg, #0B0E17)",
+                background: "var(--input-bg, var(--bg))",
                 border: "1px solid var(--border)",
                 color: "var(--text)",
               }}
@@ -609,12 +618,12 @@ export function DatabankTransactionsTable({
                 setTypeFilter(t.id);
                 setPage(1);
               }}
-              className="px-3 py-1.5 rounded-[8px] text-[11px] font-medium transition-all whitespace-nowrap"
+              className="px-3 py-1.5 rounded-[8px] text-[11px] font-medium transition-all whitespace-nowrap cursor-pointer"
               style={{
-                background: typeFilter === t.id ? "var(--green, #00C48C)" : "rgba(255,255,255,0.03)",
+                background: typeFilter === t.id ? "var(--green, #00C48C)" : "var(--bg)",
                 color: typeFilter === t.id ? "#0B0E17" : "var(--muted)",
                 border: "1px solid",
-                borderColor: typeFilter === t.id ? "var(--green)" : "var(--border)",
+                borderColor: typeFilter === t.id ? "var(--green, #00C48C)" : "var(--border)",
                 fontWeight: typeFilter === t.id ? 700 : 500,
               }}
             >
@@ -635,7 +644,7 @@ export function DatabankTransactionsTable({
             style={{ background: "rgba(0,196,140,0.1)", border: "1px solid rgba(0,196,140,0.3)" }}
           >
             <div className="flex items-center gap-2">
-              <span className="font-bold text-[12px]" style={{ color: "var(--green)" }}>
+              <span className="font-bold text-[12px]" style={{ color: "var(--green, #00C48C)" }}>
                 {selectedIds.size} transaction{selectedIds.size > 1 ? "s" : ""} selected
               </span>
             </div>
@@ -645,20 +654,21 @@ export function DatabankTransactionsTable({
                   setBatchAction("category");
                   setBatchCategory(COMMON_CATEGORIES[0]);
                 }}
-                className="px-2.5 py-1 rounded-[7px] text-[11px] font-semibold border"
-                style={{ borderColor: "var(--border)", background: "var(--bg)" }}
+                className="px-2.5 py-1 rounded-[7px] text-[11px] font-semibold border cursor-pointer hover:opacity-80"
+                style={{ borderColor: "var(--border)", background: "var(--bg)", color: "var(--text)" }}
               >
                 🏷️ Change Category
               </button>
               <button
                 onClick={() => setBatchAction("delete")}
-                className="px-2.5 py-1 rounded-[7px] text-[11px] font-semibold text-white bg-[#E24B4A]"
+                className="px-2.5 py-1 rounded-[7px] text-[11px] font-semibold text-white bg-[#E24B4A] cursor-pointer hover:opacity-90"
               >
                 🗑️ Delete Selected
               </button>
               <button
                 onClick={() => setSelectedIds(new Set())}
-                className="px-2 py-1 text-[11px] text-[var(--muted)] hover:text-white"
+                className="px-2 py-1 text-[11px] cursor-pointer hover:opacity-80"
+                style={{ color: "var(--muted)" }}
               >
                 Deselect
               </button>
@@ -669,15 +679,19 @@ export function DatabankTransactionsTable({
 
       {/* ── 5. TRANSACTIONS TABLE ── */}
       <div
-        className="rounded-[12px] overflow-hidden border border-[var(--border)]"
-        style={{ background: "var(--bg, #0B0E17)" }}
+        className="rounded-[12px] overflow-hidden"
+        style={{ background: "var(--card)", border: "1px solid var(--border)" }}
       >
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-[12px]">
             <thead>
               <tr
-                className="border-b border-[var(--border)] text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]"
-                style={{ background: "rgba(255,255,255,0.02)" }}
+                className="text-[11px] font-semibold uppercase tracking-wider"
+                style={{
+                  background: "var(--bg)",
+                  borderBottom: "1px solid var(--border)",
+                  color: "var(--muted)",
+                }}
               >
                 <th className="py-3 px-3 w-10 text-center">
                   <input
@@ -695,14 +709,15 @@ export function DatabankTransactionsTable({
                       setSortOrder("DESC");
                     }
                   }}
-                  className="py-3 px-3 cursor-pointer select-none hover:text-white"
+                  className="py-3 px-3 cursor-pointer select-none hover:opacity-80"
+                  style={{ color: "var(--muted)" }}
                 >
                   Date {sortBy === "entry_date" && (sortOrder === "DESC" ? "↓" : "↑")}
                 </th>
-                <th className="py-3 px-3">Description / Merchant</th>
-                <th className="py-3 px-3">Category</th>
-                <th className="py-3 px-3">Type</th>
-                <th className="py-3 px-3">Source</th>
+                <th className="py-3 px-3" style={{ color: "var(--muted)" }}>Description / Merchant</th>
+                <th className="py-3 px-3" style={{ color: "var(--muted)" }}>Category</th>
+                <th className="py-3 px-3" style={{ color: "var(--muted)" }}>Type</th>
+                <th className="py-3 px-3" style={{ color: "var(--muted)" }}>Source</th>
                 <th
                   onClick={() => {
                     if (sortBy === "amount") setSortOrder(sortOrder === "ASC" ? "DESC" : "ASC");
@@ -711,26 +726,27 @@ export function DatabankTransactionsTable({
                       setSortOrder("DESC");
                     }
                   }}
-                  className="py-3 px-3 text-right cursor-pointer select-none hover:text-white"
+                  className="py-3 px-3 text-right cursor-pointer select-none hover:opacity-80"
+                  style={{ color: "var(--muted)" }}
                 >
                   Amount {sortBy === "amount" && (sortOrder === "DESC" ? "↓" : "↑")}
                 </th>
-                <th className="py-3 px-3 text-center w-20">Actions</th>
+                <th className="py-3 px-3 text-center w-20" style={{ color: "var(--muted)" }}>Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[var(--border)]">
+            <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-[var(--muted)]">
+                  <td colSpan={8} className="py-12 text-center" style={{ color: "var(--muted)" }}>
                     <div className="inline-block animate-spin mr-2">⏳</div> Loading DataBank transactions...
                   </td>
                 </tr>
               ) : entries.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-[var(--muted)]">
+                  <td colSpan={8} className="py-12 text-center" style={{ color: "var(--muted)" }}>
                     <div className="text-[24px] mb-2">📂</div>
-                    <div className="font-semibold text-white">No transactions found</div>
-                    <p className="text-[11px] mt-1 text-[var(--muted)]">
+                    <div className="font-semibold text-[14px]" style={{ color: "var(--text)" }}>No transactions found</div>
+                    <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>
                       {search || typeFilter !== "all" || categoryFilter !== "all"
                         ? "Try clearing filters or search term."
                         : "Sync your Gmail, upload a statement, or add a transaction to begin."}
@@ -747,9 +763,10 @@ export function DatabankTransactionsTable({
                   return (
                     <tr
                       key={t.id}
-                      className="group transition-all hover:bg-[rgba(255,255,255,0.03)] cursor-pointer"
+                      className="group transition-all cursor-pointer hover:bg-[var(--bg)]/70"
                       style={{
-                        background: isSelected ? "rgba(0,196,140,0.04)" : "transparent",
+                        background: isSelected ? "rgba(0,196,140,0.08)" : "transparent",
+                        borderBottom: "1px solid var(--border)",
                       }}
                       onClick={() => openEdit(t)}
                     >
@@ -767,13 +784,15 @@ export function DatabankTransactionsTable({
                           className="rounded cursor-pointer"
                         />
                       </td>
-                      <td className="py-3 px-3 whitespace-nowrap text-[11px] text-[var(--muted)]">
+                      <td className="py-3 px-3 whitespace-nowrap text-[11px]" style={{ color: "var(--muted)" }}>
                         {formatDate(t.entry_date)}
                       </td>
                       <td className="py-3 px-3 max-w-[280px]">
-                        <div className="font-medium text-white truncate">{t.description}</div>
+                        <div className="font-semibold truncate" style={{ color: "var(--text)" }}>
+                          {t.description}
+                        </div>
                         {bankName && (
-                          <div className="text-[10px] text-[var(--muted)] mt-0.5 truncate">
+                          <div className="text-[11px] mt-0.5 truncate" style={{ color: "var(--muted)" }}>
                             🏦 {bankName} {t.metadata?.account_number ? `(${t.metadata.account_number})` : ""}
                           </div>
                         )}
@@ -782,7 +801,8 @@ export function DatabankTransactionsTable({
                         <span
                           className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium"
                           style={{
-                            background: "rgba(255,255,255,0.06)",
+                            background: "var(--bg)",
+                            border: "1px solid var(--border)",
                             color: "var(--text)",
                           }}
                         >
@@ -802,12 +822,12 @@ export function DatabankTransactionsTable({
                         </span>
                       </td>
                       <td className="py-3 px-3 whitespace-nowrap">
-                        <span className="text-[10px] text-[var(--muted)] capitalize">
+                        <span className="text-[11px] capitalize" style={{ color: "var(--muted)" }}>
                           {t.source === "gmail" ? "📧 Gmail" : t.source === "upload" ? "📄 Statement" : "✏️ Manual"}
                         </span>
                       </td>
-                      <td className="py-3 px-3 text-right whitespace-nowrap font-bold">
-                        <span style={{ color: t.entry_type === "income" ? "var(--green)" : "var(--text)" }}>
+                      <td className="py-3 px-3 text-right whitespace-nowrap font-bold text-[13px]">
+                        <span style={{ color: t.entry_type === "income" ? "var(--green, #00A677)" : "var(--text)" }}>
                           {cfg.sign}
                           {formatNaira(t.amountNaira)}
                         </span>
@@ -820,14 +840,16 @@ export function DatabankTransactionsTable({
                           <button
                             onClick={() => openEdit(t)}
                             title="Edit transaction"
-                            className="p-1 rounded text-[var(--muted)] hover:text-white hover:bg-[rgba(255,255,255,0.08)] transition-all"
+                            className="p-1 rounded cursor-pointer transition-all hover:bg-[var(--border)]/40"
+                            style={{ color: "var(--muted)" }}
                           >
                             ✏️
                           </button>
                           <button
                             onClick={() => setDeleteConfirmId(t.id)}
                             title="Delete transaction"
-                            className="p-1 rounded text-[var(--muted)] hover:text-[#E24B4A] hover:bg-[rgba(226,75,74,0.12)] transition-all"
+                            className="p-1 rounded cursor-pointer transition-all hover:bg-[#E24B4A]/20"
+                            style={{ color: "var(--muted)" }}
                           >
                             🗑️
                           </button>
@@ -842,52 +864,59 @@ export function DatabankTransactionsTable({
         </div>
 
         {/* ── 6. PAGINATION FOOTER ── */}
-        <div className="p-3.5 border-t border-[var(--border)] flex items-center justify-between flex-wrap gap-3 text-[12px] text-[var(--muted)]">
+        <div
+          className="p-3.5 flex items-center justify-between flex-wrap gap-3 text-[12px]"
+          style={{
+            borderTop: "1px solid var(--border)",
+            background: "var(--bg)",
+            color: "var(--muted)",
+          }}
+        >
           <div>
             Showing{" "}
-            <span className="font-semibold text-white">
+            <span className="font-semibold" style={{ color: "var(--text)" }}>
               {pagination.total === 0 ? 0 : (pagination.page - 1) * pagination.limit + 1}
             </span>{" "}
             to{" "}
-            <span className="font-semibold text-white">
+            <span className="font-semibold" style={{ color: "var(--text)" }}>
               {Math.min(pagination.page * pagination.limit, pagination.total)}
             </span>{" "}
-            of <span className="font-semibold text-white">{pagination.total.toLocaleString()}</span> entries
+            of <span className="font-semibold" style={{ color: "var(--text)" }}>{pagination.total.toLocaleString()}</span> entries
           </div>
 
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => setPage(1)}
               disabled={page <= 1}
-              className="px-2.5 py-1 rounded-[6px] border text-[11px] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[rgba(255,255,255,0.04)]"
-              style={{ borderColor: "var(--border)" }}
+              className="px-2.5 py-1 rounded-[6px] text-[11px] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--border)]/40 cursor-pointer"
+              style={{ border: "1px solid var(--border)", color: "var(--text)", background: "var(--card)" }}
             >
               « First
             </button>
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="px-2.5 py-1 rounded-[6px] border text-[11px] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[rgba(255,255,255,0.04)]"
-              style={{ borderColor: "var(--border)" }}
+              className="px-2.5 py-1 rounded-[6px] text-[11px] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--border)]/40 cursor-pointer"
+              style={{ border: "1px solid var(--border)", color: "var(--text)", background: "var(--card)" }}
             >
               ‹ Prev
             </button>
-            <span className="px-3 text-[11px] font-semibold text-white">
+            <span className="px-3 text-[11px] font-semibold" style={{ color: "var(--text)" }}>
               Page {pagination.page} of {pagination.totalPages || 1}
             </span>
             <button
               onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
               disabled={page >= pagination.totalPages}
-              className="px-2.5 py-1 rounded-[6px] border text-[11px] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[rgba(255,255,255,0.04)]"
-              style={{ borderColor: "var(--border)" }}
+              className="px-2.5 py-1 rounded-[6px] text-[11px] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--border)]/40 cursor-pointer"
+              style={{ border: "1px solid var(--border)", color: "var(--text)", background: "var(--card)" }}
             >
               Next ›
             </button>
             <button
               onClick={() => setPage(pagination.totalPages)}
               disabled={page >= pagination.totalPages}
-              className="px-2.5 py-1 rounded-[6px] border text-[11px] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[rgba(255,255,255,0.04)]"
-              style={{ borderColor: "var(--border)" }}
+              className="px-2.5 py-1 rounded-[6px] text-[11px] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--border)]/40 cursor-pointer"
+              style={{ border: "1px solid var(--border)", color: "var(--text)", background: "var(--card)" }}
             >
               Last »
             </button>
@@ -898,25 +927,29 @@ export function DatabankTransactionsTable({
       {/* ── 7. EDIT TRANSACTION MODAL ── */}
       <AnimatePresence>
         {editingEntry && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-md rounded-[16px] p-6 shadow-2xl flex flex-col gap-4 border"
+              className="w-full max-w-md rounded-[16px] p-6 shadow-2xl flex flex-col gap-4"
               style={{
-                background: "var(--card, #131722)",
-                borderColor: "var(--border, rgba(255,255,255,0.12))",
-                color: "var(--text, #fff)",
+                background: "var(--card)",
+                border: "1px solid var(--border)",
+                color: "var(--text)",
               }}
             >
-              <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
-                <div className="font-bold text-[16px] flex items-center gap-2">
+              <div
+                className="flex items-center justify-between pb-3"
+                style={{ borderBottom: "1px solid var(--border)" }}
+              >
+                <div className="font-bold text-[16px] flex items-center gap-2" style={{ color: "var(--text)" }}>
                   <span>✏️ Edit Transaction</span>
                 </div>
                 <button
                   onClick={() => setEditingEntry(null)}
-                  className="text-[var(--muted)] hover:text-white text-[16px]"
+                  className="cursor-pointer hover:opacity-80 text-[16px]"
+                  style={{ color: "var(--muted)" }}
                 >
                   ✕
                 </button>
@@ -924,20 +957,25 @@ export function DatabankTransactionsTable({
 
               <div className="flex flex-col gap-3 text-[12px]">
                 <div>
-                  <label className="text-[11px] font-medium text-[var(--muted)] block mb-1">
+                  <label className="text-[11px] font-medium block mb-1" style={{ color: "var(--muted)" }}>
                     Description / Merchant
                   </label>
                   <input
                     type="text"
                     value={editDesc}
                     onChange={(e) => setEditDesc(e.target.value)}
-                    className="w-full px-3 py-2 rounded-[8px] bg-[var(--bg)] border border-[var(--border)] text-white focus:outline-none focus:border-[var(--green)]"
+                    className="w-full px-3 py-2 rounded-[8px] focus:outline-none"
+                    style={{
+                      background: "var(--input-bg, var(--bg))",
+                      border: "1px solid var(--border)",
+                      color: "var(--text)",
+                    }}
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] font-medium text-[var(--muted)] block mb-1">
+                    <label className="text-[11px] font-medium block mb-1" style={{ color: "var(--muted)" }}>
                       Amount (₦ Naira)
                     </label>
                     <input
@@ -945,18 +983,28 @@ export function DatabankTransactionsTable({
                       step="0.01"
                       value={editAmount}
                       onChange={(e) => setEditAmount(e.target.value)}
-                      className="w-full px-3 py-2 rounded-[8px] bg-[var(--bg)] border border-[var(--border)] text-white focus:outline-none focus:border-[var(--green)]"
+                      className="w-full px-3 py-2 rounded-[8px] focus:outline-none"
+                      style={{
+                        background: "var(--input-bg, var(--bg))",
+                        border: "1px solid var(--border)",
+                        color: "var(--text)",
+                      }}
                     />
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-medium text-[var(--muted)] block mb-1">
+                    <label className="text-[11px] font-medium block mb-1" style={{ color: "var(--muted)" }}>
                       Transaction Type
                     </label>
                     <select
                       value={editType}
                       onChange={(e) => setEditType(e.target.value as Transaction["entry_type"])}
-                      className="w-full px-3 py-2 rounded-[8px] bg-[var(--bg)] border border-[var(--border)] text-white focus:outline-none"
+                      className="w-full px-3 py-2 rounded-[8px] focus:outline-none cursor-pointer"
+                      style={{
+                        background: "var(--input-bg, var(--bg))",
+                        border: "1px solid var(--border)",
+                        color: "var(--text)",
+                      }}
                     >
                       <option value="income">Income 💰</option>
                       <option value="expense">Expense 💸</option>
@@ -969,7 +1017,7 @@ export function DatabankTransactionsTable({
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] font-medium text-[var(--muted)] block mb-1">
+                    <label className="text-[11px] font-medium block mb-1" style={{ color: "var(--muted)" }}>
                       Category
                     </label>
                     <input
@@ -977,7 +1025,12 @@ export function DatabankTransactionsTable({
                       list="edit-categories-list"
                       value={editCategory}
                       onChange={(e) => setEditCategory(e.target.value)}
-                      className="w-full px-3 py-2 rounded-[8px] bg-[var(--bg)] border border-[var(--border)] text-white focus:outline-none focus:border-[var(--green)]"
+                      className="w-full px-3 py-2 rounded-[8px] focus:outline-none"
+                      style={{
+                        background: "var(--input-bg, var(--bg))",
+                        border: "1px solid var(--border)",
+                        color: "var(--text)",
+                      }}
                     />
                     <datalist id="edit-categories-list">
                       {COMMON_CATEGORIES.map((c) => (
@@ -987,30 +1040,39 @@ export function DatabankTransactionsTable({
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-medium text-[var(--muted)] block mb-1">
+                    <label className="text-[11px] font-medium block mb-1" style={{ color: "var(--muted)" }}>
                       Date
                     </label>
                     <input
                       type="date"
                       value={editDate}
                       onChange={(e) => setEditDate(e.target.value)}
-                      className="w-full px-3 py-2 rounded-[8px] bg-[var(--bg)] border border-[var(--border)] text-white focus:outline-none"
+                      className="w-full px-3 py-2 rounded-[8px] focus:outline-none"
+                      style={{
+                        background: "var(--input-bg, var(--bg))",
+                        border: "1px solid var(--border)",
+                        color: "var(--text)",
+                      }}
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--border)]">
+              <div
+                className="flex items-center justify-end gap-2 pt-3"
+                style={{ borderTop: "1px solid var(--border)" }}
+              >
                 <button
                   onClick={() => setEditingEntry(null)}
-                  className="px-4 py-2 rounded-[8px] border border-[var(--border)] text-[12px] text-[var(--muted)] hover:text-white"
+                  className="px-4 py-2 rounded-[8px] text-[12px] cursor-pointer hover:opacity-80"
+                  style={{ border: "1px solid var(--border)", color: "var(--muted)", background: "var(--bg)" }}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSaveEdit}
                   disabled={savingEdit}
-                  className="px-4 py-2 rounded-[8px] text-[12px] font-semibold text-[#0B0E17] bg-[var(--green)] hover:opacity-90 disabled:opacity-50"
+                  className="px-4 py-2 rounded-[8px] text-[12px] font-semibold text-[#0B0E17] bg-[var(--green)] hover:opacity-90 disabled:opacity-50 cursor-pointer"
                 >
                   {savingEdit ? "Saving..." : "Save Changes"}
                 </button>
@@ -1023,25 +1085,29 @@ export function DatabankTransactionsTable({
       {/* ── 8. ADD TRANSACTION MODAL ── */}
       <AnimatePresence>
         {isAdding && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-md rounded-[16px] p-6 shadow-2xl flex flex-col gap-4 border"
+              className="w-full max-w-md rounded-[16px] p-6 shadow-2xl flex flex-col gap-4"
               style={{
-                background: "var(--card, #131722)",
-                borderColor: "var(--border, rgba(255,255,255,0.12))",
-                color: "var(--text, #fff)",
+                background: "var(--card)",
+                border: "1px solid var(--border)",
+                color: "var(--text)",
               }}
             >
-              <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
-                <div className="font-bold text-[16px] flex items-center gap-2">
+              <div
+                className="flex items-center justify-between pb-3"
+                style={{ borderBottom: "1px solid var(--border)" }}
+              >
+                <div className="font-bold text-[16px] flex items-center gap-2" style={{ color: "var(--text)" }}>
                   <span>➕ Add New Transaction</span>
                 </div>
                 <button
                   onClick={() => setIsAdding(false)}
-                  className="text-[var(--muted)] hover:text-white text-[16px]"
+                  className="cursor-pointer hover:opacity-80 text-[16px]"
+                  style={{ color: "var(--muted)" }}
                 >
                   ✕
                 </button>
@@ -1049,7 +1115,7 @@ export function DatabankTransactionsTable({
 
               <div className="flex flex-col gap-3 text-[12px]">
                 <div>
-                  <label className="text-[11px] font-medium text-[var(--muted)] block mb-1">
+                  <label className="text-[11px] font-medium block mb-1" style={{ color: "var(--muted)" }}>
                     Description / Merchant
                   </label>
                   <input
@@ -1057,13 +1123,18 @@ export function DatabankTransactionsTable({
                     value={addDesc}
                     onChange={(e) => setAddDesc(e.target.value)}
                     placeholder="e.g. Salary Payment, Uber Ride, Netflix"
-                    className="w-full px-3 py-2 rounded-[8px] bg-[var(--bg)] border border-[var(--border)] text-white focus:outline-none focus:border-[var(--green)]"
+                    className="w-full px-3 py-2 rounded-[8px] focus:outline-none"
+                    style={{
+                      background: "var(--input-bg, var(--bg))",
+                      border: "1px solid var(--border)",
+                      color: "var(--text)",
+                    }}
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] font-medium text-[var(--muted)] block mb-1">
+                    <label className="text-[11px] font-medium block mb-1" style={{ color: "var(--muted)" }}>
                       Amount (₦ Naira)
                     </label>
                     <input
@@ -1072,18 +1143,28 @@ export function DatabankTransactionsTable({
                       value={addAmount}
                       onChange={(e) => setAddAmount(e.target.value)}
                       placeholder="e.g. 25000"
-                      className="w-full px-3 py-2 rounded-[8px] bg-[var(--bg)] border border-[var(--border)] text-white focus:outline-none focus:border-[var(--green)]"
+                      className="w-full px-3 py-2 rounded-[8px] focus:outline-none"
+                      style={{
+                        background: "var(--input-bg, var(--bg))",
+                        border: "1px solid var(--border)",
+                        color: "var(--text)",
+                      }}
                     />
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-medium text-[var(--muted)] block mb-1">
+                    <label className="text-[11px] font-medium block mb-1" style={{ color: "var(--muted)" }}>
                       Type
                     </label>
                     <select
                       value={addType}
                       onChange={(e) => setAddType(e.target.value as Transaction["entry_type"])}
-                      className="w-full px-3 py-2 rounded-[8px] bg-[var(--bg)] border border-[var(--border)] text-white focus:outline-none"
+                      className="w-full px-3 py-2 rounded-[8px] focus:outline-none cursor-pointer"
+                      style={{
+                        background: "var(--input-bg, var(--bg))",
+                        border: "1px solid var(--border)",
+                        color: "var(--text)",
+                      }}
                     >
                       <option value="income">Income 💰</option>
                       <option value="expense">Expense 💸</option>
@@ -1096,7 +1177,7 @@ export function DatabankTransactionsTable({
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] font-medium text-[var(--muted)] block mb-1">
+                    <label className="text-[11px] font-medium block mb-1" style={{ color: "var(--muted)" }}>
                       Category
                     </label>
                     <input
@@ -1105,7 +1186,12 @@ export function DatabankTransactionsTable({
                       value={addCategory}
                       onChange={(e) => setAddCategory(e.target.value)}
                       placeholder="e.g. Food & Dining"
-                      className="w-full px-3 py-2 rounded-[8px] bg-[var(--bg)] border border-[var(--border)] text-white focus:outline-none focus:border-[var(--green)]"
+                      className="w-full px-3 py-2 rounded-[8px] focus:outline-none"
+                      style={{
+                        background: "var(--input-bg, var(--bg))",
+                        border: "1px solid var(--border)",
+                        color: "var(--text)",
+                      }}
                     />
                     <datalist id="add-categories-list">
                       {COMMON_CATEGORIES.map((c) => (
@@ -1115,30 +1201,39 @@ export function DatabankTransactionsTable({
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-medium text-[var(--muted)] block mb-1">
+                    <label className="text-[11px] font-medium block mb-1" style={{ color: "var(--muted)" }}>
                       Date
                     </label>
                     <input
                       type="date"
                       value={addDate}
                       onChange={(e) => setAddDate(e.target.value)}
-                      className="w-full px-3 py-2 rounded-[8px] bg-[var(--bg)] border border-[var(--border)] text-white focus:outline-none"
+                      className="w-full px-3 py-2 rounded-[8px] focus:outline-none"
+                      style={{
+                        background: "var(--input-bg, var(--bg))",
+                        border: "1px solid var(--border)",
+                        color: "var(--text)",
+                      }}
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--border)]">
+              <div
+                className="flex items-center justify-end gap-2 pt-3"
+                style={{ borderTop: "1px solid var(--border)" }}
+              >
                 <button
                   onClick={() => setIsAdding(false)}
-                  className="px-4 py-2 rounded-[8px] border border-[var(--border)] text-[12px] text-[var(--muted)] hover:text-white"
+                  className="px-4 py-2 rounded-[8px] text-[12px] cursor-pointer hover:opacity-80"
+                  style={{ border: "1px solid var(--border)", color: "var(--muted)", background: "var(--bg)" }}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleAddTransaction}
                   disabled={savingEdit}
-                  className="px-4 py-2 rounded-[8px] text-[12px] font-semibold text-[#0B0E17] bg-[var(--green)] hover:opacity-90 disabled:opacity-50"
+                  className="px-4 py-2 rounded-[8px] text-[12px] font-semibold text-[#0B0E17] bg-[var(--green)] hover:opacity-90 disabled:opacity-50 cursor-pointer"
                 >
                   {savingEdit ? "Adding..." : "Add Transaction"}
                 </button>
@@ -1151,27 +1246,33 @@ export function DatabankTransactionsTable({
       {/* ── 9. DELETE CONFIRMATION MODAL ── */}
       <AnimatePresence>
         {deleteConfirmId && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-sm rounded-[16px] p-5 shadow-2xl flex flex-col gap-4 border bg-[var(--card)] border-[var(--border)] text-white text-[13px]"
+              className="w-full max-w-sm rounded-[16px] p-5 shadow-2xl flex flex-col gap-4 text-[13px]"
+              style={{
+                background: "var(--card)",
+                border: "1px solid var(--border)",
+                color: "var(--text)",
+              }}
             >
               <div className="font-bold text-[15px] text-[#E24B4A]">Delete Transaction?</div>
-              <p className="text-[var(--muted)] text-[12px]">
+              <p className="text-[12px]" style={{ color: "var(--muted)" }}>
                 Are you sure you want to permanently delete this transaction from your DataBank?
               </p>
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   onClick={() => setDeleteConfirmId(null)}
-                  className="px-3.5 py-1.5 rounded-[8px] border border-[var(--border)] text-[12px] text-[var(--muted)] hover:text-white"
+                  className="px-3.5 py-1.5 rounded-[8px] text-[12px] cursor-pointer hover:opacity-80"
+                  style={{ border: "1px solid var(--border)", color: "var(--muted)", background: "var(--bg)" }}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={() => handleDelete(deleteConfirmId)}
-                  className="px-3.5 py-1.5 rounded-[8px] text-[12px] font-semibold text-white bg-[#E24B4A] hover:opacity-90"
+                  className="px-3.5 py-1.5 rounded-[8px] text-[12px] font-semibold text-white bg-[#E24B4A] hover:opacity-90 cursor-pointer"
                 >
                   Delete
                 </button>
@@ -1184,29 +1285,39 @@ export function DatabankTransactionsTable({
       {/* ── 10. BATCH ACTION MODAL ── */}
       <AnimatePresence>
         {batchAction && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-sm rounded-[16px] p-5 shadow-2xl flex flex-col gap-4 border bg-[var(--card)] border-[var(--border)] text-white text-[13px]"
+              className="w-full max-w-sm rounded-[16px] p-5 shadow-2xl flex flex-col gap-4 text-[13px]"
+              style={{
+                background: "var(--card)",
+                border: "1px solid var(--border)",
+                color: "var(--text)",
+              }}
             >
-              <div className="font-bold text-[15px]">
+              <div className="font-bold text-[15px]" style={{ color: "var(--text)" }}>
                 {batchAction === "delete" ? "Delete Multiple Transactions" : "Batch Change Category"}
               </div>
 
               {batchAction === "delete" ? (
-                <p className="text-[var(--muted)] text-[12px]">
+                <p className="text-[12px]" style={{ color: "var(--muted)" }}>
                   Are you sure you want to delete{" "}
-                  <strong className="text-white">{selectedIds.size}</strong> selected transactions from your database?
+                  <strong style={{ color: "var(--text)" }}>{selectedIds.size}</strong> selected transactions from your database?
                 </p>
               ) : (
                 <div className="flex flex-col gap-2">
-                  <label className="text-[11px] text-[var(--muted)]">Select New Category</label>
+                  <label className="text-[11px]" style={{ color: "var(--muted)" }}>Select New Category</label>
                   <select
                     value={batchCategory}
                     onChange={(e) => setBatchCategory(e.target.value)}
-                    className="w-full px-3 py-2 rounded-[8px] bg-[var(--bg)] border border-[var(--border)] text-white text-[12px]"
+                    className="w-full px-3 py-2 rounded-[8px] text-[12px] cursor-pointer focus:outline-none"
+                    style={{
+                      background: "var(--input-bg, var(--bg))",
+                      border: "1px solid var(--border)",
+                      color: "var(--text)",
+                    }}
                   >
                     {COMMON_CATEGORIES.map((c) => (
                       <option key={c} value={c}>
@@ -1220,14 +1331,15 @@ export function DatabankTransactionsTable({
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   onClick={() => setBatchAction(null)}
-                  className="px-3.5 py-1.5 rounded-[8px] border border-[var(--border)] text-[12px] text-[var(--muted)] hover:text-white"
+                  className="px-3.5 py-1.5 rounded-[8px] text-[12px] cursor-pointer hover:opacity-80"
+                  style={{ border: "1px solid var(--border)", color: "var(--muted)", background: "var(--bg)" }}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleBatchSubmit}
                   disabled={batchProcessing}
-                  className={`px-3.5 py-1.5 rounded-[8px] text-[12px] font-semibold text-white ${
+                  className={`px-3.5 py-1.5 rounded-[8px] text-[12px] font-semibold text-white cursor-pointer ${
                     batchAction === "delete" ? "bg-[#E24B4A]" : "bg-[var(--green)] text-[#0B0E17]"
                   }`}
                 >

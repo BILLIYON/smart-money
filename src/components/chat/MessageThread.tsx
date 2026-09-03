@@ -1135,7 +1135,7 @@ export function MessageThread() {
 
 // ── Group thread ───────────────────────────────────────────
 export function GroupMessageThread() {
-  const { activeGroupId, groupThreads, setMobileView, communityBuddies } = useChatStore();
+  const { activeGroupId, groupThreads, setMobileView, communityBuddies, groups } = useChatStore();
   const messages = groupThreads[activeGroupId] ?? [];
   const bottomRef = useRef<HTMLDivElement>(null);
   const { chips: groupChips, noData: groupNoData } = useDataSources();
@@ -1144,12 +1144,12 @@ export function GroupMessageThread() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, messages[messages.length - 1]?.content]);
 
-  const groupDef = GROUPS.find((g) => g.id === activeGroupId);
+  const groupDef = groups.find((g) => g.id === activeGroupId) || GROUPS.find((g) => g.id === activeGroupId);
   const groupName = groupDef?.name ?? "Group Chat";
-  const buddyCount = groupDef?.avatars.length ?? 2;
-  // For avatar stacks, fall back to deriving from thread messages
+  const buddyCount = groupDef?.buddyIds?.length ?? groupDef?.avatars.length ?? 2;
+  // For avatar stacks, use council buddyIds or fall back to deriving from thread messages
   const threadBuddyIds = Array.from(new Set(messages.filter((m) => m.role === "ai" && m.buddyId && m.buddyId !== "__system__").map((m) => m.buddyId!)));
-  const avatarIds = threadBuddyIds.length > 0 ? threadBuddyIds : (groupDef?.buddyIds ?? []);
+  const avatarIds = groupDef?.buddyIds?.length ? groupDef.buddyIds : (threadBuddyIds.length > 0 ? threadBuddyIds : ["contrarian", "buffett"]);
 
   return (
     <div className="flex flex-col h-full bg-[var(--bg)]">

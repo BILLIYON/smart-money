@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { useDatabankStore } from "./databankStore";
-import { type Buddy } from "@/lib/buddies";
+import { type Buddy, getBuddy } from "@/lib/buddies";
 
 function extractJsonPayload(content: string, tagPrefix: string): { jsonStr: string | null; fullMatch: string | null } {
   const tagIndex = content.indexOf(tagPrefix);
@@ -327,6 +327,16 @@ export const GROUPS: GroupDef[] = [
   },
 ];
 
+function loadStoredCustomGroups(): GroupDef[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem("smart_money_custom_groups");
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
 // ── Session type ────────────────────────────────────────────
 export type ChatSession = {
   id: string;
@@ -365,8 +375,11 @@ type ChatStore = {
   updateMessage: (buddyId: string, msgId: string, patch: Partial<ChatMessage>) => void;
 
   // group
+  groups: GroupDef[];
   activeGroupId: string;
   setActiveGroupId: (id: string) => void;
+  createGroup: (name: string, buddyIds: string[]) => Promise<string>;
+  selectGroup: (groupId: string) => Promise<void>;
   groupThreads: Record<string, ChatMessage[]>;
   initGroupThread: (groupId: string, seed?: ChatMessage[]) => void;
   addGroupMessage: (groupId: string, msg: ChatMessage) => void;
@@ -505,8 +518,84 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set((s) => ({ threads: { ...s.threads, [buddyId]: patchMsg(s.threads[buddyId] ?? [], msgId, patch) } })),
 
   // group
+  groups: [...GROUPS, ...loadStoredCustomGroups()],
   activeGroupId: "investment-council",
   setActiveGroupId: (id) => set({ activeGroupId: id }),
+
+  createGroup: async (name: string, buddyIds: string[]) => {
+    const newId = `council-${Date.now()}`;
+    const community = get().communityBuddies;
+    const avatars = buddyIds.map((bid) => {
+      const b = getBuddy(bid, community);
+      return {
+        bg: b?.avatarBg || "#132952",
+        content: b?.avatarContent || "🎯",
+        serif: b?.avatarIsSerif || false,
+      };
+    });
+
+    const newGroupDef: GroupDef = {
+      id: newId,
+      name,
+      preview: `${buddyIds.length} buddies in council`,
+      hasUnread: false,
+      buddyIds,
+      avatars,
+    };
+
+    let sessionId: string | null = null;
+    try {
+      const res = await fetch("/api/chat/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          buddyIds,
+          sessionName: name,
+          isGroup: true,
+        }),
+      });
+      if (res.ok) {
+        const newSess = (await res.json()) as ChatSession;
+        sessionId = newSess.id;
+        set((s) => ({ sessions: [newSess, ...s.sessions] }));
+      }
+    } catch (e) {
+      console.error("[createGroup] error creating session:", e);
+    }
+
+    set((s) => {
+      const updatedGroups = [newGroupDef, ...s.groups.filter((g) => g.id !== newId)];
+      if (typeof window !== "undefined") {
+        try {
+          const customOnly = updatedGroups.filter((g) => !GROUPS.some((sg) => sg.id === g.id));
+          localStorage.setItem("smart_money_custom_groups", JSON.stringify(customOnly));
+        } catch {}
+      }
+      return {
+        groups: updatedGroups,
+        activeGroupId: newId,
+        activeSessionId: sessionId,
+        chatMode: "group",
+        groupThreads: { ...s.groupThreads, [newId]: [] },
+      };
+    });
+
+    return newId;
+  },
+
+  selectGroup: async (groupId: string) => {
+    set({ chatMode: "group", activeGroupId: groupId, mobileView: "chat" });
+    const s = get();
+    const match = s.sessions.find(
+      (sess) => sess.is_group && (sess.buddy_ids?.includes(groupId) || sess.id === groupId)
+    );
+    if (match) {
+      set({ activeSessionId: match.id });
+      await s.loadSessionMessages(match.id);
+    } else {
+      await s.loadRecentHistoryForBuddy(groupId);
+    }
+  },
 
   groupThreads: { "investment-council": DEFAULT_GROUP_THREAD },
 

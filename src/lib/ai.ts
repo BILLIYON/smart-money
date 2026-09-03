@@ -328,9 +328,12 @@ export function getBuddySystemPrompt(
 [GOAL: {"title": "Short Goal Title", "target_amount": 500000, "target_date": "2026-12-31"}]
 This enables the user to save your recommendation as a Goal in 1 click!
 
-2. AGENT ACTION TAG: When you recommend an actionable money transfer or payment:
+2. AGENT ACTION TAG: When you recommend an actionable money transfer, payment, or data cleaning:
 [AGENT_ACTION: {"title": "Short descriptive title", "action": "Action description", "amount": 50000}]
 where amount is in minor currency units (e.g. kobo for NGN).
+For DataBank cleaning or transaction accuracy audit, emit:
+[AGENT_ACTION: {"title": "Clean DataBank Transactions", "action": "databank_clean"}]
+
 
 3. DATABANK WRITE TAG: When the user explicitly asks you to add, log, record, or save financial data to their DataBank — such as expenses, income, a list of transactions, a financial goal, or updating a bank account balance / correcting net worth — emit this tag EXACTLY ONCE at the END of your reply:
 [DATABANK_WRITE: {"entries": [{"description": "Netflix", "amount": 4500, "entry_type": "expense", "category": "subscriptions", "date": "2026-07-31"}], "goal": {"title": "Emergency Fund", "target_amount": 500000, "target_date": "2027-01-01"}}]
@@ -988,33 +991,40 @@ export async function extractFinancialDataFromEmail(
 
       // Try AI refinement if model is reachable, but NEVER drop the transaction if AI fails
       try {
-        const prompt = `You are a financial verification agent for Smart Money. Verify and clean this programmatically extracted bank alert details.
+        const prompt = `You are a financial verification agent for Smart Money. Verify and clean these programmatically extracted bank alert details.
 
 ${aiPrompt ? `CUSTOM EXTRACTION PARAMETERS / USER INSTRUCTIONS:\n- ${aiPrompt}\n` : ""}
 
-Alert Details:
+Extracted Alert Details:
 - Bank: ${data.bank || data.provider || "Unknown"}
-- Type: ${data.entry_type} (income/expense)
+- Preliminary Type: ${data.entry_type} (income/expense)
 - Amount: ₦${data.amount}
 - Category: ${data.category || "other"}
 - Narration: ${data.description}
 
-Email subject: ${subject}
-Email body snippet:
-${emailBody.slice(0, 1000)}
+Email Subject: ${subject}
+Email Sender: ${from}
+Email Body Snippet:
+${emailBody.slice(0, 4000)}
 
-Verify that this is a real bank transaction alert and not a summary, advertisement, or duplicate notification.
-Clean and output the transaction into a valid JSON object matching this structure (do not return any markdown or commentary outside the JSON):
+CRITICAL CLASSIFICATION RULES:
+1. entry_type DIRECTION:
+   - Use "expense" if money was debited, sent, paid, spent, charged, or withdrawn from the user's account (transfers sent to someone, POS purchases, card debits, bill payments, airtime top-ups, ATM withdrawals). NOTE: Phrases like "Account Credited: [Beneficiary]" in transfer alerts describe the RECIPIENT's account — the user's account was DEBITED, so entry_type MUST be "expense".
+   - Use "income" if money was credited, deposited, or received into the user's account (salary, transfers received, credit alerts, refunds, cash-in).
+2. AMOUNT:
+   - amount_naira must be the actual transaction amount, NOT the available or ledger account balance.
+
+Clean and output into a valid JSON object matching this structure (do not return markdown or commentary):
 {
   "is_transaction": true,
-  "amount_naira": <number representing the transaction value in Naira, e.g. 50000 for ₦50,000>,
+  "amount_naira": <number representing transaction value in Naira, e.g. 50000 for ₦50,000>,
   "description": "<clean descriptive narration>",
   "entry_type": "income" | "expense",
   "category": "income" | "transport" | "food" | "subscriptions" | "transfer" | "utilities" | "other",
   "bank": "<the bank or provider name e.g. Kuda, OPay, GTBank, Zenith, Access, etc.>",
   "account_balance": <number representing the available account balance in Naira after this transaction, or null if not mentioned>
 }
-If it is not a real transaction, return:
+If it is not a real financial transaction alert, return:
 { "is_transaction": false }`;
 
         const raw = await askAIWithEngine(prompt, aiEngine, options);
@@ -1026,7 +1036,7 @@ If it is not a real transaction, return:
             return null;
           }
           if (typeof parsed.amount_naira === "number" && parsed.amount_naira > 0) {
-            console.log(`[Gmail Lightweight Sync (${aiEngine})] Cleaned transaction: ₦${parsed.amount_naira} (${parsed.description})`);
+            console.log(`[Gmail Lightweight Sync (${aiEngine})] Cleaned transaction: ₦${parsed.amount_naira} (${parsed.description}) [${parsed.entry_type}]`);
             return {
               amount: parsed.amount_naira,
               description: String(parsed.description || data.description || "Gmail Transaction").slice(0, 120),
@@ -1064,10 +1074,17 @@ First, determine if this email is a legitimate bank alert, receipt, or transacti
 If it is NOT a financial transaction or bank alert, return JSON with:
 { "is_transaction": false }
 
-If it IS a transaction alert, extract the details into a valid JSON object matching this structure (do not return any markdown or commentary outside the JSON):
+CRITICAL CLASSIFICATION RULES:
+1. entry_type DIRECTION:
+   - Use "expense" if money was debited, sent, paid, spent, charged, or withdrawn from the user's account (transfers sent to someone, POS purchases, card debits, bill payments, airtime top-ups, ATM withdrawals). NOTE: Phrases like "Account Credited: [Beneficiary]" in transfer notifications describe the RECIPIENT's account — the user's account was DEBITED, so entry_type MUST be "expense".
+   - Use "income" if money was credited, deposited, or received into the user's account (salary, transfers received, credit alerts, refunds, cash-in).
+2. AMOUNT:
+   - amount_naira must be the actual transaction amount in Naira (not kobo), NOT the available or ledger account balance.
+
+If it IS a transaction alert, extract details into a valid JSON object matching this structure (no markdown or commentary):
 {
   "is_transaction": true,
-  "amount_naira": <number representing the transaction value in Naira (not kobo, e.g. 50000 for ₦50,000)>,
+  "amount_naira": <number representing transaction value in Naira, e.g. 50000 for ₦50,000>,
   "description": "<short descriptive summary of the transaction>",
   "entry_type": "income" | "expense",
   "category": "income" | "transport" | "food" | "subscriptions" | "transfer" | "utilities" | "other",
@@ -1081,7 +1098,7 @@ If it IS a transaction alert, extract the details into a valid JSON object match
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
       if (parsed.is_transaction && typeof parsed.amount_naira === "number") {
-        console.log(`[Gmail Deep AI Sync (${aiEngine})] Extracted transaction: ₦${parsed.amount_naira} (${parsed.description})`);
+        console.log(`[Gmail Deep AI Sync (${aiEngine})] Extracted transaction: ₦${parsed.amount_naira} (${parsed.description}) [${parsed.entry_type}]`);
         return {
           amount: parsed.amount_naira,
           description: String(parsed.description || "Gmail Transaction").slice(0, 120),
@@ -1106,3 +1123,4 @@ If it IS a transaction alert, extract the details into a valid JSON object match
     return null;
   }
 }
+

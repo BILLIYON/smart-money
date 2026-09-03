@@ -3,11 +3,57 @@ import { BuddyProfile } from "@/components/buddy/BuddyProfile";
 import { notFound } from "next/navigation";
 import { getApprovedCommunityBuddies, getCommunityBuddyById } from "@/lib/db";
 
+import type { Metadata } from "next";
+
 export async function generateStaticParams() {
   const buddies = await getApprovedCommunityBuddies();
   return buddies.map((b) => ({ id: b.id }));
 }
 export const dynamicParams = true;
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  let buddyName = "AI Buddy";
+  let buddyDesc = "Specialized AI Financial Advisor on Smart Money";
+
+  const dbRow = await getCommunityBuddyById(id);
+  if (dbRow) {
+    buddyName = dbRow.name;
+    buddyDesc = dbRow.description || dbRow.tag || buddyDesc;
+  } else {
+    const b = getBuddy(id);
+    if (b) {
+      buddyName = b.name;
+      buddyDesc = b.desc || b.tag || buddyDesc;
+    }
+  }
+
+  const url = `https://smartmoney.technology/marketplace/${id}`;
+
+  return {
+    title: `${buddyName} — AI Financial Advisor`,
+    description: buddyDesc,
+    alternates: {
+      canonical: url,
+    },
+    openGraph: {
+      title: `${buddyName} — Smart Money AI Buddy`,
+      description: buddyDesc,
+      url,
+      type: "profile",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${buddyName} — Smart Money AI Buddy`,
+      description: buddyDesc,
+    },
+  };
+}
+
 
 const MODEL_COLOR: Record<string, string> = {
   Claude: "#7B68EE",

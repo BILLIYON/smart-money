@@ -39,6 +39,7 @@ export default async function AdminOverviewPage() {
     { label: "Active AI Buddies", value: stats.activeBuddies, subtitle: "Live in Marketplace", color: "#F8FAFC" },
     { label: "Pending Approvals", value: stats.pendingApprovals, subtitle: "Creator Submissions", color: "#F59E0B" },
     { label: "Messages Handled Today", value: stats.messagesToday, subtitle: "Multi-Model AI Engine", color: "#F8FAFC" },
+    { label: "GA4 Live Analytics", value: "Active", subtitle: "Google Tag G-WDF3C4478E", color: "#00C48C" },
     { label: "Database Size", value: dbSizePretty, subtitle: "Native PostgreSQL 16", color: "#F8FAFC" },
   ];
 

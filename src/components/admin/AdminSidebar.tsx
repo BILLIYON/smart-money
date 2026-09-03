@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 
 const NAV_ITEMS = [
   { label: "Overview", href: "/admin/overview", icon: "📊" },
+  { label: "Google Analytics & Traffic", href: "/admin/analytics", icon: "📈" },
   { label: "User Management", href: "/admin/users", icon: "👥" },
   { label: "Buddy Approvals", href: "/admin/approvals", icon: "🤖" },
   { label: "Help Desk & Reviews", href: "/admin/helpdesk", icon: "💬" },

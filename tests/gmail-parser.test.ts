@@ -80,3 +80,60 @@ test("does not treat balance-only marketing copy as a transaction without debit/
 
   assert.equal(parsed, null);
 });
+
+test("correctly classifies transfer debit alert with Account Credited beneficiary as expense", () => {
+  const parsed = parseFinancialEmailData(
+    "Dear Customer, your account 0123456789 has been debited with NGN 15,000.00. Narration: TRF/OPAY/John Doe. Beneficiary Name: John Doe. Account Credited: 9988776655. Available Balance: NGN 145,000.00",
+    "Transaction Notification",
+    "alerts@gtbank.com"
+  );
+
+  assert.ok(parsed);
+  assert.equal(parsed.entry_type, "expense");
+  assert.equal(parsed.amount, 15000);
+  assert.equal(parsed.account_balance, 145000);
+  assert.equal(parsed.bank, "GTBank");
+});
+
+test("correctly classifies airtime top-up purchase as expense", () => {
+  const parsed = parseFinancialEmailData(
+    "Airtime Top-up Successful. You recharged N2,000.00 on 08012345678. Your OPay balance was debited N2,000.00. Available Balance: N14,500.00",
+    "Airtime Top-up",
+    "alerts@opayweb.com"
+  );
+
+  assert.ok(parsed);
+  assert.equal(parsed.entry_type, "expense");
+  assert.equal(parsed.amount, 2000);
+  assert.equal(parsed.account_balance, 14500);
+  assert.equal(parsed.bank, "OPay");
+});
+
+test("correctly classifies merchant payment receipt debit as expense", () => {
+  const parsed = parseFinancialEmailData(
+    "Payment Received by Merchant. Your account has been debited with NGN 5,500.00 for your purchase at Domino's Pizza. Available Balance: NGN 62,000.00",
+    "Payment Successful",
+    "alerts@accessbank.com"
+  );
+
+  assert.ok(parsed);
+  assert.equal(parsed.entry_type, "expense");
+  assert.equal(parsed.amount, 5500);
+  assert.equal(parsed.account_balance, 62000);
+  assert.equal(parsed.bank, "Access Bank");
+});
+
+test("correctly classifies Zenith Bank credit alert as income", () => {
+  const parsed = parseFinancialEmailData(
+    "Dear Customer, Your Account 208****123 Has Been Credited With NGN 100,000.00 On 03-SEP-2026 By TRF/PAYSTACK/SALARY. Available Balance NGN 450,000.00.",
+    "Zenith Bank Alert - CREDIT",
+    "alerts@zenithbank.com"
+  );
+
+  assert.ok(parsed);
+  assert.equal(parsed.entry_type, "income");
+  assert.equal(parsed.amount, 100000);
+  assert.equal(parsed.account_balance, 450000);
+  assert.equal(parsed.bank, "Zenith Bank");
+});
+

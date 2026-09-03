@@ -96,20 +96,54 @@ export async function GET() {
         [userId]
       ),
       pool.query(
-        `SELECT currency, primary_goal
+        `SELECT currency, primary_goal, spending_exclusions
          FROM users
          WHERE id = $1 LIMIT 1;`,
         [userId]
       ),
     ]);
 
+    const userRow = userRes.rows[0] || {};
+    const rawExclusions = userRow.spending_exclusions || {};
+    const excludedCategories: string[] = Array.isArray(rawExclusions.categories)
+      ? rawExclusions.categories.map((c: string) => String(c).toLowerCase().trim()).filter(Boolean)
+      : [];
+    const excludedPlatforms: string[] = Array.isArray(rawExclusions.platforms)
+      ? rawExclusions.platforms.map((p: string) => String(p).toLowerCase().trim()).filter(Boolean)
+      : [];
+    const excludedKeywords: string[] = Array.isArray(rawExclusions.keywords)
+      ? rawExclusions.keywords.map((k: string) => String(k).toLowerCase().trim()).filter(Boolean)
+      : [];
+    const excludedTypes: string[] = Array.isArray(rawExclusions.types)
+      ? rawExclusions.types.map((t: string) => String(t).toLowerCase().trim()).filter(Boolean)
+      : [];
+
+    const isExcluded = (e: any) => {
+      const cat = String(e.category || "").toLowerCase().trim();
+      const type = String(e.entry_type || "").toLowerCase().trim();
+      const desc = String(e.description || "").toLowerCase();
+      const bank = String(e.metadata?.bank || e.metadata?.provider || e.metadata?.platform || e.source || "").toLowerCase().trim();
+
+      if (excludedCategories.includes(cat)) return true;
+      if (excludedPlatforms.includes(bank)) return true;
+      if (excludedTypes.includes(type)) return true;
+      for (const kw of excludedKeywords) {
+        if (kw && (desc.includes(kw) || bank.includes(kw) || cat.includes(kw))) {
+          return true;
+        }
+      }
+      return false;
+    };
+
     const rawEntries: any[] = entriesRes.rows ?? [];
-    const entries: any[] = rawEntries.map((e) => ({
+    const allEntries: any[] = rawEntries.map((e) => ({
       ...e,
       entry_date: safeStrDate(e.entry_date),
       created_at: safeIsoDate(e.created_at),
       amount: toNum(e.amount),
     }));
+
+    const entries = allEntries.filter((e) => !isExcluded(e));
 
     const goals: any[] = goalsRes.rows ?? [];
     const integrations = integrationsRes.rows ?? [];
@@ -742,6 +776,12 @@ export async function GET() {
       lastSyncAt,
       assetsList,
       liabilitiesList,
+      exclusions: {
+        categories: rawExclusions.categories || [],
+        keywords: rawExclusions.keywords || [],
+        types: rawExclusions.types || [],
+        totalExcludedCount: allEntries.length - entries.length,
+      },
     });
   } catch (err: any) {
     console.error("[databank/context] Error generating context:", err);

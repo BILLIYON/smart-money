@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AnalyticsDashboard } from "@/components/analytics/AnalyticsDashboard";
 import { DatabankTransactionsTable } from "@/components/databank/DatabankTransactionsTable";
+import { DatabankCleanerWidget } from "@/components/databank/DatabankCleanerWidget";
 import { createClient } from "@/lib/supabase/client";
+
 import { useDatabankStore } from "@/store/databankStore";
 import { popup } from "@/store/popupStore";
 
@@ -197,9 +199,9 @@ function GmailCard() {
     }
   }, [searchParams, loadStatus]);
 
-  // Poll Gmail status if it is currently syncing in the background
+  // Poll Gmail status if syncing or if background metadata says syncing
   useEffect(() => {
-    if (!status?.metadata?.is_syncing) return;
+    if (!syncing && !status?.metadata?.is_syncing) return;
     const interval = setInterval(async () => {
       try {
         const res = await fetch("/api/databank/gmail/status");
@@ -213,9 +215,13 @@ function GmailCard() {
           setStatus(data);
           if (data.metadata?.is_syncing) {
             setSyncing(true);
-            setSyncProgress(data.metadata.sync_progress ?? 0);
-            setSyncMsg(data.metadata.sync_message || "Syncing in background...");
-          } else {
+            if (typeof data.metadata.sync_progress === "number") {
+              setSyncProgress(data.metadata.sync_progress);
+            }
+            if (data.metadata.sync_message) {
+              setSyncMsg(data.metadata.sync_message);
+            }
+          } else if (data.metadata && !data.metadata.is_syncing && status?.metadata?.is_syncing) {
             setSyncing(false);
             setSyncProgress(null);
             setSyncMsg(data.metadata?.sync_message || "Sync complete!");
@@ -226,9 +232,9 @@ function GmailCard() {
       } catch (e) {
         console.error("Background sync poll error:", e);
       }
-    }, 2500);
+    }, 1500);
     return () => clearInterval(interval);
-  }, [status?.metadata?.is_syncing]);
+  }, [syncing, status?.metadata?.is_syncing]);
 
   const [syncProgress, setSyncProgress] = useState<number | null>(null);
 
@@ -826,13 +832,13 @@ function GmailCard() {
           </div>
           
           {/* Modern Progress Bar Track */}
-          <div className="w-full h-[6px] rounded-full overflow-hidden mb-3.5" style={{ background: "rgba(0,0,0,0.08)" }}>
+          <div className="w-full h-[7px] rounded-full overflow-hidden mb-3.5" style={{ background: "rgba(0,0,0,0.08)" }}>
             <div 
               className="h-full rounded-full transition-all duration-300 ease-out"
               style={{ 
-                width: `${syncProgress ?? 0}%`,
+                width: `${Math.max(4, Math.min(100, syncProgress ?? 4))}%`,
                 background: "linear-gradient(90deg, var(--green) 0%, var(--green2) 100%)",
-                boxShadow: "0 0 8px var(--green2)"
+                boxShadow: "0 0 8px rgba(0,196,140,0.5)"
               }}
             />
           </div>
@@ -1694,8 +1700,12 @@ export default function DataBankPage() {
           </div>
         </div>
 
+        {/* ── AI DATABANK CLEANER WIDGET ── */}
+        <DatabankCleanerWidget onCleanComplete={() => useDatabankStore.getState().loadContext()} />
+
         {/* Main tabs */}
         <div className="flex mb-6 overflow-x-auto" style={{ borderBottom: "1px solid var(--border)" }}>
+
           {[
             { id: "sources", label: "📂 Data Sources" },
             { id: "transactions", label: "💳 All Transactions" },
@@ -2475,6 +2485,8 @@ export default function DataBankPage() {
             <DatabankTransactionsTable onDataChanged={() => useDatabankStore.getState().loadContext()} />
           </div>
         )}
+
+
 
         {/* ── ANALYTICS PANEL ── */}
         {tab === "analytics" && <AnalyticsDashboard />}

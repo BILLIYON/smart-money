@@ -7,9 +7,10 @@ import { getAllBuddies } from "@/lib/buddies";
 const DEFAULT_PICKED = new Set(["contrarian", "buffett"]);
 
 export function NewGroupModal() {
-  const { setShowNewGroupModal, setChatMode, setActiveGroupId, initGroupThread, communityBuddies } = useChatStore();
+  const { setShowNewGroupModal, createGroup, setMobileView, communityBuddies } = useChatStore();
   const [picked, setPicked] = useState<Set<string>>(new Set(DEFAULT_PICKED));
   const [groupName, setGroupName] = useState("My Finance Council");
+  const [isCreating, setIsCreating] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
 
   const selectable = useMemo(() => {
@@ -44,14 +45,18 @@ export function NewGroupModal() {
     });
   }
 
-  function handleCreate() {
-    const ids = Array.from(picked);
-    const newId = `custom-${Date.now()}`;
-    const name = groupName.trim() || "My Finance Council";
-    initGroupThread(newId, []);
-    setActiveGroupId(newId);
-    setChatMode("group");
-    setShowNewGroupModal(false);
+  async function handleCreate() {
+    if (isCreating) return;
+    setIsCreating(true);
+    try {
+      const ids = Array.from(picked);
+      const name = groupName.trim() || "My Finance Council";
+      await createGroup(name, ids);
+      setShowNewGroupModal(false);
+      setMobileView("chat");
+    } finally {
+      setIsCreating(false);
+    }
   }
 
   return (

@@ -54,12 +54,12 @@ function communityRowToBuddy(row: CommunityBuddyRow): Buddy {
 }
 
 
-function GroupAvatarStack({ avatars }: { avatars: typeof GROUPS[0]["avatars"] }) {
+function GroupAvatarStack({ avatars }: { avatars: { bg: string; content: string; serif: boolean }[] }) {
   return (
     <div className="relative flex-shrink-0" style={{ width: 38, height: 38 }}>
       {avatars[0] && (
         <div
-          className="absolute top-0 left-0 flex items-center justify-center rounded-[8px] border-[2px] text-[12px]"
+          className="absolute top-0 left-0 flex items-center justify-center rounded-[8px] border-[2px] text-[12px] overflow-hidden"
           style={{
             width: 26, height: 26,
             background: avatars[0].bg,
@@ -67,12 +67,16 @@ function GroupAvatarStack({ avatars }: { avatars: typeof GROUPS[0]["avatars"] })
             ...(avatars[0].serif ? { fontFamily: "var(--font-dm-serif)", fontSize: "10px", color: "rgba(255,255,255,.9)" } : {}),
           }}
         >
-          {avatars[0].content}
+          {isImageAvatar(avatars[0].content) ? (
+            <img src={avatars[0].content} alt="avatar" className="w-full h-full object-cover" />
+          ) : (
+            avatars[0].content
+          )}
         </div>
       )}
       {avatars[1] && (
         <div
-          className="absolute bottom-0 right-0 flex items-center justify-center rounded-[6px] border-[2px] text-[10px]"
+          className="absolute bottom-0 right-0 flex items-center justify-center rounded-[6px] border-[2px] text-[10px] overflow-hidden"
           style={{
             width: 22, height: 22,
             background: avatars[1].bg,
@@ -80,12 +84,16 @@ function GroupAvatarStack({ avatars }: { avatars: typeof GROUPS[0]["avatars"] })
             ...(avatars[1].serif ? { fontFamily: "var(--font-dm-serif)", fontSize: "9px", color: "rgba(255,255,255,.9)" } : {}),
           }}
         >
-          {avatars[1].content}
+          {isImageAvatar(avatars[1].content) ? (
+            <img src={avatars[1].content} alt="avatar" className="w-full h-full object-cover" />
+          ) : (
+            avatars[1].content
+          )}
         </div>
       )}
       {avatars[2] && (
         <div
-          className="absolute top-0 right-0 flex items-center justify-center rounded-[5px] border-[2px] text-[9px]"
+          className="absolute top-0 right-0 flex items-center justify-center rounded-[5px] border-[2px] text-[9px] overflow-hidden"
           style={{
             width: 18, height: 18,
             background: avatars[2].bg,
@@ -93,7 +101,11 @@ function GroupAvatarStack({ avatars }: { avatars: typeof GROUPS[0]["avatars"] })
             ...(avatars[2].serif ? { fontFamily: "var(--font-dm-serif)", fontSize: "8px", color: "rgba(255,255,255,.9)" } : {}),
           }}
         >
-          {avatars[2].content}
+          {isImageAvatar(avatars[2].content) ? (
+            <img src={avatars[2].content} alt="avatar" className="w-full h-full object-cover" />
+          ) : (
+            avatars[2].content
+          )}
         </div>
       )}
     </div>
@@ -108,6 +120,9 @@ export function ChatSidebar() {
     setActiveBuddyId,
     initThread,
     setShowNewGroupModal,
+    groups,
+    activeGroupId,
+    selectGroup,
     threads,
     enableCrossSessionMemory,
     toggleCrossSessionMemory,
@@ -154,11 +169,6 @@ export function ChatSidebar() {
     setActiveBuddyId(id);
     initThread(id, []);
     loadRecentHistoryForBuddy(id);
-    setMobileView("chat");
-  }
-
-  function selectGroup(id: string) {
-    setActiveSession(id);
     setMobileView("chat");
   }
 
@@ -470,35 +480,39 @@ export function ChatSidebar() {
             >
               Active Groups
             </div>
-            {GROUPS.map((group, i) => (
-              <div
-                key={group.id}
-                className="flex items-center gap-[10px] px-3 py-[10px] mx-2 mb-[2px] rounded-[10px] cursor-pointer transition-all duration-150"
-                style={
-                  i === 0
-                    ? { background: "var(--bg)", borderLeft: "3px solid var(--green)", paddingLeft: "9px" }
-                    : { background: "transparent" }
-                }
-                onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "var(--bg)"; }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLDivElement).style.background = i === 0 ? "var(--bg)" : "transparent";
-                }}
-              >
-                <GroupAvatarStack avatars={group.avatars} />
-                <div className="flex-1 overflow-hidden">
-                  <div className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>{group.name}</div>
-                  <div
-                    className="text-[11px] overflow-hidden text-ellipsis whitespace-nowrap"
-                    style={{ color: "var(--muted)", maxWidth: 130 }}
-                  >
-                    {group.preview}
+            {groups.map((group) => {
+              const isActive = activeGroupId === group.id;
+              return (
+                <div
+                  key={group.id}
+                  onClick={() => selectGroup(group.id)}
+                  className="flex items-center gap-[10px] px-3 py-[10px] mx-2 mb-[2px] rounded-[10px] cursor-pointer transition-all duration-150"
+                  style={
+                    isActive
+                      ? { background: "var(--bg)", borderLeft: "3px solid var(--green)", paddingLeft: "9px" }
+                      : { background: "transparent" }
+                  }
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "var(--bg)"; }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLDivElement).style.background = isActive ? "var(--bg)" : "transparent";
+                  }}
+                >
+                  <GroupAvatarStack avatars={group.avatars} />
+                  <div className="flex-1 overflow-hidden">
+                    <div className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>{group.name}</div>
+                    <div
+                      className="text-[11px] overflow-hidden text-ellipsis whitespace-nowrap"
+                      style={{ color: "var(--muted)", maxWidth: 130 }}
+                    >
+                      {group.preview}
+                    </div>
                   </div>
+                  {group.hasUnread && (
+                    <div className="w-2 h-2 rounded-full flex-shrink-0 ml-auto" style={{ background: "var(--green)" }} />
+                  )}
                 </div>
-                {group.hasUnread && (
-                  <div className="w-2 h-2 rounded-full flex-shrink-0 ml-auto" style={{ background: "var(--green)" }} />
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

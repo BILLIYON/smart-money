@@ -56,13 +56,25 @@ function parseMoneyToken(raw: string): number | null {
 
 /**
  * Check if a matched number token is actually a balance rather than a transaction amount.
- * Looks strictly in the 35-character preceding window.
+ * Looks in both preceding and trailing windows.
  */
-function isNearBalanceKeyword(text: string, index: number): boolean {
-  const windowStart = Math.max(0, index - 40);
+function isNearBalanceKeyword(text: string, index: number, matchLength = 10): boolean {
+  const windowStart = Math.max(0, index - 50);
   const lookBehind = text.slice(windowStart, index).toLowerCase();
-  return /(?:available|avail|current|ledger|closing|opening|acct|account)?\s*(?:balance|bal)\s*[:\s\-=]*$/i.test(lookBehind)
-    || /\b(?:balance|bal)\s*[:\s\-=]*$/i.test(lookBehind);
+  if (
+    /(?:available|avail|current|ledger|closing|opening|acct|account)?\s*(?:balance|bal)\s*[:\s\-=]*$/i.test(lookBehind) ||
+    /\b(?:balance|bal)\s*[:\s\-=]*$/i.test(lookBehind)
+  ) {
+    return true;
+  }
+
+  const windowEnd = Math.min(text.length, index + matchLength + 50);
+  const lookAhead = text.slice(index + matchLength, windowEnd).toLowerCase();
+  if (/^\s*(?:is\s+your\s+|avail|available|ledger|current)?\s*bal(?:ance)?\b/i.test(lookAhead)) {
+    return true;
+  }
+
+  return false;
 }
 
 function extractAmount(text: string): number | null {
@@ -77,7 +89,7 @@ function extractAmount(text: string): number | null {
     pattern.lastIndex = 0;
     let match: RegExpExecArray | null;
     while ((match = pattern.exec(text)) !== null) {
-      if (isNearBalanceKeyword(text, match.index)) continue;
+      if (isNearBalanceKeyword(text, match.index, match[0].length)) continue;
       const amount = parseMoneyToken(match[1]);
       if (amount !== null && amount > 0) return amount;
     }
@@ -87,7 +99,7 @@ function extractAmount(text: string): number | null {
   const currencyPattern = /(?:NGN|₦)\s*([\d,]+\.?\d*)/gi;
   let match: RegExpExecArray | null;
   while ((match = currencyPattern.exec(text)) !== null) {
-    if (isNearBalanceKeyword(text, match.index)) continue;
+    if (isNearBalanceKeyword(text, match.index, match[0].length)) continue;
     const amount = parseMoneyToken(match[1]);
     if (amount !== null && amount > 0) return amount;
   }
@@ -95,7 +107,7 @@ function extractAmount(text: string): number | null {
   // Priority 3: Bare decimal money amounts (xx.xx) away from balance keywords
   const decimalPattern = /\b([\d,]+\.\d{2})\b/g;
   while ((match = decimalPattern.exec(text)) !== null) {
-    if (isNearBalanceKeyword(text, match.index)) continue;
+    if (isNearBalanceKeyword(text, match.index, match[0].length)) continue;
     const amount = parseMoneyToken(match[1]);
     if (amount !== null && amount >= 1) return amount;
   }
@@ -134,73 +146,89 @@ function extractDescription(text: string, from: string, bank?: string): string {
 }
 
 function detectBank(text: string, from: string): { id: string; label: string } | null {
-  const haystack = `${from} ${text}`;
+  // Priority 1: Check the email sender address (From)
+  if (from) {
+    for (const bank of BANK_PATTERNS) {
+      if (bank.pattern.test(from)) {
+        return { id: bank.id, label: bank.label };
+      }
+    }
+  }
+  // Priority 2: Search text content
   for (const bank of BANK_PATTERNS) {
-    if (bank.pattern.test(haystack)) {
+    if (bank.pattern.test(text)) {
       return { id: bank.id, label: bank.label };
     }
   }
   return null;
 }
 
+
 function inferEntryType(text: string): "income" | "expense" {
   const normalized = normalizeText(text);
 
-  const incomeIndicators = [
-    "credit alert",
-    "credited",
-    "credit:",
-    "salary",
-    "inflow",
-    "received",
-    "deposit",
-    "cash in",
-    "refund",
-    "transfer in",
-    "money received",
-    "you received",
-    "payment received",
-    "top-up",
-    "topup",
-    "wallet topup",
-  ];
+  // 1. Explicit Debit / Expense Signals (User's account debited)
+  const isUserDebited =
+    /\b(?:debit|dr)\s*alert\b/i.test(text) ||
+    /\bdebit\s*notification\b/i.test(text) ||
+    /\b(?:your\s+)?acct(?:ount)?\s*(?:[^\n\.\,]{0,40})?\bdebited\b/i.test(text) ||
+    /\bdebited\s+(?:with|for|by|of)\b/i.test(text) ||
+    /\b(?:you\s+)?sent\s+(?:NGN|₦|\$|N\d|[\d,]+)/i.test(text) ||
+    /\b(?:you\s+)?paid\s+(?:NGN|₦|\$|N\d|[\d,]+)/i.test(text) ||
+    /\bpos\s+(?:purchase|transaction|receipt|transfer)\b/i.test(text) ||
+    /\bpos\s*transfer\b/i.test(text) ||
+    /\batm\s+withdrawal\b/i.test(text) ||
+    /\bairtime\s+(?:purchase|recharge|top-up|topup)\b/i.test(text) ||
+    /\b(?:bill|data|utility|dstv|gotv)\s+payment\b/i.test(text) ||
+    /\btransfer\s+to\b/i.test(text) ||
+    /\bpaid\s+to\b/i.test(text) ||
+    /\bbeneficiary\b/i.test(text) ||
+    /\bremita\b/i.test(text) ||
+    /\bcard\s+charge\b/i.test(text) ||
+    /\boutflow\b/i.test(text);
 
-  const expenseIndicators = [
-    "debit alert",
-    "debit:",
-    "debited",
-    "charged",
-    "payment",
-    "purchase",
-    "pos",
-    "transfer out",
-    "sent",
-    "paid",
-    "withdraw",
-    "subscription",
-    "you sent",
-    "you paid",
-    "money sent",
-    "fee",
-    "charge",
-    "outflow",
-  ];
 
-  // Subject-level signals win when both sides match (common in bank templates)
-  const subjectFirst = text.slice(0, Math.min(140, text.length)).toLowerCase();
-  if (/credit\s*alert|credited|salary\s*credit|money\s*received|you\s*received|payment\s*received/.test(subjectFirst)) {
-    return "income";
-  }
-  if (/debit\s*alert|debited|money\s*sent|you\s*sent|you\s*paid|pos\s*purchase|payment\s*to/.test(subjectFirst)) {
+  // 2. Explicit Credit / Income Signals (User's account credited)
+  const isUserCredited =
+    /\b(?:credit|cr)\s*alert\b/i.test(text) ||
+    /\bcredit\s*notification\b/i.test(text) ||
+    /\b(?:your\s+)?acct(?:ount)?\s*(?:[^\n\.\,]{0,40})?\bcredited\b/i.test(text) ||
+    /\bcredited\s+(?:with|for|by|of)\b/i.test(text) ||
+    /\b(?:you\s+)?received\s+(?:NGN|₦|\$|N\d|[\d,]+)/i.test(text) ||
+    /\binflow\s*(?:alert|notification)?\b/i.test(text) ||
+    /\bsalary\b/i.test(text) ||
+    /\btransfer\s+from\b/i.test(text) ||
+    /\breceived\s+from\b/i.test(text) ||
+    /\bmoney\s+received\b/i.test(text) ||
+    /\brefund\b/i.test(text) ||
+    /\bcash\s*in\b/i.test(text);
+
+  // If user's account was explicitly debited (e.g. transfer alert with "Account Credited: [Beneficiary]"),
+  // then expense takes priority unless the subject/first snippet clearly says credit alert for the user.
+  if (isUserDebited && !/\b(?:your\s+)?acct(?:ount)?\s*(?:[^\n\.\,]{0,40})?\bcredited\b/i.test(text.slice(0, 300))) {
     return "expense";
   }
 
-  if (incomeIndicators.some((indicator) => normalized.includes(indicator))) {
-    return "income";
+  if (isUserDebited && isUserCredited) {
+    const subjectSnippet = text.slice(0, 120).toLowerCase();
+    if (/debit|dr|sent|paid|purchase|outflow/.test(subjectSnippet)) {
+      return "expense";
+    }
+    if (/credit|cr|received|inflow|salary/.test(subjectSnippet)) {
+      return "income";
+    }
+    return "expense";
   }
 
-  if (expenseIndicators.some((indicator) => normalized.includes(indicator))) {
+  if (isUserDebited) return "expense";
+  if (isUserCredited) return "income";
+
+  // Fallback word checks
+  if (/\b(?:debit|debited|spent|paid|purchase|charge|fee|withdraw|outflow)\b/i.test(normalized)) {
     return "expense";
+  }
+  if (/\b(?:credit|credited|inflow|received|deposit)\b/i.test(normalized)) {
+    return "income";
   }
 
   return "expense";
@@ -262,4 +290,5 @@ export function parseFinancialEmailData(
     account_balance,
   };
 }
+
 

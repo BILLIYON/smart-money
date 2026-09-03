@@ -104,11 +104,12 @@ export function MessageInput() {
   }, [getGuestMessageCount]);
 
   const isGroup = chatMode === "group";
+  const { groups } = useChatStore();
   const ALL_BUDDY_LIST = getAllBuddies(communityBuddies);
   const buddy = ALL_BUDDY_LIST.find((b) => b.id === activeBuddyId) ?? ALL_BUDDY_LIST[0];
 
   // Buddies available for @ mention in the active group
-  const groupDef = GROUPS.find((g) => g.id === activeGroupId);
+  const groupDef = groups.find((g) => g.id === activeGroupId) || GROUPS.find((g) => g.id === activeGroupId);
   const mentionBuddies = (groupDef?.buddyIds ?? []).map((id) => ALL_BUDDY_LIST.find((b) => b.id === id)).filter(Boolean) as Buddy[];
 
   // Populate input when "Discuss first" pre-fills it from an agent card
@@ -192,9 +193,47 @@ export function MessageInput() {
 
   // ── Group send (staggered, one per buddy) ───────────────
   const sendGroup = useCallback(async (text: string) => {
-    let currentSessionId = useChatStore.getState().activeSessionId;
+    const activeStore = useChatStore.getState();
+    const groupDef = activeStore.groups.find((g) => g.id === activeGroupId) || GROUPS.find((g) => g.id === activeGroupId);
+
+    // Resolve which buddies should respond
+    const textLower = text.toLowerCase();
+    let buddyIds: string[] = [];
+    if (groupDef?.buddyIds?.length) {
+      const mentioned = groupDef.buddyIds.filter((bid) => {
+        const b = getBuddy(bid, activeStore.communityBuddies);
+        const namePart = b?.name?.toLowerCase() || "";
+        return textLower.includes(`@${bid.toLowerCase()}`) || (namePart && textLower.includes(`@${namePart.split(" ")[0].toLowerCase()}`));
+      });
+      buddyIds = mentioned.length > 0 ? mentioned : groupDef.buddyIds;
+    } else {
+      const msgs = groupThreads[activeGroupId] ?? [];
+      const fromMsgs = Array.from(
+        new Set(msgs.filter((m) => m.role === "ai" && m.buddyId && m.buddyId !== "__system__").map((m) => m.buddyId!))
+      );
+      buddyIds = fromMsgs.length > 0 ? fromMsgs : ["contrarian", "buffett"];
+    }
+
+    let currentSessionId = activeStore.activeSessionId;
     if (!currentSessionId) {
-      currentSessionId = await useChatStore.getState().createNewSession(activeGroupId);
+      try {
+        const res = await fetch("/api/chat/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            buddyIds,
+            sessionName: groupDef?.name ?? "Finance Council",
+            isGroup: true,
+          }),
+        });
+        if (res.ok) {
+          const newSess = await res.json();
+          currentSessionId = newSess.id;
+          activeStore.setActiveSession(newSess.id);
+        }
+      } catch (e) {
+        console.error("[sendGroup] Error creating session:", e);
+      }
     }
 
     const time = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -203,13 +242,7 @@ export function MessageInput() {
     addGroupMessage(activeGroupId, { id: userMsgId, role: "user", content: text, time });
     setStreaming(true);
 
-    // Collect unique buddy IDs from the thread
     const msgs = groupThreads[activeGroupId] ?? [];
-    const buddyIds = Array.from(
-      new Set(msgs.filter((m) => m.role === "ai" && m.buddyId && m.buddyId !== "__system__").map((m) => m.buddyId!))
-    );
-    if (!buddyIds.length) buddyIds.push("contrarian", "buffett");
-
     const history = msgs
       .filter((m) => !m.streaming && m.content && m.buddyId !== "__system__")
       .slice(-20)

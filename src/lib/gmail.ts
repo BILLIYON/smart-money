@@ -414,6 +414,8 @@ export async function syncGmailForUser(
       queries.push(`${customQuery.trim()} after:${lastSync}`);
     }
 
+    onProgress?.(5, 0);
+
     const allIds = (
       await Promise.all(queries.map((q) => searchEmails(gmail, q, 500)))
     ).flat();
@@ -437,7 +439,7 @@ export async function syncGmailForUser(
 
     const BATCH = 10;
     const entries: DataBankEntry[] = [];
-    onProgress?.(0, 0);
+    onProgress?.(12, 0);
 
     for (let i = 0; i < uniqueIds.length; i += BATCH) {
       const { rows: checkRows } = await pool.query(
@@ -525,7 +527,10 @@ export async function syncGmailForUser(
         if (entry) entries.push(entry);
       }
 
-      const progressPct = Math.min(99, Math.round(((i + batch.length) / uniqueIds.length) * 100));
+      const progressPct = Math.min(
+        95,
+        Math.round(15 + ((i + batch.length) / uniqueIds.length) * 80)
+      );
       onProgress?.(progressPct, entries.length);
 
       // Update progress in DB metadata with fresh heartbeat timestamp
@@ -533,7 +538,7 @@ export async function syncGmailForUser(
         ...currentMeta,
         is_syncing: true,
         sync_progress: progressPct,
-        sync_message: `Processed ${i + batch.length} of ${uniqueIds.length} emails...`,
+        sync_message: `Processed ${Math.min(i + batch.length, uniqueIds.length)} of ${uniqueIds.length} emails...`,
         sync_updated_at: new Date().toISOString(),
       });
 
