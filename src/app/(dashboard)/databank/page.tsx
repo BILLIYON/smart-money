@@ -767,15 +767,16 @@ function GmailCard() {
                     type="button"
                     onClick={() => {
                       const updated = presets.filter(p => p.id !== presetFilter);
-                      setPresets(updated);
                       if (updated.length > 0) {
+                        setPresets(updated);
                         setPresetFilter(updated[0].id);
                         setPresetLabel(updated[0].label);
                         setPresetQuery(updated[0].query || "");
                       } else {
-                        setPresetFilter("");
-                        setPresetLabel("");
-                        setPresetQuery("");
+                        setPresets(DEFAULT_PRESETS);
+                        setPresetFilter(DEFAULT_PRESETS[0].id);
+                        setPresetLabel(DEFAULT_PRESETS[0].label);
+                        setPresetQuery(DEFAULT_PRESETS[0].query || "");
                       }
                     }}
                     className="px-2 py-[2px] rounded-[4px] border text-[10px] font-semibold transition-all cursor-pointer bg-transparent"
@@ -795,6 +796,9 @@ function GmailCard() {
                 if (current) {
                   setPresetLabel(current.label);
                   setPresetQuery(current.query || "");
+                } else if (presets.length > 0) {
+                  setPresetLabel(presets[0].label);
+                  setPresetQuery(presets[0].query || "");
                 } else {
                   setPresetLabel("");
                   setPresetQuery("");
@@ -827,9 +831,9 @@ function GmailCard() {
             </div>
           )}
 
-          {/* Custom Search Query (Single Input!) */}
+          {/* Custom Search Query */}
           {presetFilter && (
-            <div>
+            <div className="mb-3">
               <label className="font-semibold block mb-1" style={{ color: "var(--text)" }}>
                 Custom Search Query
               </label>
@@ -851,6 +855,24 @@ function GmailCard() {
               </p>
             </div>
           )}
+
+          {/* Custom AI Sync Instructions & Prompt */}
+          <div className="mb-4">
+            <label className="font-semibold block mb-1" style={{ color: "var(--text)" }}>
+              🤖 Custom AI Sync Instructions & Prompt
+            </label>
+            <textarea
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              placeholder="e.g. Prioritize bank alerts from OPay, GTBank, Kuda, Zenith. Strictly categorize transfers out as expense and transfers in as income."
+              rows={3}
+              className="w-full p-[8px] rounded-[8px] border text-[12px] outline-none resize-y"
+              style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)", fontFamily: "inherit" }}
+            />
+            <p className="text-[10px] mt-1" style={{ color: "var(--muted)", lineHeight: 1.4 }}>
+              Custom prompt instructions passed directly to the AI parsing engine to fine-tune transaction extraction rules.
+            </p>
+          </div>
 
           {/* Save Button */}
           <button
