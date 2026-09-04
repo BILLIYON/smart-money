@@ -15,6 +15,8 @@ import { useUserInitials } from "@/lib/hooks/useUserInitials";
 import { useDataSources } from "@/lib/hooks/useDataSources";
 import { useMilestoneToast } from "@/components/ui/MilestoneToast";
 import { popup } from "@/store/popupStore";
+import { useDatabankStore } from "@/store/databankStore";
+import toast from "react-hot-toast";
 
 
 
@@ -315,14 +317,39 @@ function AiMessage({
   }
 
   async function executeAgent() {
-    // If it's the hardcoded demo data, pretend it executed
-    if (msg.agentCardData?.amount === "₦200,000" && msg.agentCardData?.title?.includes("Deploy")) {
-      patch({ agentCardDone: true, agentCardOpen: false, agentCardRef: "SM" + Date.now().toString(36).toUpperCase() });
-      return;
+    try {
+      const rawAmt = msg.agentCardData?.amount || "0";
+      const amountNum = parseFloat(String(rawAmt).replace(/[^0-9.]/g, "")) || 0;
+      const amountKobo = Math.round(amountNum * 100);
+
+      const res = await fetch("/api/agent/execute-direct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: msg.agentCardData?.title || "Agent Action",
+          action_type: msg.agentCardData?.action || "transfer",
+          amount: amountKobo,
+          buddy_id: threadKey,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Failed to execute agent action");
+        return;
+      }
+
+      patch({
+        agentCardDone: true,
+        agentCardOpen: true,
+        agentCardRef: data.reference || ("SM" + Date.now().toString(36).toUpperCase()),
+      });
+
+      toast.success("Agent Action Executed & Saved to DataBank!");
+      useDatabankStore.getState().loadContext().catch(() => {});
+    } catch {
+      toast.error("Failed to execute agent action");
     }
-    // Otherwise, direct the user to the Agentic Actions dashboard where pending actions live
-    patch({ agentCardOpen: false });
-    window.location.href = "/agent";
   }
 
   // System message (group only)

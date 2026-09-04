@@ -28,7 +28,7 @@ export async function GET(req: Request) {
     if (metadata.is_syncing) {
       const lastUpdate = metadata.sync_updated_at ? new Date(metadata.sync_updated_at).getTime() : 0;
       const now = Date.now();
-      const STALE_THRESHOLD_MS = 35 * 1000;
+      const STALE_THRESHOLD_MS = 120 * 1000;
 
       if (now - lastUpdate > STALE_THRESHOLD_MS) {
         metadata = {

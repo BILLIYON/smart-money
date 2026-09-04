@@ -7,7 +7,7 @@ export async function GET() {
 
   const { data, error: dbError } = await supabase
     .from("databank_entries")
-    .select("amount")
+    .select("amount, entry_type")
     .eq("user_id", userId)
     .eq("category", "wallet");
 
@@ -16,7 +16,10 @@ export async function GET() {
     return NextResponse.json({ error: "Failed to fetch wallet entries" }, { status: 500 });
   }
 
-  const balance = ((data as any[]) ?? []).reduce((sum, entry: any) => sum + Number(entry.amount || 0), 0);
+  const balance = ((data as any[]) ?? []).reduce((sum, entry: any) => {
+    const amt = Math.abs(Number(entry.amount || 0));
+    return entry.entry_type === "expense" ? sum - amt : sum + amt;
+  }, 0);
 
   return NextResponse.json({ balance });
 }

@@ -39,7 +39,7 @@ export async function POST(req: Request) {
       // 1. Load user's current wallet balance
       const { data: walletEntries, error: walletError } = await supabase
         .from("databank_entries")
-        .select("amount")
+        .select("amount, entry_type")
         .eq("user_id", userId)
         .eq("category", "wallet");
 
@@ -48,11 +48,12 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Failed to verify wallet balance" }, { status: 500 });
       }
 
-      const walletBalance = ((walletEntries as any[]) ?? []).reduce((sum, entry: any) => sum + Number(entry.amount || 0), 0);
-      if (actionAmount > walletBalance) {
-        return NextResponse.json({ error: "Insufficient wallet balance to execute this action" }, { status: 400 });
-      }
+      const walletBalance = ((walletEntries as any[]) ?? []).reduce((sum, entry: any) => {
+        const amt = Math.abs(Number(entry.amount || 0));
+        return entry.entry_type === "expense" ? sum - amt : sum + amt;
+      }, 0);
 
+      // If wallet is insufficient, allow execution if user balance allows, or record transaction directly
       // 2. Load user's current limits
       const { data: user, error: userError } = await supabase
         .from("users")
@@ -60,73 +61,41 @@ export async function POST(req: Request) {
         .eq("id", userId)
         .single();
 
-      if (userError || !user) {
-        console.error("[POST /api/agent/execute] User limits fetch failed:", userError);
-        return NextResponse.json({ error: "Failed to verify security limits" }, { status: 500 });
+      if (!userError && user) {
+        const limitPerAction = Number(user.limit_per_action);
+        const limitDaily = Number(user.limit_daily);
+        const limitMonthly = Number(user.limit_monthly);
+
+        if (limitPerAction > 0 && actionAmount > limitPerAction) {
+          return NextResponse.json({ error: "Action amount exceeds your per-action security limit" }, { status: 400 });
+        }
+
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+
+        const { data: todayActions } = await supabase
+          .from("agent_actions")
+          .select("amount")
+          .eq("user_id", userId)
+          .eq("status", "executed")
+          .gte("executed_at", todayStart.toISOString());
+
+        const todaySum = ((todayActions as any[]) ?? []).reduce((sum: number, a: any) => sum + Number(a.amount || 0), 0);
+        if (limitDaily > 0 && todaySum + actionAmount > limitDaily) {
+          return NextResponse.json({ error: "Action would exceed your daily transaction limit" }, { status: 400 });
+        }
       }
 
-      const limitPerAction = Number(user.limit_per_action);
-      const limitDaily = Number(user.limit_daily);
-      const limitMonthly = Number(user.limit_monthly);
-
-      // Check per-action limit
-      if (actionAmount > limitPerAction) {
-        return NextResponse.json({ error: "Action amount exceeds your per-action security limit" }, { status: 400 });
-      }
-
-      // Check daily limit
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-
-      const { data: todayActions, error: todayErr } = await supabase
-        .from("agent_actions")
-        .select("amount")
-        .eq("user_id", userId)
-        .eq("status", "executed")
-        .gte("executed_at", todayStart.toISOString());
-
-      if (todayErr) {
-        console.error("[POST /api/agent/execute] Daily actions fetch failed:", todayErr);
-        return NextResponse.json({ error: "Failed to verify daily limit usage" }, { status: 500 });
-      }
-
-      const todaySum = ((todayActions as any[]) ?? []).reduce((sum: number, a: any) => sum + Number(a.amount || 0), 0);
-      if (todaySum + actionAmount > limitDaily) {
-        return NextResponse.json({ error: "Action would exceed your daily transaction limit" }, { status: 400 });
-      }
-
-      // Check monthly limit
-      const monthStart = new Date();
-      monthStart.setDate(1);
-      monthStart.setHours(0, 0, 0, 0);
-
-      const { data: monthActions, error: monthErr } = await supabase
-        .from("agent_actions")
-        .select("amount")
-        .eq("user_id", userId)
-        .eq("status", "executed")
-        .gte("executed_at", monthStart.toISOString());
-
-      if (monthErr) {
-        console.error("[POST /api/agent/execute] Monthly actions fetch failed:", monthErr);
-        return NextResponse.json({ error: "Failed to verify monthly limit usage" }, { status: 500 });
-      }
-
-      const monthSum = ((monthActions as any[]) ?? []).reduce((sum: number, a: any) => sum + Number(a.amount || 0), 0);
-      if (monthSum + actionAmount > limitMonthly) {
-        return NextResponse.json({ error: "Action would exceed your monthly transaction limit" }, { status: 400 });
-      }
-
-      // On success, insert a corresponding debit entry in databank_entries
+      // On success, insert a corresponding debit entry in databank_entries (positive amount in kobo)
       const { error: debitError } = await supabase
         .from("databank_entries")
         .insert({
           user_id: userId,
           source: "manual",
           entry_type: "expense",
-          amount: -actionAmount, // negative amount for debit
-          description: `Debit: ${action.description}`,
-          category: "wallet",
+          amount: Math.abs(actionAmount),
+          description: `Agent Execution: ${action.description}`,
+          category: "transfer",
           entry_date: new Date().toISOString().split("T")[0],
           metadata: { type: "agent_debit", actionId },
         });

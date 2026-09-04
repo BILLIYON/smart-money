@@ -3,10 +3,15 @@ import { encrypt, decrypt } from "./crypto";
 import { Pool } from "pg";
 import { extractFinancialDataFromEmail, askAIWithEngine } from "./ai";
 
+let sharedPool: Pool | null = null;
+
 function getPool() {
-  return new Pool({
-    connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
-  });
+  if (!sharedPool) {
+    sharedPool = new Pool({
+      connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+    });
+  }
+  return sharedPool;
 }
 
 type DataBankEntry = {
@@ -53,15 +58,11 @@ export const DEFAULT_PRESETS = [
 export async function getGmailClient(userId: string) {
   const pool = getPool();
   let data: any = null;
-  try {
-    const { rows } = await pool.query(
-      `SELECT access_token, refresh_token, token_expiry FROM user_integrations WHERE user_id = $1 AND provider = 'gmail' LIMIT 1;`,
-      [userId]
-    );
-    data = rows[0];
-  } finally {
-    await pool.end();
-  }
+  const { rows } = await pool.query(
+    `SELECT access_token, refresh_token, token_expiry FROM user_integrations WHERE user_id = $1 AND provider = 'gmail' LIMIT 1;`,
+    [userId]
+  );
+  data = rows[0];
 
   if (!data) throw new Error("Gmail not connected for user");
 
@@ -88,8 +89,8 @@ export async function getGmailClient(userId: string) {
           userId,
         ]
       );
-    } finally {
-      await poolInner.end();
+    } catch (err) {
+      console.error("[getGmailClient] Token refresh error:", err);
     }
   });
 
@@ -115,16 +116,30 @@ export async function getEmailBody(
   gmail: Awaited<ReturnType<typeof getGmailClient>>,
   messageId: string
 ) {
-  const res = await gmail.users.messages.get({
-    userId: "me",
-    id: messageId,
-    format: "full",
-  });
+  let res: any;
+  try {
+    res = await gmail.users.messages.get({
+      userId: "me",
+      id: messageId,
+      format: "full",
+    });
+  } catch (err: any) {
+    if (err?.status === 429 || err?.message?.includes("Quota exceeded") || err?.code === 429) {
+      await new Promise((r) => setTimeout(r, 1000));
+      res = await gmail.users.messages.get({
+        userId: "me",
+        id: messageId,
+        format: "full",
+      });
+    } else {
+      throw err;
+    }
+  }
 
   const headers = res.data.payload?.headers ?? [];
-  const subject = headers.find((h) => h.name === "Subject")?.value ?? "";
-  const from = headers.find((h) => h.name === "From")?.value ?? "";
-  const date = headers.find((h) => h.name === "Date")?.value ?? "";
+  const subject = headers.find((h: any) => h.name === "Subject")?.value ?? "";
+  const from = headers.find((h: any) => h.name === "From")?.value ?? "";
+  const date = headers.find((h: any) => h.name === "Date")?.value ?? "";
 
   // Extract body text — prefer plain text, fall back to HTML (most bank alerts are HTML-only)
   function decodePart(data?: string | null): string {
@@ -523,8 +538,51 @@ export async function syncGmailForUser(
         })
       );
 
+      const batchEntries: DataBankEntry[] = [];
       for (const entry of extractedData) {
-        if (entry) entries.push(entry);
+        if (entry) {
+          entries.push(entry);
+          batchEntries.push(entry);
+        }
+      }
+
+      if (saveToDb && batchEntries.length > 0) {
+        await pool.query(
+          `CREATE UNIQUE INDEX IF NOT EXISTS databank_entries_gmail_message_id_key ON public.databank_entries (gmail_message_id);`
+        ).catch(() => {});
+
+        for (const entry of batchEntries) {
+          const gmailMsgId =
+            entry.gmail_message_id &&
+            typeof entry.gmail_message_id === "string" &&
+            entry.gmail_message_id.trim()
+              ? entry.gmail_message_id.trim()
+              : null;
+
+          await pool.query(
+            `INSERT INTO databank_entries (
+              user_id, source, entry_type, amount, description, category, entry_date, metadata, gmail_message_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ON CONFLICT (gmail_message_id) WHERE gmail_message_id IS NOT NULL DO UPDATE SET
+              entry_type = EXCLUDED.entry_type,
+              amount = EXCLUDED.amount,
+              description = EXCLUDED.description,
+              category = EXCLUDED.category,
+              entry_date = EXCLUDED.entry_date,
+              metadata = EXCLUDED.metadata;`,
+            [
+              userId,
+              entry.source,
+              entry.entry_type,
+              entry.amount,
+              entry.description,
+              entry.category,
+              entry.entry_date,
+              JSON.stringify(entry.metadata),
+              gmailMsgId,
+            ]
+          );
+        }
       }
 
       const progressPct = Math.min(
@@ -533,56 +591,20 @@ export async function syncGmailForUser(
       );
       onProgress?.(progressPct, entries.length);
 
-      // Update progress in DB metadata with fresh heartbeat timestamp
-      await updateMeta({
-        ...currentMeta,
-        is_syncing: true,
-        sync_progress: progressPct,
-        sync_message: `Processed ${Math.min(i + batch.length, uniqueIds.length)} of ${uniqueIds.length} emails...`,
-        sync_updated_at: new Date().toISOString(),
-      });
+      // Update progress & last_synced_at in DB metadata with fresh heartbeat timestamp
+      await updateMeta(
+        {
+          ...currentMeta,
+          is_syncing: true,
+          sync_progress: progressPct,
+          sync_message: `Processed ${Math.min(i + batch.length, uniqueIds.length)} of ${uniqueIds.length} emails (${entries.length} transactions)...`,
+          sync_updated_at: new Date().toISOString(),
+        },
+        saveToDb && batchEntries.length > 0
+      );
 
       if (i + BATCH < uniqueIds.length) {
-        await new Promise((r) => setTimeout(r, 100));
-      }
-    }
-
-    if (saveToDb && entries.length > 0) {
-      await pool.query(
-        `CREATE UNIQUE INDEX IF NOT EXISTS databank_entries_gmail_message_id_key ON public.databank_entries (gmail_message_id);`
-      ).catch(() => {});
-
-      for (const entry of entries) {
-        const gmailMsgId =
-          entry.gmail_message_id &&
-          typeof entry.gmail_message_id === "string" &&
-          entry.gmail_message_id.trim()
-            ? entry.gmail_message_id.trim()
-            : null;
-
-        await pool.query(
-          `INSERT INTO databank_entries (
-            user_id, source, entry_type, amount, description, category, entry_date, metadata, gmail_message_id
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-          ON CONFLICT (gmail_message_id) WHERE gmail_message_id IS NOT NULL DO UPDATE SET
-            entry_type = EXCLUDED.entry_type,
-            amount = EXCLUDED.amount,
-            description = EXCLUDED.description,
-            category = EXCLUDED.category,
-            entry_date = EXCLUDED.entry_date,
-            metadata = EXCLUDED.metadata;`,
-          [
-            userId,
-            entry.source,
-            entry.entry_type,
-            entry.amount,
-            entry.description,
-            entry.category,
-            entry.entry_date,
-            JSON.stringify(entry.metadata),
-            gmailMsgId,
-          ]
-        );
+        await new Promise((r) => setTimeout(r, 250));
       }
     }
 
@@ -610,7 +632,5 @@ export async function syncGmailForUser(
       sync_updated_at: new Date().toISOString(),
     });
     throw err;
-  } finally {
-    await pool.end();
   }
 }

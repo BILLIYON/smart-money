@@ -979,87 +979,20 @@ export async function extractFinancialDataFromEmail(
   aiEngine = "groq",
   options?: { enableFallback?: boolean; fallbackEngine?: string }
 ) {
-  // ── 1. LIGHTWEIGHT SEARCH MODE (Next.js regex extraction + optional selected AI cleaning/verification) ──
+  // ── 1. LIGHTWEIGHT SEARCH MODE (Next.js regex extraction — ultra-fast & 100% reliable) ──
   if (syncMode === "lightweight") {
     try {
-      // First programmatically extract data using fast local regex parser (0 tokens, ultra-fast)
+      // Programmatically extract data using fast local regex parser (0 tokens, sub-millisecond)
       const data = parseFinancialEmailData(emailBody, subject, from);
       if (!data) {
-        // If local parser doesn't find any financial indicators, skip it (no AI cost)
         return null;
       }
-
-      // Try AI refinement if model is reachable, but NEVER drop the transaction if AI fails
-      try {
-        const prompt = `You are a financial verification agent for Smart Money. Verify and clean these programmatically extracted bank alert details.
-
-${aiPrompt ? `CUSTOM EXTRACTION PARAMETERS / USER INSTRUCTIONS:\n- ${aiPrompt}\n` : ""}
-
-Extracted Alert Details:
-- Bank: ${data.bank || data.provider || "Unknown"}
-- Preliminary Type: ${data.entry_type} (income/expense)
-- Amount: ₦${data.amount}
-- Category: ${data.category || "other"}
-- Narration: ${data.description}
-
-Email Subject: ${subject}
-Email Sender: ${from}
-Email Body Snippet:
-${emailBody.slice(0, 4000)}
-
-CRITICAL CLASSIFICATION RULES:
-1. entry_type DIRECTION:
-   - Use "expense" if money was debited, sent, paid, spent, charged, or withdrawn from the user's account (transfers sent to someone, POS purchases, card debits, bill payments, airtime top-ups, ATM withdrawals). NOTE: Phrases like "Account Credited: [Beneficiary]" in transfer alerts describe the RECIPIENT's account — the user's account was DEBITED, so entry_type MUST be "expense".
-   - Use "income" if money was credited, deposited, or received into the user's account (salary, transfers received, credit alerts, refunds, cash-in).
-2. AMOUNT:
-   - amount_naira must be the actual transaction amount, NOT the available or ledger account balance.
-
-Clean and output into a valid JSON object matching this structure (do not return markdown or commentary):
-{
-  "is_transaction": true,
-  "amount_naira": <number representing transaction value in Naira, e.g. 50000 for ₦50,000>,
-  "description": "<clean descriptive narration>",
-  "entry_type": "income" | "expense",
-  "category": "income" | "transport" | "food" | "subscriptions" | "transfer" | "utilities" | "other",
-  "bank": "<the bank or provider name e.g. Kuda, OPay, GTBank, Zenith, Access, etc.>",
-  "account_balance": <number representing the available account balance in Naira after this transaction, or null if not mentioned>
-}
-If it is not a real financial transaction alert, return:
-{ "is_transaction": false }`;
-
-        const raw = await askAIWithEngine(prompt, aiEngine, options);
-        const jsonMatch = raw.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          if (parsed.is_transaction === false) {
-            console.log(`[Gmail Lightweight Sync] Filtered non-transaction alert: "${subject}"`);
-            return null;
-          }
-          if (typeof parsed.amount_naira === "number" && parsed.amount_naira > 0) {
-            console.log(`[Gmail Lightweight Sync (${aiEngine})] Cleaned transaction: ₦${parsed.amount_naira} (${parsed.description}) [${parsed.entry_type}]`);
-            return {
-              amount: parsed.amount_naira,
-              description: String(parsed.description || data.description || "Gmail Transaction").slice(0, 120),
-              entry_type: parsed.entry_type === "income" ? ("income" as const) : ("expense" as const),
-              category: String(parsed.category || data.category || "other"),
-              bank: parsed.bank ? String(parsed.bank) : data.bank,
-              provider: parsed.bank ? String(parsed.bank) : data.provider,
-              account_balance: typeof parsed.account_balance === "number" ? parsed.account_balance : data.account_balance,
-            };
-          }
-        }
-      } catch (aiErr: any) {
-        console.log(`[Gmail Lightweight Sync] AI cleaning skipped (${aiErr?.message || aiErr}). Using Next.js parsed data directly.`);
-      }
-
-      // 100% reliable zero-token local extracted data
       return data;
     } catch (err) {
       console.warn("[extractFinancialDataFromEmail] Lightweight sync error:", err);
       return null;
     }
   }
-
   // ── 2. DEEP AI SEARCH MODE (Direct full body AI scraping) ──
   const prompt = `You are a financial email parser for Smart Money. Analyze this email details and body.
 
@@ -1098,15 +1031,24 @@ If it IS a transaction alert, extract details into a valid JSON object matching 
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
       if (parsed.is_transaction && typeof parsed.amount_naira === "number") {
-        console.log(`[Gmail Deep AI Sync (${aiEngine})] Extracted transaction: ₦${parsed.amount_naira} (${parsed.description}) [${parsed.entry_type}]`);
+        const localParsed = parseFinancialEmailData(emailBody, subject, from);
+        // IMMUTABLE DIRECTION GUARD: Use local regex direction if available
+        const finalEntryType = localParsed?.entry_type
+          ? localParsed.entry_type
+          : (parsed.entry_type === "income" ? "income" : "expense");
+
+        const rawCategory = String(parsed.category || localParsed?.category || "other");
+        const finalCategory = (finalEntryType === "expense" && (rawCategory.toLowerCase() === "income" || rawCategory.toLowerCase() === "salary")) ? "Transfer" : rawCategory;
+
+        console.log(`[Gmail Deep AI Sync (${aiEngine})] Extracted transaction: ₦${parsed.amount_naira} (${parsed.description}) [${finalEntryType}]`);
         return {
           amount: parsed.amount_naira,
-          description: String(parsed.description || "Gmail Transaction").slice(0, 120),
-          entry_type: parsed.entry_type === "income" ? ("income" as const) : ("expense" as const),
-          category: String(parsed.category || "other"),
-          bank: parsed.bank ? String(parsed.bank) : undefined,
-          provider: parsed.bank ? String(parsed.bank) : undefined,
-          account_balance: typeof parsed.account_balance === "number" ? parsed.account_balance : undefined,
+          description: String(parsed.description || localParsed?.description || "Gmail Transaction").slice(0, 120),
+          entry_type: finalEntryType,
+          category: finalCategory,
+          bank: parsed.bank ? String(parsed.bank) : localParsed?.bank,
+          provider: parsed.bank ? String(parsed.bank) : localParsed?.provider,
+          account_balance: typeof parsed.account_balance === "number" ? parsed.account_balance : localParsed?.account_balance,
         };
       }
     }

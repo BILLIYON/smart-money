@@ -139,10 +139,11 @@ function GmailCard() {
   const [fallbackEngine, setFallbackEngine] = useState<string>("groq");
   const [presetFilter, setPresetFilter] = useState<string>("all");
   
-  // Custom presets list
+  // Custom presets list & AI Prompt
   const [presets, setPresets] = useState<Array<{ id: string; label: string; query: string; filter: string; instructions?: string }>>([]);
   const [presetLabel, setPresetLabel] = useState("");
   const [presetQuery, setPresetQuery] = useState("");
+  const [aiPrompt, setAiPrompt] = useState<string>("");
   const [savingSettings, setSavingSettings] = useState(false);
 
   const loadStatus = useCallback(async () => {
@@ -156,22 +157,33 @@ function GmailCard() {
       setStatus(data);
       if (data.metadata) {
         setSyncMode(data.metadata.sync_mode || "lightweight");
-        setAiEngine(data.metadata.ai_engine || "groq");
+        const activeEngine = data.metadata.ai_engine || (typeof window !== "undefined" ? localStorage.getItem("databank_ai_engine") : null) || "groq-70b";
+        setAiEngine(activeEngine);
+        setSelectedAiEngine(activeEngine);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("databank_ai_engine", activeEngine);
+        }
         if (data.metadata.enable_fallback !== undefined) {
           setEnableFallback(Boolean(data.metadata.enable_fallback));
         }
         if (data.metadata.fallback_engine) {
           setFallbackEngine(data.metadata.fallback_engine);
         }
-        const activePreset = data.metadata.preset_filter || "all";
-        setPresetFilter(activePreset);
-        
-        const loadedPresets = Array.isArray(data.metadata.presets) ? data.metadata.presets : DEFAULT_PRESETS;
+        setAiPrompt(data.metadata.ai_prompt || "");
+
+        const loadedPresets = (Array.isArray(data.metadata.presets) && data.metadata.presets.length > 0)
+          ? data.metadata.presets
+          : DEFAULT_PRESETS;
         setPresets(loadedPresets);
+
+        const activePreset = loadedPresets.some((p: any) => p.id === data.metadata.preset_filter)
+          ? data.metadata.preset_filter
+          : loadedPresets[0].id;
+        setPresetFilter(activePreset);
 
         const current = loadedPresets.find((p: any) => p.id === activePreset) || loadedPresets[0];
         if (current) {
-          setPresetLabel(current.label);
+          setPresetLabel(current.label || "");
           setPresetQuery(current.query || "");
         }
 
@@ -238,6 +250,33 @@ function GmailCard() {
 
   const [syncProgress, setSyncProgress] = useState<number | null>(null);
 
+  const updateGlobalAiEngine = async (newEngine: string) => {
+    setAiEngine(newEngine);
+    setSelectedAiEngine(newEngine);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("databank_ai_engine", newEngine);
+    }
+    try {
+      await fetch("/api/databank/gmail/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ai_engine: newEngine,
+          sync_mode: syncMode,
+          enable_fallback: enableFallback,
+          fallback_engine: fallbackEngine,
+          preset_filter: presetFilter,
+          custom_query: presetQuery,
+          ai_prompt: aiPrompt,
+          presets: presets,
+        }),
+      });
+      popup.success("Primary AI Model Updated", `AI Parser Engine updated to ${newEngine}`);
+    } catch (err) {
+      console.error("Failed to persist AI engine setting:", err);
+    }
+  };
+
   async function handleSaveSettings() {
     setSavingSettings(true);
     try {
@@ -250,6 +289,8 @@ function GmailCard() {
           enable_fallback: enableFallback,
           fallback_engine: fallbackEngine,
           preset_filter: presetFilter,
+          custom_query: presetQuery,
+          ai_prompt: aiPrompt,
           presets: presets,
         }),
       });
@@ -329,6 +370,10 @@ function GmailCard() {
               setPreviewEntries(
                 parsed.entries.map((entry: any) => ({
                   ...entry,
+                  category:
+                    entry.entry_type === "expense" && (!entry.category || (entry.category || "").toLowerCase() === "income")
+                      ? "transfer"
+                      : (entry.category || (entry.entry_type === "expense" ? "transfer" : "income")).toLowerCase(),
                   selected: true, // Selected/enabled by default
                 }))
               );
@@ -617,15 +662,21 @@ function GmailCard() {
             <label className="font-semibold block mb-1 text-[11px]" style={{ color: "var(--text)" }}>Primary AI Parser Engine</label>
             <select
               value={aiEngine}
-              onChange={(e) => setAiEngine(e.target.value)}
-              className="w-full p-[8px] rounded-[8px] border text-[12px] outline-none mb-1.5"
+              onChange={(e) => updateGlobalAiEngine(e.target.value)}
+              className="w-full p-[8px] rounded-[8px] border text-[12px] outline-none mb-1.5 cursor-pointer"
               style={{ background: "var(--bg)", color: "var(--text)", borderColor: "var(--border)" }}
             >
-              <option value="gemma">✨ Gemma 4 31B (NVIDIA Build)</option>
+              <option value="bedrock-sonnet">⚡ Amazon Bedrock — Claude 3.5 Sonnet</option>
+              <option value="bedrock-haiku">⚡ Amazon Bedrock — Claude 3.5 Haiku</option>
+              <option value="bedrock-llama">⚡ Amazon Bedrock — Meta Llama 3.3 70B</option>
+              <option value="bedrock-nova">⚡ Amazon Bedrock — Amazon Nova Pro</option>
+              <option value="gemma">✨ Gemma 4 31B (NVIDIA Build API)</option>
               <option value="nvidia">🚀 Llama 3.3 70B (NVIDIA NIM)</option>
-              <option value="groq">⚡ Llama 3.3 70B (Groq)</option>
-              <option value="gemini">🌐 Gemini 2.0 Flash (Google)</option>
-              <option value="claude">🧠 Claude 3.5 Haiku (Anthropic)</option>
+              <option value="groq-70b">⚡ Groq Llama 3.3 70B Versatile</option>
+              <option value="groq-8b">⚡ Groq Llama 3.1 8B Instant</option>
+              <option value="claude">🧠 Anthropic Claude 3.5 Sonnet</option>
+              <option value="gemini">🔮 Google Gemini 2.0 Flash</option>
+              <option value="gpt4o">🤖 OpenAI GPT-4o Mini</option>
             </select>
 
             {/* Auto-Fallback Toggle */}
@@ -990,17 +1041,40 @@ function GmailCard() {
                         {/* Category */}
                         <td className="p-3">
                           <select
-                            value={entry.category || "other"}
+                            value={
+                              (entry.category || "").toLowerCase() === "income" && entry.entry_type === "expense"
+                                ? "transfer"
+                                : (entry.category || (entry.entry_type === "expense" ? "transfer" : "income")).toLowerCase()
+                            }
                             onChange={(e) => {
                               const val = e.target.value;
                               setPreviewEntries(prev => prev.map((item, i) => i === idx ? { ...item, category: val } : item));
                             }}
-                            className="bg-transparent border-none outline-none text-[11px] p-1 cursor-pointer"
+                            className="bg-transparent border-none outline-none text-[11px] p-1 cursor-pointer capitalize"
                             style={{ color: "var(--text)" }}
                           >
-                            {["income", "housing", "groceries", "utilities", "subscriptions", "transport", "dining", "shopping", "entertainment", "transfer", "other"].map(cat => (
+                            {[
+                              "transfer",
+                              "dining",
+                              "transport",
+                              "subscriptions",
+                              "utilities",
+                              "shopping",
+                              "groceries",
+                              "housing",
+                              "entertainment",
+                              "healthcare",
+                              "salary",
+                              "income",
+                              "other",
+                            ].map(cat => (
                               <option key={cat} value={cat}>{cat}</option>
                             ))}
+                            {entry.category && ![
+                              "transfer", "dining", "transport", "subscriptions", "utilities", "shopping", "groceries", "housing", "entertainment", "healthcare", "salary", "income", "other"
+                            ].includes(entry.category.toLowerCase()) && (
+                              <option value={entry.category.toLowerCase()}>{entry.category}</option>
+                            )}
                           </select>
                         </td>
 
@@ -1808,14 +1882,21 @@ export default function DataBankPage() {
                   </div>
                   <select
                     value={selectedAiEngine}
-                    onChange={(e) => setSelectedAiEngine(e.target.value)}
+                    onChange={(e) => updateGlobalAiEngine(e.target.value)}
                     className="px-2.5 py-1 rounded-[6px] text-[11px] font-semibold outline-none cursor-pointer border"
                     style={{ background: "var(--card)", borderColor: "rgba(0,196,140,0.3)", color: "var(--green2)" }}
                   >
-                    <option value="groq-70b">⚡ Groq Llama 3.3 70B (Fast Reasoning)</option>
-                    <option value="groq-8b">🚀 Groq Llama 3.1 8B (Sub-100ms Instant)</option>
+                    <option value="bedrock-sonnet">⚡ Amazon Bedrock — Claude 3.5 Sonnet</option>
+                    <option value="bedrock-haiku">⚡ Amazon Bedrock — Claude 3.5 Haiku</option>
+                    <option value="bedrock-llama">⚡ Amazon Bedrock — Meta Llama 3.3 70B</option>
+                    <option value="bedrock-nova">⚡ Amazon Bedrock — Amazon Nova Pro</option>
+                    <option value="gemma">✨ Gemma 4 31B (NVIDIA Build)</option>
+                    <option value="nvidia">🚀 Llama 3.3 70B (NVIDIA NIM)</option>
+                    <option value="groq-70b">⚡ Groq Llama 3.3 70B Versatile</option>
+                    <option value="groq-8b">⚡ Groq Llama 3.1 8B Instant</option>
                     <option value="claude">🧠 Anthropic Claude 3.5 Sonnet</option>
-                    <option value="gemini">🔮 Google Gemini 1.5 Flash</option>
+                    <option value="gemini">🔮 Google Gemini 2.0 Flash</option>
+                    <option value="gpt4o">🤖 OpenAI GPT-4o Mini</option>
                   </select>
                 </div>
 

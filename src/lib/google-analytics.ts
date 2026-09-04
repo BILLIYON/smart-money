@@ -119,7 +119,7 @@ export async function fetchHistoricalAnalytics(days = 7): Promise<ReportAnalytic
   const startDate = `${days}daysAgo`;
 
   // Query 1: Daily Trends & Totals
-  const mainReport = await analyticsData.properties.runReport({
+  const mainReport: any = await analyticsData.properties.runReport({
     property: `properties/${propertyId}`,
     requestBody: {
       dateRanges: [{ startDate, endDate: "today" }],
@@ -131,11 +131,11 @@ export async function fetchHistoricalAnalytics(days = 7): Promise<ReportAnalytic
       ],
       dimensions: [{ name: "date" }],
       orderBys: [{ dimension: { dimensionName: "date" } }],
-    },
+    } as any,
   });
 
   // Query 2: Top Pages
-  const pagesReport = await analyticsData.properties.runReport({
+  const pagesReport: any = await analyticsData.properties.runReport({
     property: `properties/${propertyId}`,
     requestBody: {
       dateRanges: [{ startDate, endDate: "today" }],
@@ -143,11 +143,11 @@ export async function fetchHistoricalAnalytics(days = 7): Promise<ReportAnalytic
       dimensions: [{ name: "pagePath" }, { name: "pageTitle" }],
       limit: 10,
       orderBys: [{ metric: { metricName: "screenPageViews" }, desc: true }],
-    },
+    } as any,
   });
 
   // Query 3: Traffic Sources & Acquisition Channels
-  const sourcesReport = await analyticsData.properties.runReport({
+  const sourcesReport: any = await analyticsData.properties.runReport({
     property: `properties/${propertyId}`,
     requestBody: {
       dateRanges: [{ startDate, endDate: "today" }],
@@ -155,11 +155,11 @@ export async function fetchHistoricalAnalytics(days = 7): Promise<ReportAnalytic
       dimensions: [{ name: "sessionSource" }, { name: "sessionMedium" }],
       limit: 8,
       orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
-    },
+    } as any,
   });
 
   // Query 4: Countries
-  const geoReport = await analyticsData.properties.runReport({
+  const geoReport: any = await analyticsData.properties.runReport({
     property: `properties/${propertyId}`,
     requestBody: {
       dateRanges: [{ startDate, endDate: "today" }],
@@ -167,18 +167,18 @@ export async function fetchHistoricalAnalytics(days = 7): Promise<ReportAnalytic
       dimensions: [{ name: "country" }],
       limit: 10,
       orderBys: [{ metric: { metricName: "totalUsers" }, desc: true }],
-    },
+    } as any,
   });
 
   // Query 5: Devices
-  const deviceReport = await analyticsData.properties.runReport({
+  const deviceReport: any = await analyticsData.properties.runReport({
     property: `properties/${propertyId}`,
     requestBody: {
       dateRanges: [{ startDate, endDate: "today" }],
       metrics: [{ name: "totalUsers" }],
       dimensions: [{ name: "deviceCategory" }],
       orderBys: [{ metric: { metricName: "totalUsers" }, desc: true }],
-    },
+    } as any,
   });
 
   const totals = mainReport.data.totals?.[0]?.metricValues || [];
@@ -187,7 +187,7 @@ export async function fetchHistoricalAnalytics(days = 7): Promise<ReportAnalytic
   const totalPageviews = parseInt(totals[2]?.value || "0", 10);
   const bounceRate = parseFloat(totals[3]?.value || "0");
 
-  const dailyTrends = (mainReport.data.rows || []).map((r) => {
+  const dailyTrends = (mainReport.data.rows || []).map((r: any) => {
     const rawDate = r.dimensionValues?.[0]?.value || "";
     // Format YYYYMMDD to YYYY-MM-DD
     const formattedDate = rawDate.length === 8 ? `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}` : rawDate;
@@ -199,26 +199,26 @@ export async function fetchHistoricalAnalytics(days = 7): Promise<ReportAnalytic
     };
   });
 
-  const topPages = (pagesReport.data.rows || []).map((r) => ({
+  const topPages = (pagesReport.data.rows || []).map((r: any) => ({
     pagePath: r.dimensionValues?.[0]?.value || "/",
     pageTitle: r.dimensionValues?.[1]?.value || "Smart Money",
     pageviews: parseInt(r.metricValues?.[0]?.value || "0", 10),
     users: parseInt(r.metricValues?.[1]?.value || "0", 10),
   }));
 
-  const trafficSources = (sourcesReport.data.rows || []).map((r) => ({
+  const trafficSources = (sourcesReport.data.rows || []).map((r: any) => ({
     source: r.dimensionValues?.[0]?.value || "(direct)",
     medium: r.dimensionValues?.[1]?.value || "(none)",
     sessions: parseInt(r.metricValues?.[0]?.value || "0", 10),
     users: parseInt(r.metricValues?.[1]?.value || "0", 10),
   }));
 
-  const countries = (geoReport.data.rows || []).map((r) => ({
+  const countries = (geoReport.data.rows || []).map((r: any) => ({
     country: r.dimensionValues?.[0]?.value || "Unknown",
     users: parseInt(r.metricValues?.[0]?.value || "0", 10),
   }));
 
-  const devices = (deviceReport.data.rows || []).map((r) => ({
+  const devices = (deviceReport.data.rows || []).map((r: any) => ({
     deviceCategory: r.dimensionValues?.[0]?.value || "desktop",
     users: parseInt(r.metricValues?.[0]?.value || "0", 10),
   }));

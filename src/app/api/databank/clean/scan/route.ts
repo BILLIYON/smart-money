@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase-server";
 import { Pool } from "pg";
-import { parseFinancialEmailData } from "@/lib/gmail-parser";
+import { parseFinancialEmailData, inferEntryType } from "@/lib/gmail-parser";
 
 function getPool() {
   return new Pool({
@@ -90,32 +90,17 @@ export async function GET(req: Request) {
 
       // ── Issue 2: Inverted Direction (Debit vs Credit) ─────────────────────
       let isDirectionInverted = false;
-      let correctType: "income" | "expense" = row.entry_type === "income" ? "expense" : "income";
-      let inversionReason = "";
+      const emailBodyText = meta.email_body || desc;
+      const emailSubject = meta.email_subject || desc;
+      const emailFrom = meta.email_from || "";
 
-      const lowerText = `${desc} ${meta.email_subject || ""} ${meta.email_from || ""}`.toLowerCase();
+      // Re-run direction inference using current robust rules
+      const expectedType = inferEntryType(emailBodyText, emailSubject, emailFrom);
+      let correctType: "income" | "expense" = expectedType;
 
-      // Check if entry_type is "income", but text clearly indicates a DEBIT / transfer sent / payment
-      if (row.entry_type === "income") {
-        if (
-          /\b(?:debit|dr|debited|sent|paid|pos|purchase|airtime|recharge|bill|topup|top-up|outflow|charge|fee)\b/i.test(lowerText) &&
-          !/\b(?:salary\s*credit|credit\s*alert|inflow|money\s*received)\b/i.test(lowerText)
-        ) {
-          isDirectionInverted = true;
-          correctType = "expense";
-          inversionReason = "Description or notification indicates a debit/expense, but was recorded as income.";
-        }
-      }
-      // Check if entry_type is "expense", but text clearly indicates a CREDIT / salary / refund / received
-      else if (row.entry_type === "expense") {
-        if (
-          /\b(?:credit\s*alert|credited|salary|refund|inflow|received\s+from|money\s+received)\b/i.test(lowerText) &&
-          !/\b(?:debit\s*alert|debited|sent\s+to|paid\s+to|pos\s+purchase)\b/i.test(lowerText)
-        ) {
-          isDirectionInverted = true;
-          correctType = "income";
-          inversionReason = "Notification indicates a credit/income, but was recorded as expense.";
-        }
+      if ((row.entry_type === "income" || row.entry_type === "expense") && row.entry_type !== expectedType) {
+        isDirectionInverted = true;
+        correctType = expectedType;
       }
 
       if (isDirectionInverted) {
@@ -123,7 +108,7 @@ export async function GET(req: Request) {
           id: row.id,
           issue_type: "inverted_direction",
           issue_title: `Inverted Direction (${row.entry_type} → ${correctType})`,
-          issue_description: inversionReason,
+          issue_description: `Transaction direction mis-classified. Suggested: "${correctType}".`,
           current: {
             description: desc,
             entry_type: row.entry_type,
@@ -165,6 +150,7 @@ export async function GET(req: Request) {
       }
 
       // ── Issue 4: Uncategorized or Generic Category ────────────────────────
+      const lowerText = `${emailSubject} ${emailBodyText} ${emailFrom}`.toLowerCase();
       if (!isDirectionInverted && (cat === "other" || cat === "uncategorized" || cat === "general expense" || !row.category)) {
         let suggestedCategory = "General Expense";
         if (/(uber|bolt|indrive|transport|flight|ride)/i.test(lowerText)) suggestedCategory = "Transport";

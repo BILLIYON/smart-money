@@ -227,6 +227,23 @@ function ProfileTab() {
       }
       setFallbackEngine(savedFallbackEngine);
     }
+    fetch("/api/databank/gmail/settings")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.metadata?.ai_engine) {
+          setAiEngine(data.metadata.ai_engine);
+          if (typeof window !== "undefined") {
+            localStorage.setItem("databank_ai_engine", data.metadata.ai_engine);
+          }
+        }
+        if (data?.metadata?.enable_fallback !== undefined) {
+          setEnableFallback(Boolean(data.metadata.enable_fallback));
+        }
+        if (data?.metadata?.fallback_engine) {
+          setFallbackEngine(data.metadata.fallback_engine);
+        }
+      })
+      .catch(() => {});
   }, [loadProfile]);
 
   useEffect(() => {
