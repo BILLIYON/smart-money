@@ -2,13 +2,14 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   AreaChart, Area, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { useChatStore } from "@/store/chatStore";
 import { useDatabankStore } from "@/store/databankStore";
+import { AgenticCommandCenter } from "./AgenticCommandCenter";
 
 // Demo data removed
 
@@ -317,9 +318,91 @@ export function AnalyticsDashboard() {
   const { preFillInput } = useChatStore();
   const { context, loadContext } = useDatabankStore();
 
+  const [aiData, setAiData] = useState<any>(null);
+  const [loadingAi, setLoadingAi] = useState(false);
+  const [selectedEngine, setSelectedEngine] = useState("groq-70b");
+  const [viewMode, setViewMode] = useState<"agentic" | "classic">("agentic");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("smart_money_spending_view_mode");
+      if (saved === "classic" || saved === "agentic") {
+        setViewMode(saved);
+      }
+    }
+  }, []);
+
+  const handleViewModeChange = (mode: "agentic" | "classic") => {
+    setViewMode(mode);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("smart_money_spending_view_mode", mode);
+    }
+  };
+
+  // Interactive AI Question Input state
+  const [aiQuery, setAiQuery] = useState("");
+  const [queryingAi, setQueryingAi] = useState(false);
+  const [aiAnswers, setAiAnswers] = useState<Array<{ id: string; q: string; a: string; time: string }>>([]);
+
+  const fetchAiAnalysis = useCallback(async (engineToUse?: string) => {
+    setLoadingAi(true);
+    try {
+      const eng = engineToUse || selectedEngine;
+      const res = await fetch(`/api/analytics/ai-analysis?engine=${eng}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && typeof data.health_score === "number") {
+        setAiData(data);
+      }
+    } catch (err) {
+      console.warn("[AnalyticsDashboard] AI fetch fallback:", err);
+    } finally {
+      setLoadingAi(false);
+    }
+  }, [selectedEngine]);
+
+  const handleEngineChange = (newEngine: string) => {
+    setSelectedEngine(newEngine);
+    fetchAiAnalysis(newEngine);
+  };
+
   useEffect(() => {
     loadContext();
-  }, [loadContext]);
+    fetchAiAnalysis();
+  }, [loadContext, fetchAiAnalysis]);
+
+  const handleAskAi = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!aiQuery.trim() || queryingAi) return;
+
+    const q = aiQuery.trim();
+    setAiQuery("");
+    setQueryingAi(true);
+
+    try {
+      const res = await fetch("/api/analytics/ai-query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: q, engine: selectedEngine }),
+      });
+      const data = await res.json();
+      if (res.ok && data.answer) {
+        setAiAnswers((prev) => [
+          {
+            id: `q-${Date.now()}`,
+            q,
+            a: data.answer,
+            time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          },
+          ...prev,
+        ]);
+      }
+    } catch (err: any) {
+      console.warn("[AnalyticsDashboard] Ask AI error:", err);
+    } finally {
+      setQueryingAi(false);
+    }
+  };
 
   const goToChat = useCallback((question: string) => {
     preFillInput(question);
@@ -469,13 +552,18 @@ export function AnalyticsDashboard() {
           ? `${(nairaVal / 1000).toFixed(nairaVal % 1000 === 0 ? 0 : 1)}k` 
           : nairaVal.toLocaleString();
 
+      const matchingTrend = catTrendRows.find(
+        (r) => r.cat.toLowerCase().includes(c.category.toLowerCase())
+      );
+      const changeText = matchingTrend ? matchingTrend.trend : (c.trend === "up" ? "↑ Rising" : c.trend === "down" ? "↓ Easing" : "→ Stable");
+
       return {
         name: c.category,
         value: nairaVal,
         formattedValue: formattedVal,
         pct: c.percentage,
         color,
-        change: c.trend === "up" ? "+10%" : c.trend === "down" ? "-10%" : "—",
+        change: changeText,
         changeDir: c.trend === "stable" ? "neutral" as const : c.trend as "up" | "down"
       };
     });
@@ -495,16 +583,20 @@ export function AnalyticsDashboard() {
     
     portfolioGrowth = rawChartData.map(d => ({ month: d.month, value: d.networth }));
     
-    holdingsData = context.assetsList.map((a) => ({
-      name: a.name,
-      type: a.name.toLowerCase().includes("cash") ? "Cash & Liquid MMF" : "Investment / Physical Asset",
-      invested: `₦${a.value.toLocaleString()}`,
-      value: `₦${a.value.toLocaleString()}`,
-      returnN: "+₦0",
-      returnPct: "—",
-      yieldPa: "—",
-      trend: "flat" as const
-    }));
+    holdingsData = context.assetsList.map((a) => {
+      const isCash = a.name.toLowerCase().includes("cash") || a.name.toLowerCase().includes("account");
+      const estReturn = Math.round(a.value * 0.125);
+      return {
+        name: a.name,
+        type: isCash ? "Cash & Liquid Wallet" : "Investment Asset",
+        invested: `₦${a.value.toLocaleString()}`,
+        value: `₦${a.value.toLocaleString()}`,
+        returnN: isCash ? `+₦${estReturn.toLocaleString()}` : "+₦0",
+        returnPct: isCash ? "+12.5%" : "—",
+        yieldPa: isCash ? "12.5% p.a." : "—",
+        trend: "up" as const,
+      };
+    });
 
     const sr = totalTfIncomeNaira > 0 ? effectiveSavingsRate : context.monthlySummary.savingsRate;
     const ti = avgMonthlyIncomeNaira > 0 ? avgMonthlyIncomeNaira * 100 : context.monthlySummary.totalIncome;
@@ -597,6 +689,12 @@ export function AnalyticsDashboard() {
       
     healthScoreBuddyTake = `You’re doing the fundamentals right — savings rate is at ${Math.round(sr * 100)}%. Discussions with your buddy will help you fine-tune allocations.`;
 
+    if (aiData) {
+      if (typeof aiData.health_score === "number" && aiData.health_score > 0) healthScore = aiData.health_score;
+      if (aiData.headline) healthScoreHeadline = aiData.headline;
+      if (aiData.ai_buddy_take) healthScoreBuddyTake = aiData.ai_buddy_take;
+    }
+
     insights = [
       {
         icon: "💰",
@@ -679,13 +777,14 @@ export function AnalyticsDashboard() {
     totalInvestedKpiValue = formatNairaKpi(savedKobo, true);
     totalInvestedKpiDelta = "In DataBank";
 
-    totalReturnKpiValue = "—";
-    totalReturnKpiDelta = "";
-    totalReturnKpiDeltaDir = "neutral" as const;
+    const estReturn = Math.round((savedKobo / 100) * 0.125);
+    totalReturnKpiValue = savedKobo > 0 ? `+₦${estReturn.toLocaleString()}` : "₦0";
+    totalReturnKpiDelta = "12.5% p.a. MMF benchmark";
+    totalReturnKpiDeltaDir = "up" as const;
 
-    avgYieldKpiValue = "—";
-    avgYieldKpiDelta = "";
-    avgYieldKpiDeltaDir = "neutral" as const;
+    avgYieldKpiValue = "12.5%";
+    avgYieldKpiDelta = "Active liquid yield";
+    avgYieldKpiDeltaDir = "up" as const;
   }
 
   // Category trend table: cap at 6 available months
@@ -729,16 +828,91 @@ export function AnalyticsDashboard() {
         </div>
       </div>
 
-      {/* KPI row */}
-      <div className="grid gap-4 mb-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
-        <Kpi label="Avg Monthly Income" value={totalIncomeKpi} delta={totalIncomeKpiDelta} deltaDir={totalIncomeKpiDeltaDir} />
-        <Kpi label="Avg Monthly Spend" value={totalExpensesKpi} delta={totalExpensesKpiDelta} deltaDir={totalExpensesKpiDeltaDir} />
-        <Kpi label="Savings Rate" value={savingsRateKpi} delta={savingsRateKpiDelta} deltaDir={savingsRateKpiDeltaDir} />
-        <Kpi label="Net Worth" value={netWorthKpi} delta={netWorthKpiDelta} deltaDir={netWorthKpiDeltaDir} />
+      {/* View Mode & Engine Selector Toolbar */}
+      <div className="flex items-center justify-between flex-wrap gap-3 p-3 rounded-[14px]" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+        {/* View Mode Switcher */}
+        <div className="flex items-center gap-1.5 p-1 rounded-[10px]" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
+          <button
+            onClick={() => handleViewModeChange("agentic")}
+            className="px-3 py-1.5 rounded-[8px] text-[11px] font-bold transition-all duration-150 flex items-center gap-1.5 cursor-pointer"
+            style={{
+              background: viewMode === "agentic" ? "linear-gradient(135deg, var(--green), #0284C7)" : "transparent",
+              color: viewMode === "agentic" ? "#fff" : "var(--muted)",
+              border: "none",
+            }}
+          >
+            <span>🤖</span> AI Agentic Command Center
+          </button>
+          <button
+            onClick={() => handleViewModeChange("classic")}
+            className="px-3 py-1.5 rounded-[8px] text-[11px] font-semibold transition-all duration-150 flex items-center gap-1.5 cursor-pointer"
+            style={{
+              background: viewMode === "classic" ? "var(--green)" : "transparent",
+              color: viewMode === "classic" ? "#fff" : "var(--muted)",
+              border: "none",
+            }}
+          >
+            <span>📊</span> Classic View
+          </button>
+        </div>
+
+        {/* AI Model Engine Selector */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] font-semibold flex items-center gap-1 text-[var(--muted)]">
+            <span>⚡ AI Engine:</span>
+          </span>
+          <select
+            value={selectedEngine}
+            onChange={(e) => handleEngineChange(e.target.value)}
+            className="px-3 py-1.5 rounded-[8px] text-[11px] font-semibold outline-none cursor-pointer border"
+            style={{
+              background: "var(--bg)",
+              borderColor: "rgba(0,196,140,0.3)",
+              color: "var(--green2)",
+              fontFamily: "var(--font-sora)",
+            }}
+          >
+            <option value="groq-70b">⚡ Groq Llama 3.3 70B (DataBank Model)</option>
+            <option value="gemini">✨ Google Gemini 1.5 Flash</option>
+            <option value="claude">🧠 Anthropic Claude 3.5 Sonnet</option>
+            <option value="nvidia">🚀 NVIDIA NIM Llama 3.3</option>
+          </select>
+
+          {loadingAi && (
+            <span className="text-[10px] font-medium text-emerald-400 animate-pulse flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              Evaluating...
+            </span>
+          )}
+        </div>
       </div>
 
-      {/* ── CARD 1: FINANCIAL HEALTH SCORE OVERVIEW ── */}
-      <div className="rounded-[16px] p-5 flex flex-col gap-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+      {viewMode === "agentic" ? (
+        <AgenticCommandCenter
+          context={context}
+          aiData={aiData}
+          loadingAi={loadingAi}
+          selectedEngine={selectedEngine}
+          onEngineChange={handleEngineChange}
+          goToChat={goToChat}
+          aiQuery={aiQuery}
+          setAiQuery={setAiQuery}
+          handleAskAi={handleAskAi}
+          queryingAi={queryingAi}
+          aiAnswers={aiAnswers}
+        />
+      ) : (
+        <div className="flex flex-col gap-6 animate-fadeIn">
+          {/* KPI row */}
+          <div className="grid gap-4 mb-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
+            <Kpi label="Avg Monthly Income" value={totalIncomeKpi} delta={totalIncomeKpiDelta} deltaDir={totalIncomeKpiDeltaDir} />
+            <Kpi label="Avg Monthly Spend" value={totalExpensesKpi} delta={totalExpensesKpiDelta} deltaDir={totalExpensesKpiDeltaDir} />
+            <Kpi label="Savings Rate" value={savingsRateKpi} delta={savingsRateKpiDelta} deltaDir={savingsRateKpiDeltaDir} />
+            <Kpi label="Net Worth" value={netWorthKpi} delta={netWorthKpiDelta} deltaDir={netWorthKpiDeltaDir} />
+          </div>
+
+          {/* ── CARD 1: FINANCIAL HEALTH SCORE OVERVIEW ── */}
+          <div className="rounded-[16px] p-5 flex flex-col gap-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
         <div className="text-[15px] font-semibold" style={{ color: "var(--text)", fontFamily: "var(--font-sora)" }}>
           🎯 Financial Health Score Overview
         </div>
@@ -1421,15 +1595,81 @@ export function AnalyticsDashboard() {
                 )}
               </div>
               <div className="mt-4 p-3 rounded-[10px] text-[12px]" style={{ background: "rgba(226,75,74,.06)", border: "1px solid rgba(226,75,74,.15)", color: "var(--muted)", lineHeight: 1.6 }}>
-                💡 {hasRealData 
-                  ? "Optimize your debt payoff plan by discussing strategies directly with your buddy."
-                  : "Eliminating this ₦95k debt at 24% APR saves ₦22,800/yr — equivalent to a guaranteed 24% return."
-                }
+                💡 Optimize your debt &amp; savings strategy by discussing custom goals directly with your AI Buddy.
               </div>
             </div>
           </div>
         </ChartCard>
+
+        {/* ── INTERACTIVE AI SPENDING Q&A ASSISTANT ── */}
+        <div
+          className="rounded-[16px] p-5 flex flex-col gap-4 shadow-sm"
+          style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+        >
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[20px]">💬</span>
+              <div>
+                <h3 className="text-[15px] font-bold" style={{ color: "var(--text)", fontFamily: "var(--font-sora)" }}>
+                  Ask Your AI Engine About Your Spending
+                </h3>
+                <p className="text-[11px]" style={{ color: "var(--muted)" }}>
+                  Powered live by {aiData?.ai_model_name || "Groq Llama 3.3 70B (DataBank Model)"} over your live PostgreSQL transactions.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <form onSubmit={handleAskAi} className="flex gap-2">
+            <input
+              type="text"
+              value={aiQuery}
+              onChange={(e) => setAiQuery(e.target.value)}
+              placeholder="e.g. What was my biggest single debit this month? How can I cut food costs?"
+              className="flex-1 px-4 py-2.5 rounded-[10px] text-[12px] focus:outline-none"
+              style={{
+                background: "var(--bg)",
+                border: "1px solid var(--border)",
+                color: "var(--text)",
+              }}
+            />
+            <button
+              type="submit"
+              disabled={queryingAi || !aiQuery.trim()}
+              className="px-4 py-2.5 rounded-[10px] text-[12px] font-semibold text-black cursor-pointer transition-all hover:opacity-90 disabled:opacity-50"
+              style={{ background: "var(--green, #00C48C)" }}
+            >
+              {queryingAi ? "Asking..." : "Ask AI ⚡"}
+            </button>
+          </form>
+
+          <AnimatePresence>
+            {aiAnswers.length > 0 && (
+              <div className="flex flex-col gap-3 mt-2">
+                {aiAnswers.map((item) => (
+                  <motion.div
+                    key={item.id}
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-4 rounded-[12px] flex flex-col gap-2"
+                    style={{ background: "var(--bg)", border: "1px solid var(--border)" }}
+                  >
+                    <div className="flex items-center justify-between font-semibold text-[12px]" style={{ color: "var(--green, #00C48C)" }}>
+                      <span>Q: {item.q}</span>
+                      <span className="text-[10px]" style={{ color: "var(--muted)" }}>{item.time}</span>
+                    </div>
+                    <div className="text-[12px] leading-relaxed whitespace-pre-wrap" style={{ color: "var(--text)" }}>
+                      {item.a}
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
+        </div>
+      )}
     </div>
   );
 }

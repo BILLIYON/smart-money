@@ -3,10 +3,14 @@ import { dbCache } from "@/lib/cache";
 import { hashPassword, updateUserPassword } from "@/lib/auth";
 
 function getPool() {
+  const connectionString = process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money";
+  const isRemote = connectionString.includes("supabase.com") || connectionString.includes("pooler") || connectionString.includes("aws-");
   return new Pool({
-    connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+    connectionString,
+    ssl: isRemote ? { rejectUnauthorized: false } : false,
   });
 }
+
 
 export type OnboardingPayload = {
   userId: string;
@@ -41,9 +45,7 @@ export async function isAdmin(userId: string): Promise<boolean> {
 
 export async function getAdminStats() {
   return dbCache.getOrFetch("admin:stats", async () => {
-    const pool = new Pool({
-      connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
-    });
+    const pool = getPool();
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
@@ -79,9 +81,7 @@ export type RecentSignup = {
 
 export async function getRecentSignups(limit = 20): Promise<RecentSignup[]> {
   return dbCache.getOrFetch(`admin:signups:${limit}`, async () => {
-    const pool = new Pool({
-      connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
-    });
+    const pool = getPool();
     const { rows } = await pool.query(
       `
       SELECT id, email, plan, created_at
@@ -442,9 +442,7 @@ export type CommunityBuddyRow = {
 
 export async function getHiddenBuddyIds(): Promise<string[]> {
   return dbCache.getOrFetch("buddies:hidden", async () => {
-    const pool = new Pool({
-      connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
-    });
+    const pool = getPool();
     await pool.query("CREATE TABLE IF NOT EXISTS hidden_buddies (buddy_id TEXT PRIMARY KEY);");
     const { rows } = await pool.query("SELECT buddy_id FROM hidden_buddies;").catch(() => ({ rows: [] }));
     await pool.end();
@@ -500,9 +498,7 @@ export type DbBuddy = {
 
 export async function getAllDbBuddies(): Promise<DbBuddy[]> {
   return dbCache.getOrFetch("buddies:all", async () => {
-    const pool = new Pool({
-      connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
-    });
+    const pool = getPool();
     const { rows } = await pool.query("SELECT * FROM buddies ORDER BY created_at DESC;");
     await pool.end();
     return rows ?? [];
@@ -511,9 +507,7 @@ export async function getAllDbBuddies(): Promise<DbBuddy[]> {
 
 export async function getDbBuddyById(id: string): Promise<DbBuddy | null> {
   return dbCache.getOrFetch(`buddy:${id}`, async () => {
-    const pool = new Pool({
-      connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
-    });
+    const pool = getPool();
     const { rows } = await pool.query("SELECT * FROM buddies WHERE id = $1 LIMIT 1;", [id]);
     await pool.end();
     return rows[0] ?? null;
@@ -611,9 +605,7 @@ export async function deleteDbBuddy(id: string): Promise<void> {
 
 export async function getApprovedCommunityBuddies(): Promise<CommunityBuddyRow[]> {
   return dbCache.getOrFetch("buddies:approved", async () => {
-    const pool = new Pool({
-      connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
-    });
+    const pool = getPool();
     const { rows } = await pool.query(`
       SELECT id, name, tag, description, avatar_content, avatar_bg, avatar_is_serif, banner_color, category, is_fan_sim, fan_disclaimer, philosophy, ai_model, price_monthly
       FROM buddies
@@ -655,9 +647,7 @@ export async function getApprovedCommunityBuddies(): Promise<CommunityBuddyRow[]
 
 export async function getCommunityBuddyById(id: string): Promise<CommunityBuddyRow | null> {
   return dbCache.getOrFetch(`buddy:community:${id}`, async () => {
-    const pool = new Pool({
-      connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
-    });
+    const pool = getPool();
     const { rows } = await pool.query(
       `
       SELECT id, name, tag, description, avatar_content, avatar_bg, avatar_is_serif, banner_color, category, is_fan_sim, fan_disclaimer, philosophy, ai_model, price_monthly, rating, review_count
@@ -707,9 +697,7 @@ export async function getCommunityBuddyById(id: string): Promise<CommunityBuddyR
 
 export async function getBuddiesByCreator(creatorId: string): Promise<CommunityBuddyRow[]> {
   return dbCache.getOrFetch(`buddies:creator:${creatorId}`, async () => {
-    const pool = new Pool({
-      connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
-    });
+    const pool = getPool();
     const { rows } = await pool.query(
       `
       SELECT id, name, tag, description, avatar_content, avatar_bg, avatar_is_serif, banner_color, category, is_fan_sim, fan_disclaimer, philosophy, ai_model, price_monthly, rating, review_count

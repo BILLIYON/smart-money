@@ -16,10 +16,14 @@ export type AuthUser = {
 };
 
 function getPool() {
+  const connectionString = process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money";
+  const isRemote = connectionString.includes("supabase.com") || connectionString.includes("pooler") || connectionString.includes("aws-");
   return new Pool({
-    connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+    connectionString,
+    ssl: isRemote ? { rejectUnauthorized: false } : false,
   });
 }
+
 
 // ── Password Security ──────────────────────────────────────
 
@@ -113,29 +117,59 @@ export async function createUser(payload: {
 }): Promise<AuthUser & { password_hash: string | null }> {
   const pool = getPool();
   const cleanEmail = payload.email.trim().toLowerCase();
-  try {
-    const { rows } = await pool.query(
-      `INSERT INTO public.users (email, password_hash, full_name)
-       VALUES ($1, $2, $3)
-       RETURNING id, email, full_name, is_admin, onboarding_complete, plan;`,
-      [cleanEmail, payload.password_hash || null, payload.full_name || null]
-    );
+  const cleanName = payload.full_name?.trim() || cleanEmail.split("@")[0];
+  const newUserId = crypto.randomUUID();
 
-    const user = rows[0];
-    if (user && user.id) {
-      await pool.query(
-        `INSERT INTO auth.users (id, email, encrypted_password)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (id) DO UPDATE SET encrypted_password = EXCLUDED.encrypted_password;`,
-        [user.id, cleanEmail, payload.password_hash || null]
-      ).catch(() => {});
+  try {
+    // 1. Insert into auth.users FIRST to satisfy foreign key constraint users_id_fkey
+    let userId = newUserId;
+    try {
+      const { rows: authExisting } = await pool.query(
+        `SELECT id FROM auth.users WHERE LOWER(email) = LOWER($1) LIMIT 1;`,
+        [cleanEmail]
+      );
+      if (authExisting[0]?.id) {
+        userId = authExisting[0].id;
+        if (payload.password_hash) {
+          await pool.query(
+            `UPDATE auth.users SET encrypted_password = $1 WHERE id = $2;`,
+            [payload.password_hash, userId]
+          ).catch(() => {});
+        }
+      } else {
+        const authResult = await pool.query(
+          `INSERT INTO auth.users (id, email, encrypted_password)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (id) DO UPDATE SET encrypted_password = EXCLUDED.encrypted_password
+           RETURNING id;`,
+          [newUserId, cleanEmail, payload.password_hash || null]
+        );
+        if (authResult.rows[0]?.id) {
+          userId = authResult.rows[0].id;
+        }
+      }
+    } catch (authErr) {
+      console.error("[createUser] auth.users insertion error:", authErr);
+      throw authErr;
     }
 
-    return user;
+    // 2. Insert into public.users with valid auth.users(id) reference
+    const { rows } = await pool.query(
+      `INSERT INTO public.users (id, email, password_hash, full_name)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (id) DO UPDATE SET
+         full_name = COALESCE(EXCLUDED.full_name, public.users.full_name),
+         password_hash = COALESCE(EXCLUDED.password_hash, public.users.password_hash)
+       RETURNING id, email, full_name, is_admin, onboarding_complete, plan, password_hash;`,
+      [userId, cleanEmail, payload.password_hash || null, cleanName]
+    );
+
+    return rows[0];
   } finally {
     await pool.end();
   }
 }
+
 
 // ── Session Cookie Management ──────────────────────────────
 

@@ -185,53 +185,9 @@ const DEFAULT_CONTRARIAN_THREAD: ChatMessage[] = [
     id: "c1",
     role: "ai",
     content:
-      "Good morning. I noticed a ₦450,000 credit hit your GTBank account this morning — likely your March salary. Before you do anything else with it, let's talk about your current position.\n\nWhat's your first instinct about where this money goes?",
-    time: "9:14 AM",
-    insightHighlight: {
-      label: "📊 From your DataBank",
-      text: "Top 3 spend last month: Food & Dining (₦82k), Subscriptions (₦34k), Transport (₦28k). Combined: 32% of your income.",
-    },
-    spendChart: {
-      title: "📊 Last Month Spending Breakdown",
-      bars: [
-        { label: "Food & Dining", width: "68%", color: "var(--green)", amount: "₦82k" },
-        { label: "Subscriptions", width: "42%", color: "var(--gold)",  amount: "₦34k" },
-        { label: "Transport",     width: "33%", color: "#4A90D9",      amount: "₦28k" },
-        { label: "Shopping",      width: "22%", color: "#9B59B6",      amount: "₦19k" },
-        { label: "Utilities",     width: "14%", color: "var(--muted)", amount: "₦12k" },
-      ],
-    },
+      "Welcome! I'm The Contrarian Investor. I help you see beyond hype, eliminate quiet spending leaks, and deploy your capital with precision.\n\nWhat financial question or goal would you like to tackle today?",
+    time: "",
     showActions: true,
-    goalCardData: { name: "Build 6-month Emergency Fund", amount: "₦900,000", date: "Sep 2026", buddyName: "The Contrarian Investor" },
-  },
-  {
-    id: "c2",
-    role: "user",
-    content: "I was thinking about paying off debt and maybe putting something in real estate. My uncle keeps saying land is the best investment.",
-    time: "9:16 AM",
-  },
-  {
-    id: "c3",
-    role: "ai",
-    content:
-      "Your uncle isn't wrong about land — but I'd push back on the timing.\n\nYour ₦34k/month in subscriptions is the low-hanging fruit. That's ₦408k a year leaving quietly. Audit every single one before committing to land.\n\nMy sequence: (1) audit subscriptions, (2) deploy ₦200k against debt, (3) park ₦150k in a T-bill while you research land properly.",
-    time: "9:17 AM",
-    insightHighlight: {
-      label: "📰 Nairametrics · Today",
-      text: "CBN held MPR at 27.5% this week. Paying off variable-rate debt right now is a guaranteed 27%+ return.",
-    },
-    showActions: true,
-    showFollowUp: true,
-    goalCardData: { name: "Pay off credit card debt", amount: "₦95,000", date: "Apr 2026", buddyName: "The Contrarian Investor" },
-    agentCardData: {
-      title: "Deploy ₦200,000 Against Debt",
-      action: "Transfer to GTBank Credit Card",
-      amount: "₦200,000",
-      from: "Smart Money Wallet (bal: ₦85k) + GTBank",
-      fee: "₦0",
-      benefit: "~₦48,000/year",
-      benefitColor: "var(--green2)",
-    },
   },
 ];
 

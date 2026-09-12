@@ -64,15 +64,10 @@ function extractTextFromPdfBuffer(buffer: Buffer): string {
     .replace(/\\t/g, " ");
 }
 
-function guessCategory(description: string): string {
-  const d = description.toLowerCase();
-  if (d.includes("netflix") || d.includes("spotify") || d.includes("dstv")) return "subscriptions";
-  if (d.includes("uber") || d.includes("bolt") || d.includes("transport")) return "transport";
-  if (d.includes("shoprite") || d.includes("supermarket") || d.includes("market") || d.includes("food")) return "food";
-  if (d.includes("salary") || d.includes("payroll") || d.includes("credit alert")) return "income";
-  if (d.includes("transfer") || d.includes("trf")) return "transfer";
-  if (d.includes("airtime") || d.includes("data")) return "utilities";
-  return "other";
+import { inferCategory } from "@/lib/gmail-parser";
+
+function guessCategory(description: string, amount = 0): string {
+  return inferCategory(description, amount > 0 ? "income" : "expense");
 }
 
 function parseAmount(raw: string): number {

@@ -137,12 +137,12 @@ function GmailCard() {
   const [aiEngine, setAiEngine] = useState<string>("groq");
   const [enableFallback, setEnableFallback] = useState<boolean>(true);
   const [fallbackEngine, setFallbackEngine] = useState<string>("groq");
-  const [presetFilter, setPresetFilter] = useState<string>("all");
+  const [presetFilter, setPresetFilter] = useState<string>(DEFAULT_PRESETS[0].id);
   
   // Custom presets list & AI Prompt
-  const [presets, setPresets] = useState<Array<{ id: string; label: string; query: string; filter: string; instructions?: string }>>([]);
-  const [presetLabel, setPresetLabel] = useState("");
-  const [presetQuery, setPresetQuery] = useState("");
+  const [presets, setPresets] = useState<Array<{ id: string; label: string; query: string; filter: string; instructions?: string }>>(DEFAULT_PRESETS);
+  const [presetLabel, setPresetLabel] = useState<string>(DEFAULT_PRESETS[0].label);
+  const [presetQuery, setPresetQuery] = useState<string>(DEFAULT_PRESETS[0].query);
   const [aiPrompt, setAiPrompt] = useState<string>("");
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -159,7 +159,6 @@ function GmailCard() {
         setSyncMode(data.metadata.sync_mode || "lightweight");
         const activeEngine = data.metadata.ai_engine || (typeof window !== "undefined" ? localStorage.getItem("databank_ai_engine") : null) || "groq-70b";
         setAiEngine(activeEngine);
-        setSelectedAiEngine(activeEngine);
         if (typeof window !== "undefined") {
           localStorage.setItem("databank_ai_engine", activeEngine);
         }
@@ -211,10 +210,16 @@ function GmailCard() {
     }
   }, [searchParams, loadStatus]);
 
+  const userStoppedRef = useRef(false);
+
   // Poll Gmail status if syncing or if background metadata says syncing
   useEffect(() => {
-    if (!syncing && !status?.metadata?.is_syncing) return;
+    if ((!syncing && !status?.metadata?.is_syncing) || userStoppedRef.current) return;
     const interval = setInterval(async () => {
+      if (userStoppedRef.current) {
+        clearInterval(interval);
+        return;
+      }
       try {
         const res = await fetch("/api/databank/gmail/status");
         if (res.status === 401) {
@@ -224,8 +229,9 @@ function GmailCard() {
         }
         if (res.ok) {
           const data = await res.json();
+          if (userStoppedRef.current) return;
           setStatus(data);
-          if (data.metadata?.is_syncing) {
+          if (data.metadata?.is_syncing && !userStoppedRef.current) {
             setSyncing(true);
             if (typeof data.metadata.sync_progress === "number") {
               setSyncProgress(data.metadata.sync_progress);
@@ -233,7 +239,7 @@ function GmailCard() {
             if (data.metadata.sync_message) {
               setSyncMsg(data.metadata.sync_message);
             }
-          } else if (data.metadata && !data.metadata.is_syncing && status?.metadata?.is_syncing) {
+          } else if (data.metadata && !data.metadata.is_syncing) {
             setSyncing(false);
             setSyncProgress(null);
             setSyncMsg(data.metadata?.sync_message || "Sync complete!");
@@ -252,7 +258,6 @@ function GmailCard() {
 
   const updateGlobalAiEngine = async (newEngine: string) => {
     setAiEngine(newEngine);
-    setSelectedAiEngine(newEngine);
     if (typeof window !== "undefined") {
       localStorage.setItem("databank_ai_engine", newEngine);
     }
@@ -309,23 +314,29 @@ function GmailCard() {
   }
 
   async function handleStopSync() {
+    userStoppedRef.current = true;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setSyncing(false);
+    setSyncProgress(null);
+    setSyncMsg("Sync stopped by user");
     try {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
-      }
       await fetch("/api/databank/gmail/sync", { method: "DELETE" });
-      setSyncing(false);
-      setSyncProgress(null);
-      setSyncMsg("Sync stopped by user");
-      setTimeout(() => setSyncMsg(null), 4000);
       await loadStatus();
     } catch (e) {
       console.error("Failed to stop sync:", e);
+    } finally {
+      setTimeout(() => {
+        setSyncMsg(null);
+        userStoppedRef.current = false;
+      }, 4000);
     }
   }
 
   async function handleSyncNow() {
+    userStoppedRef.current = false;
     setSyncing(true);
     setSyncMsg(null);
     setSyncProgress(0);
@@ -389,18 +400,40 @@ function GmailCard() {
       await loadStatus();
       await useDatabankStore.getState().loadContext();
     } catch (err: any) {
+      if (err.name === "AbortError") {
+        setSyncMsg("Sync stopped");
+        setSyncing(false);
+        setSyncProgress(null);
+        return;
+      }
+
       if (err.message?.includes("key mismatch") || err.message?.includes("re-authenticate") || err.message?.includes("DECRYPTION_FAILED")) {
         popup.error(
           "Re-authentication Required", 
           "Your Gmail session tokens cannot be decrypted (likely due to an encryption key change). Please click the Disconnect button, then connect your Gmail account again to refresh your credentials."
         );
+        setSyncing(false);
+        setSyncProgress(null);
+        return;
+      }
+
+      // Check if background sync is continuing in database
+      const freshStatus = await loadStatus();
+      if (freshStatus?.metadata?.is_syncing) {
+        console.log("[handleSyncNow] Stream interrupted, continuing status polling in background.");
+        setSyncMsg("Sync continuing in background...");
       } else {
         setSyncMsg(err.message || "Sync failed. Try again.");
+        setSyncing(false);
+        setSyncProgress(null);
       }
     } finally {
-      setSyncing(false);
-      setSyncProgress(null);
-      setTimeout(() => setSyncMsg(null), 4000);
+      const freshStatus = await loadStatus();
+      if (!freshStatus?.metadata?.is_syncing) {
+        setSyncing(false);
+        setSyncProgress(null);
+        setTimeout(() => setSyncMsg(null), 4000);
+      }
     }
   }
 
@@ -792,22 +825,20 @@ function GmailCard() {
               onChange={(e) => {
                 const targetId = e.target.value;
                 setPresetFilter(targetId);
-                const current = presets.find((p) => p.id === targetId);
+                const activeList = presets.length > 0 ? presets : DEFAULT_PRESETS;
+                const current = activeList.find((p) => p.id === targetId);
                 if (current) {
-                  setPresetLabel(current.label);
+                  setPresetLabel(current.label || "");
                   setPresetQuery(current.query || "");
-                } else if (presets.length > 0) {
-                  setPresetLabel(presets[0].label);
-                  setPresetQuery(presets[0].query || "");
-                } else {
-                  setPresetLabel("");
-                  setPresetQuery("");
+                } else if (activeList.length > 0) {
+                  setPresetLabel(activeList[0].label || "");
+                  setPresetQuery(activeList[0].query || "");
                 }
               }}
               className="w-full p-[8px] rounded-[8px] border text-[12px] outline-none mb-3"
               style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)" }}
             >
-              {presets.map((p) => (
+              {(presets.length > 0 ? presets : DEFAULT_PRESETS).map((p) => (
                 <option key={p.id} value={p.id}>{p.label}</option>
               ))}
             </select>
@@ -1398,7 +1429,8 @@ export default function DataBankPage() {
   const [savingManual, setSavingManual] = useState(false);
 
   // Databank Store
-  const { uploadStatement, addManualEntry } = useDatabankStore();
+  const { uploadStatement, addManualEntry, isUnauthorized } = useDatabankStore();
+
 
   const fetchEnabledSources = useCallback(async () => {
     const supabase = createClient();
@@ -1699,6 +1731,35 @@ export default function DataBankPage() {
   return (
     <div className="flex-1 overflow-y-auto" style={{ background: "var(--bg)" }}>
       <div className="px-4 py-6 sm:px-6 lg:px-8 w-full">
+        {isUnauthorized && (
+          <div
+            className="rounded-[14px] p-4 mb-5 flex items-center justify-between gap-4 flex-wrap"
+            style={{
+              background: "rgba(245,166,35,0.1)",
+              border: "1px solid rgba(245,166,35,0.3)",
+              color: "var(--text)",
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-[20px]">⚠️</span>
+              <div>
+                <div className="text-[14px] font-semibold" style={{ color: "var(--gold)" }}>
+                  Session Expired / Logged Out
+                </div>
+                <div className="text-[12px]" style={{ color: "var(--muted)" }}>
+                  Your authentication token has expired or you logged out. Please sign back in to view your stored bank statements and DataBank metrics.
+                </div>
+              </div>
+            </div>
+            <Link
+              href="/login"
+              className="px-4 py-[8px] rounded-[10px] text-[12px] font-semibold transition-colors"
+              style={{ background: "var(--green)", color: "#fff", textDecoration: "none" }}
+            >
+              🔑 Sign Back In
+            </Link>
+          </div>
+        )}
 
         {/* Privacy reassurance bar */}
         <div
@@ -1904,7 +1965,7 @@ export default function DataBankPage() {
                   </div>
                   <select
                     value={selectedAiEngine}
-                    onChange={(e) => updateGlobalAiEngine(e.target.value)}
+                    onChange={(e) => setSelectedAiEngine(e.target.value)}
                     className="px-2.5 py-1 rounded-[6px] text-[11px] font-semibold outline-none cursor-pointer border"
                     style={{ background: "var(--card)", borderColor: "rgba(0,196,140,0.3)", color: "var(--green2)" }}
                   >

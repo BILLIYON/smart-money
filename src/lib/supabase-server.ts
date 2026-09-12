@@ -2,9 +2,13 @@ import { getCurrentUser } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { Pool } from "pg";
 
+const dbUrl = process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money";
+const isRemoteDb = dbUrl.includes("supabase.com") || dbUrl.includes("pooler") || dbUrl.includes("aws-");
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+  connectionString: dbUrl,
+  ssl: isRemoteDb ? { rejectUnauthorized: false } : false,
 });
+
 
 export async function requireAuth(req?: Request) {
   const user = await getCurrentUser(req);

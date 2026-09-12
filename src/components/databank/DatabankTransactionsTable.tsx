@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDatabankStore } from "@/store/databankStore";
 import { SpendingExclusionsToolbar } from "@/components/analytics/SpendingExclusionsToolbar";
+import { popup } from "@/store/popupStore";
+
 
 type Transaction = {
   id: string;
@@ -31,6 +33,42 @@ type Stats = {
   totalOutflowsNaira: number;
   netCashflowNaira: number;
 };
+
+function getCleanDisplayDescription(desc?: string, bank?: string): string {
+  if (!desc) return bank ? `${bank} Alert` : "Bank Transaction";
+
+  let cleaned = desc
+    .replace(/^of this transaction are shown below[:\s]*/i, "")
+    .replace(/^the details of this transaction are shown below[:\s]*/i, "")
+    .replace(/^details of this transaction[:\s]*/i, "")
+    .replace(/^are shown below[:\s]*/i, "")
+    .replace(/transaction notification account number\s*:.*$/i, "")
+    .replace(/account number\s*:.*$/i, "")
+    .replace(/\s+bank$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (
+    !cleaned ||
+    /^(of this transaction|transaction notification|transaction occurred|details of this|are shown below|account number|transaction type)$/i.test(cleaned)
+  ) {
+    return bank ? `${bank} Alert` : "Bank Transaction";
+  }
+
+  return cleaned;
+}
+
+function getCleanDisplayReason(reason?: string, desc?: string, bank?: string): string {
+  const cleanDesc = getCleanDisplayDescription(desc, bank);
+  if (!reason || /of this transaction|are shown below|transaction notification|account number/i.test(reason)) {
+    return `Transaction alert (${cleanDesc})`;
+  }
+  return reason
+    .replace(/of this transaction are shown below[:\s]*/gi, "")
+    .replace(/transaction notification account number\s*:.*$/gi, "")
+    .replace(/\(of this transaction are shown below:.*?\)/gi, `(${cleanDesc})`)
+    .trim();
+}
 
 const TYPE_CONFIG: Record<
   string,
@@ -78,21 +116,7 @@ const TYPE_CONFIG: Record<
   },
 };
 
-const COMMON_CATEGORIES = [
-  "Food & Dining",
-  "Transport & Fuel",
-  "Subscriptions",
-  "Shopping & Groceries",
-  "Utilities & Bills",
-  "Phone & Data",
-  "Salary & Wages",
-  "Business & Sales",
-  "Transfers",
-  "Healthcare",
-  "Entertainment",
-  "Paystack",
-  "Uncategorized",
-];
+
 
 export function DatabankTransactionsTable({
   onDataChanged,
@@ -116,6 +140,18 @@ export function DatabankTransactionsTable({
   const [categories, setCategories] = useState<{ name: string; count: number }[]>([]);
   const [sources, setSources] = useState<{ name: string; count: number }[]>([]);
 
+  // Dynamically aggregated category options from live database records
+  const availableCategories = Array.from(
+    new Set(
+      [
+        ...categories.map((c) => c.name),
+        ...entries.map((e) => e.category),
+      ]
+        .filter(Boolean)
+        .map((c) => c.trim())
+    )
+  ).sort();
+
   // Filter States
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -138,6 +174,28 @@ export function DatabankTransactionsTable({
   const [batchAction, setBatchAction] = useState<"delete" | "category" | null>(null);
   const [batchCategory, setBatchCategory] = useState("");
   const [batchProcessing, setBatchProcessing] = useState(false);
+  const [reparsing, setReparsing] = useState(false);
+
+  const handleReparse = async () => {
+    setReparsing(true);
+    try {
+      const res = await fetch("/api/databank/gmail/reparse", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Reparse failed");
+      popup.success(
+        "Database Audit Complete 🚀",
+        `Audited ${data.audited} records. Fixed ${data.invertedDirectionsFixed} credit/expense direction errors.`
+      );
+      await fetchEntries();
+      await useDatabankStore.getState().loadContext();
+      if (onDataChanged) onDataChanged();
+    } catch (err: any) {
+      popup.error("Auto-Repair Failed", err.message || "Failed to audit databank entries.");
+    } finally {
+      setReparsing(false);
+    }
+  };
+
 
   // Edit Form Fields
   const [editDesc, setEditDesc] = useState("");
@@ -355,6 +413,14 @@ export function DatabankTransactionsTable({
     })}`;
   };
 
+  const formatBalance = (val: any) => {
+    if (val === null || val === undefined || val === "") return "—";
+    const num = Number(val);
+    if (isNaN(num) || num <= 0) return "—";
+    const naira = num / 100;
+    return `₦${naira.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
   const formatDate = (dateStr: string) => {
     if (!dateStr) return "—";
     try {
@@ -370,15 +436,25 @@ export function DatabankTransactionsTable({
   // Export CSV
   const handleExportCsv = () => {
     if (entries.length === 0) return;
-    const headers = ["Date", "Description", "Type", "Category", "Amount (NGN)", "Source"];
-    const rows = entries.map((e) => [
-      e.entry_date,
-      `"${e.description.replace(/"/g, '""')}"`,
-      e.entry_type,
-      `"${e.category}"`,
-      e.amountNaira.toFixed(2),
-      e.source,
-    ]);
+    const headers = ["Date", "Time", "Description", "AI Purpose & Reason", "Type", "Category", "Amount (NGN)", "Account Balance (NGN)", "Bank", "Source"];
+    const rows = entries.map((e) => {
+      const time = e.metadata?.transaction_time || "";
+      const reason = (e.metadata?.reason || e.description || "").replace(/"/g, '""');
+      const bank = (e.metadata?.bank || e.metadata?.provider || "").replace(/"/g, '""');
+      const balNaira = e.metadata?.account_balance ? (Number(e.metadata.account_balance) / 100).toFixed(2) : "";
+      return [
+        e.entry_date,
+        `"${time}"`,
+        `"${e.description.replace(/"/g, '""')}"`,
+        `"${reason}"`,
+        e.entry_type,
+        `"${e.category}"`,
+        e.amountNaira.toFixed(2),
+        balNaira,
+        `"${bank}"`,
+        e.source,
+      ];
+    });
     const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -422,6 +498,19 @@ export function DatabankTransactionsTable({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleReparse}
+            disabled={reparsing}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-[9px] text-[12px] font-semibold transition-all cursor-pointer hover:opacity-90 disabled:opacity-50"
+            style={{
+              background: "rgba(245, 166, 35, 0.15)",
+              color: "var(--gold, #F5A623)",
+              border: "1px solid rgba(245, 166, 35, 0.3)",
+            }}
+            title="Scan database & correct inverted credit/expense directions across all historical records"
+          >
+            <span>{reparsing ? "⏳ Auditing..." : "⚡ Auto-Fix Directions"}</span>
+          </button>
           <button
             onClick={() => setIsAdding(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-[9px] text-[12px] font-semibold shadow-sm transition-all cursor-pointer hover:opacity-90"
@@ -652,7 +741,7 @@ export function DatabankTransactionsTable({
               <button
                 onClick={() => {
                   setBatchAction("category");
-                  setBatchCategory(COMMON_CATEGORIES[0]);
+                  setBatchCategory(availableCategories[0] || "General Expense");
                 }}
                 className="px-2.5 py-1 rounded-[7px] text-[11px] font-semibold border cursor-pointer hover:opacity-80"
                 style={{ borderColor: "var(--border)", background: "var(--bg)", color: "var(--text)" }}
@@ -709,15 +798,15 @@ export function DatabankTransactionsTable({
                       setSortOrder("DESC");
                     }
                   }}
-                  className="py-3 px-3 cursor-pointer select-none hover:opacity-80"
+                  className="py-3 px-3 cursor-pointer select-none hover:opacity-80 whitespace-nowrap"
                   style={{ color: "var(--muted)" }}
                 >
-                  Date {sortBy === "entry_date" && (sortOrder === "DESC" ? "↓" : "↑")}
+                  Date & Time {sortBy === "entry_date" && (sortOrder === "DESC" ? "↓" : "↑")}
                 </th>
-                <th className="py-3 px-3" style={{ color: "var(--muted)" }}>Description / Merchant</th>
-                <th className="py-3 px-3" style={{ color: "var(--muted)" }}>Category</th>
-                <th className="py-3 px-3" style={{ color: "var(--muted)" }}>Type</th>
-                <th className="py-3 px-3" style={{ color: "var(--muted)" }}>Source</th>
+                <th className="py-3 px-3 min-w-[200px]" style={{ color: "var(--muted)" }}>Transaction / Merchant</th>
+                <th className="py-3 px-3 min-w-[220px]" style={{ color: "var(--muted)" }}>AI Purpose & Details</th>
+                <th className="py-3 px-3 whitespace-nowrap" style={{ color: "var(--muted)" }}>Category</th>
+                <th className="py-3 px-3 whitespace-nowrap" style={{ color: "var(--muted)" }}>Type</th>
                 <th
                   onClick={() => {
                     if (sortBy === "amount") setSortOrder(sortOrder === "ASC" ? "DESC" : "ASC");
@@ -726,24 +815,26 @@ export function DatabankTransactionsTable({
                       setSortOrder("DESC");
                     }
                   }}
-                  className="py-3 px-3 text-right cursor-pointer select-none hover:opacity-80"
+                  className="py-3 px-3 text-right cursor-pointer select-none hover:opacity-80 whitespace-nowrap"
                   style={{ color: "var(--muted)" }}
                 >
                   Amount {sortBy === "amount" && (sortOrder === "DESC" ? "↓" : "↑")}
                 </th>
-                <th className="py-3 px-3 text-center w-20" style={{ color: "var(--muted)" }}>Actions</th>
+                <th className="py-3 px-3 text-right whitespace-nowrap" style={{ color: "var(--muted)" }}>Account Balance</th>
+                <th className="py-3 px-3 whitespace-nowrap" style={{ color: "var(--muted)" }}>Source</th>
+                <th className="py-3 px-3 text-center w-20 whitespace-nowrap" style={{ color: "var(--muted)" }}>Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center" style={{ color: "var(--muted)" }}>
+                  <td colSpan={10} className="py-12 text-center" style={{ color: "var(--muted)" }}>
                     <div className="inline-block animate-spin mr-2">⏳</div> Loading DataBank transactions...
                   </td>
                 </tr>
               ) : entries.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center" style={{ color: "var(--muted)" }}>
+                  <td colSpan={10} className="py-12 text-center" style={{ color: "var(--muted)" }}>
                     <div className="text-[24px] mb-2">📂</div>
                     <div className="font-semibold text-[14px]" style={{ color: "var(--text)" }}>No transactions found</div>
                     <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>
@@ -785,15 +876,30 @@ export function DatabankTransactionsTable({
                         />
                       </td>
                       <td className="py-3 px-3 whitespace-nowrap text-[11px]" style={{ color: "var(--muted)" }}>
-                        {formatDate(t.entry_date)}
+                        <div className="font-medium" style={{ color: "var(--text)" }}>{formatDate(t.entry_date)}</div>
+                        {t.metadata?.transaction_time && (
+                          <div className="text-[10px] text-emerald-500 font-mono mt-0.5">
+                            🕒 {t.metadata.transaction_time}
+                          </div>
+                        )}
                       </td>
-                      <td className="py-3 px-3 max-w-[280px]">
-                        <div className="font-semibold truncate" style={{ color: "var(--text)" }}>
-                          {t.description}
+                      <td className="py-3 px-3 max-w-[240px]">
+                        <div className="font-semibold truncate text-[12px]" style={{ color: "var(--text)" }}>
+                          {getCleanDisplayDescription(t.description, bankName || undefined)}
                         </div>
                         {bankName && (
-                          <div className="text-[11px] mt-0.5 truncate" style={{ color: "var(--muted)" }}>
-                            🏦 {bankName} {t.metadata?.account_number ? `(${t.metadata.account_number})` : ""}
+                          <div className="text-[11px] mt-0.5 truncate flex items-center gap-1 font-medium" style={{ color: "var(--muted)" }}>
+                            <span>🏦</span> <span>{bankName}</span> {t.metadata?.account_number ? `(${t.metadata.account_number})` : ""}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 max-w-[260px]">
+                        <div className="text-[11px] leading-snug line-clamp-2" style={{ color: "var(--text)" }}>
+                          {getCleanDisplayReason(t.metadata?.reason, t.description, bankName || undefined)}
+                        </div>
+                        {t.metadata?.email_subject && (
+                          <div className="text-[10px] mt-1 truncate" style={{ color: "var(--muted)" }}>
+                            ✉️ {t.metadata.email_subject}
                           </div>
                         )}
                       </td>
@@ -821,15 +927,18 @@ export function DatabankTransactionsTable({
                           <span>{cfg.icon}</span> {cfg.label}
                         </span>
                       </td>
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <span className="text-[11px] capitalize" style={{ color: "var(--muted)" }}>
-                          {t.source === "gmail" ? "📧 Gmail" : t.source === "upload" ? "📄 Statement" : "✏️ Manual"}
-                        </span>
-                      </td>
                       <td className="py-3 px-3 text-right whitespace-nowrap font-bold text-[13px]">
                         <span style={{ color: t.entry_type === "income" ? "var(--green, #00A677)" : "var(--text)" }}>
                           {cfg.sign}
                           {formatNaira(t.amountNaira)}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-right whitespace-nowrap text-[11px] font-mono" style={{ color: "var(--muted)" }}>
+                        {formatBalance(t.metadata?.account_balance)}
+                      </td>
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        <span className="text-[11px] capitalize" style={{ color: "var(--muted)" }}>
+                          {t.source === "gmail" ? "📧 Gmail" : t.source === "upload" ? "📄 Statement" : "✏️ Manual"}
                         </span>
                       </td>
                       <td
@@ -1033,7 +1142,7 @@ export function DatabankTransactionsTable({
                       }}
                     />
                     <datalist id="edit-categories-list">
-                      {COMMON_CATEGORIES.map((c) => (
+                      {availableCategories.map((c) => (
                         <option key={c} value={c} />
                       ))}
                     </datalist>
@@ -1194,7 +1303,7 @@ export function DatabankTransactionsTable({
                       }}
                     />
                     <datalist id="add-categories-list">
-                      {COMMON_CATEGORIES.map((c) => (
+                      {availableCategories.map((c) => (
                         <option key={c} value={c} />
                       ))}
                     </datalist>
@@ -1319,7 +1428,7 @@ export function DatabankTransactionsTable({
                       color: "var(--text)",
                     }}
                   >
-                    {COMMON_CATEGORIES.map((c) => (
+                    {availableCategories.map((c) => (
                       <option key={c} value={c}>
                         {c}
                       </option>

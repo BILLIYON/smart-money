@@ -40,8 +40,12 @@ export async function POST(req: Request) {
           ON CONFLICT (gmail_message_id) WHERE gmail_message_id IS NOT NULL DO UPDATE SET
             entry_type = EXCLUDED.entry_type,
             amount = EXCLUDED.amount,
-            description = EXCLUDED.description,
-            category = EXCLUDED.category,
+            description = COALESCE(NULLIF(databank_entries.description, ''), EXCLUDED.description),
+            category = CASE
+              WHEN databank_entries.category IS NOT NULL AND databank_entries.category NOT IN ('', 'Uncategorized', 'General Expense')
+              THEN databank_entries.category
+              ELSE EXCLUDED.category
+            END,
             entry_date = EXCLUDED.entry_date,
             metadata = EXCLUDED.metadata;`,
           [

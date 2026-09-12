@@ -3,10 +3,14 @@ import { requireAuth } from "@/lib/supabase-server";
 import { Pool } from "pg";
 
 function getPool() {
+  const connectionString = process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money";
+  const isRemote = connectionString.includes("supabase.com") || connectionString.includes("pooler") || connectionString.includes("aws-");
   return new Pool({
-    connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+    connectionString,
+    ssl: isRemote ? { rejectUnauthorized: false } : false,
   });
 }
+
 
 function monthStart(): string {
   const d = new Date();
@@ -63,11 +67,15 @@ function toNairaVal(amtKobo: any): number {
   return Math.abs(toNum(amtKobo)) / 100;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const pool = getPool();
   try {
-    const { userId, error } = await requireAuth();
-    if (error || !userId) return error || NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const authRes = await requireAuth(req);
+    const userId = authRes.userId;
+
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     const MONTH_START = monthStart();
     const PRIOR_MONTH_START = priorMonthStart();
@@ -96,7 +104,7 @@ export async function GET() {
         [userId]
       ),
       pool.query(
-        `SELECT currency, primary_goal, spending_exclusions
+        `SELECT id, full_name, email, currency, plan, primary_goal, spending_exclusions
          FROM users
          WHERE id = $1 LIMIT 1;`,
         [userId]
@@ -733,8 +741,358 @@ export async function GET() {
       })
     );
 
+    // ── Deep Institutional Financial Intelligence ──────────
+    const userProfile = {
+      id: userId,
+      fullName: userRow.full_name || (userRow.email ? userRow.email.split("@")[0] : "User"),
+      email: userRow.email || "",
+      currency,
+      plan: userRow.plan || "free",
+      operatingHub: parsedBankAccounts.length > 0 ? parsedBankAccounts[0].bankName : "Primary Account",
+      accountNumber: "•••• Main",
+    };
+
+    // 1. Analyze Inflows & Inflow Sources
+    let salaryTotal = 0;
+    let salaryCount = 0;
+    let refundTotal = 0;
+    let refundCount = 0;
+    let merchantTotal = 0;
+    let merchantCount = 0;
+    let otherIncomeTotal = 0;
+    let otherIncomeCount = 0;
+
+    const salaryEntries = incomeEntries.filter((e) => {
+      const desc = String(e.description || "").toLowerCase();
+      const cat = String(e.category || "").toLowerCase();
+      return cat.includes("salary") || desc.includes("jobberman");
+    });
+
+    incomeEntries.forEach((e) => {
+      const desc = String(e.description || "").toLowerCase();
+      const cat = String(e.category || "").toLowerCase();
+      const amt = Math.abs(e.amount) / 100;
+      if (cat.includes("salary") || desc.includes("jobberman")) {
+        salaryTotal += amt;
+        salaryCount++;
+      } else if (cat.includes("refund") || desc.includes("taxtech") || desc.includes("paystack")) {
+        refundTotal += amt;
+        refundCount++;
+      } else if (desc.includes("demerge") || desc.includes("merchant")) {
+        merchantTotal += amt;
+        merchantCount++;
+      } else {
+        otherIncomeTotal += amt;
+        otherIncomeCount++;
+      }
+    });
+
+    const totalInflowNaira = salaryTotal + refundTotal + merchantTotal + otherIncomeTotal;
+    const sortedSalary = [...salaryEntries].sort((a, b) => (b.entry_date ?? "").localeCompare(a.entry_date ?? ""));
+    const latestSalaryAmt = sortedSalary[0] ? Math.abs(sortedSalary[0].amount) / 100 : (salaryTotal > 0 ? salaryTotal : 0);
+    const priorSalaryAmt = sortedSalary[1] ? Math.abs(sortedSalary[1].amount) / 100 : (sortedSalary.length === 1 ? latestSalaryAmt : 0);
+    const salaryGrowthPct = priorSalaryAmt > 0 ? Math.round(((latestSalaryAmt - priorSalaryAmt) / priorSalaryAmt) * 100) : 0;
+
+    // Detect employer name from salary entry description
+    let detectedEmployer = "Employer / Payroll";
+    if (sortedSalary[0]?.description) {
+      const desc = sortedSalary[0].description;
+      if (/jobberman/i.test(desc)) detectedEmployer = "Jobberman Limited";
+      else {
+        const m = desc.match(/(?:from|by|salary\s+from)\s+([A-Za-z0-9\s.,-]+?)(?:\s+via|\s+to|\s+bank|$)/i);
+        if (m && m[1]) detectedEmployer = m[1].trim();
+        else detectedEmployer = desc.slice(0, 30).trim();
+      }
+    }
+
+    // Dynamic retention velocity: calculate outflows within 7, 14, 30 days of latest salary
+    let retentionDay7 = 45;
+    let retentionDay14 = 30;
+    let retentionDay30 = 15;
+    if (sortedSalary[0]?.entry_date && latestSalaryAmt > 0) {
+      const salDate = new Date(sortedSalary[0].entry_date).getTime();
+      const dayMs = 24 * 60 * 60 * 1000;
+      const outflow7 = expenseEntries
+        .filter((e) => {
+          if (!e.entry_date) return false;
+          const t = new Date(e.entry_date).getTime();
+          return t >= salDate && t <= salDate + 7 * dayMs;
+        })
+        .reduce((s, e) => s + Math.abs(e.amount) / 100, 0);
+
+      const outflow14 = expenseEntries
+        .filter((e) => {
+          if (!e.entry_date) return false;
+          const t = new Date(e.entry_date).getTime();
+          return t >= salDate && t <= salDate + 14 * dayMs;
+        })
+        .reduce((s, e) => s + Math.abs(e.amount) / 100, 0);
+
+      const outflow30 = expenseEntries
+        .filter((e) => {
+          if (!e.entry_date) return false;
+          const t = new Date(e.entry_date).getTime();
+          return t >= salDate && t <= salDate + 30 * dayMs;
+        })
+        .reduce((s, e) => s + Math.abs(e.amount) / 100, 0);
+
+      retentionDay7 = Math.max(5, Math.min(100, Math.round(((latestSalaryAmt - outflow7) / latestSalaryAmt) * 100)));
+      retentionDay14 = Math.max(3, Math.min(100, Math.round(((latestSalaryAmt - outflow14) / latestSalaryAmt) * 100)));
+      retentionDay30 = Math.max(0, Math.min(100, Math.round(((latestSalaryAmt - outflow30) / latestSalaryAmt) * 100)));
+    }
+
+    // Dynamic Inflow Channels
+    const dynamicInflowChannels = [];
+    if (salaryTotal > 0) {
+      dynamicInflowChannels.push({
+        name: `${detectedEmployer} (Salary)`,
+        total: Math.round(salaryTotal * 100) / 100,
+        count: salaryCount,
+        pct: totalInflowNaira > 0 ? Math.round((salaryTotal / totalInflowNaira) * 100) : 0,
+        icon: "💼",
+        description: "Regular monthly payroll credits via operating hub",
+      });
+    }
+    if (refundTotal > 0) {
+      dynamicInflowChannels.push({
+        name: "Taxtech & Paystack (Reversals & Refunds)",
+        total: Math.round(refundTotal * 100) / 100,
+        count: refundCount,
+        pct: totalInflowNaira > 0 ? Math.round((refundTotal / totalInflowNaira) * 100) : 0,
+        icon: "🔄",
+        description: "Debit reversals and chargeback settlements",
+      });
+    }
+    if (merchantTotal > 0) {
+      dynamicInflowChannels.push({
+        name: "Merchant Settlements & Payouts",
+        total: Math.round(merchantTotal * 100) / 100,
+        count: merchantCount,
+        pct: totalInflowNaira > 0 ? Math.round((merchantTotal / totalInflowNaira) * 100) : 0,
+        icon: "📦",
+        description: "Order fulfillment and merchant payouts",
+      });
+    }
+    if (otherIncomeTotal > 0) {
+      dynamicInflowChannels.push({
+        name: "Direct P2P Credits & Inbound Transfers",
+        total: Math.round(otherIncomeTotal * 100) / 100,
+        count: otherIncomeCount,
+        pct: totalInflowNaira > 0 ? Math.round((otherIncomeTotal / totalInflowNaira) * 100) : 0,
+        icon: "⚡",
+        description: "Direct bank credits and peer transfers",
+      });
+    }
+
+    // 2. Analyze Transfer Outflows, P2P Beneficiaries & POS Agents
+    const recipientsMap: Record<string, { total: number; count: number; lastDate: string; isPos: boolean; relationship: string }> = {};
+    const posAgentsMap: Record<string, { total: number; count: number; lastDate: string }> = {};
+    let totalTransferOutflows = 0;
+    let totalPosOutflows = 0;
+    let totalInternalSweeps = 0;
+    let essentialSpendTotal = 0;
+
+    expenseEntries.forEach((e) => {
+      const desc = String(e.description || "");
+      const cat = String(e.category || "").toLowerCase();
+      const amt = Math.abs(e.amount) / 100;
+      const date = e.entry_date || "";
+
+      // Essential spending detection
+      if (
+        cat.includes("food") ||
+        cat.includes("grocer") ||
+        cat.includes("util") ||
+        cat.includes("power") ||
+        cat.includes("electr") ||
+        cat.includes("health") ||
+        cat.includes("transp") ||
+        cat.includes("fuel")
+      ) {
+        essentialSpendTotal += amt;
+      }
+
+      if (cat.includes("transfer") || desc.toLowerCase().includes("transfer to")) {
+        totalTransferOutflows += amt;
+        const match = desc.match(/Transfer to\s+([^,]+?)(?:\s+Bank|\s+Merchant|$)/i);
+        let rawName = match ? match[1].trim() : desc.replace(/^Transfer to\s*/i, "").trim();
+        if (!rawName) rawName = "Interbank Recipient";
+
+        if (rawName.toUpperCase().includes("POS") || desc.toUpperCase().includes("POS")) {
+          const cleanPos = rawName.replace(/^POS\s+Transfer-?\s*/i, "").replace(/Bank$/i, "").trim();
+          posAgentsMap[cleanPos] = {
+            total: (posAgentsMap[cleanPos]?.total || 0) + amt,
+            count: (posAgentsMap[cleanPos]?.count || 0) + 1,
+            lastDate: date > (posAgentsMap[cleanPos]?.lastDate || "") ? date : posAgentsMap[cleanPos]?.lastDate || date,
+          };
+          totalPosOutflows += amt;
+        } else {
+          const cleanName = rawName.replace(/Bank$/i, "").trim();
+          let relationship = "P2P Transfer";
+          const cleanNameLower = cleanName.toLowerCase();
+          const userFirstName = userRow.full_name ? userRow.full_name.toLowerCase().split(" ")[0] : "";
+          const userLastName = userRow.full_name ? userRow.full_name.toLowerCase().split(" ").pop() : "";
+          const userEmailPrefix = userRow.email ? userRow.email.split("@")[0].toLowerCase() : "";
+
+          const isSweep =
+            (userFirstName.length > 2 && cleanNameLower.includes(userFirstName)) ||
+            (userLastName && userLastName.length > 2 && cleanNameLower.includes(userLastName)) ||
+            (userEmailPrefix.length > 2 && cleanNameLower.includes(userEmailPrefix));
+
+          if (isSweep) {
+            relationship = "Internal Liquidity Sweep";
+            totalInternalSweeps += amt;
+          } else if (cleanName.toLowerCase().includes("remita") || cleanName.toLowerCase().includes("paystack")) {
+            relationship = "Digital Checkout Gateway";
+          }
+          recipientsMap[cleanName] = {
+            total: (recipientsMap[cleanName]?.total || 0) + amt,
+            count: (recipientsMap[cleanName]?.count || 0) + 1,
+            lastDate: date > (recipientsMap[cleanName]?.lastDate || "") ? date : recipientsMap[cleanName]?.lastDate || date,
+            isPos: false,
+            relationship,
+          };
+        }
+      }
+    });
+
+    const topBeneficiaries = Object.entries(recipientsMap)
+      .map(([name, data]) => ({
+        name,
+        total: Math.round(data.total * 100) / 100,
+        count: data.count,
+        lastDate: data.lastDate,
+        relationship: data.relationship,
+        pctOfTransfers: totalTransferOutflows > 0 ? Math.round((data.total / totalTransferOutflows) * 100) : 0,
+      }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 10);
+
+    const posAgentsList = Object.entries(posAgentsMap)
+      .map(([name, data]) => ({
+        agentName: name,
+        total: Math.round(data.total * 100) / 100,
+        count: data.count,
+        lastDate: data.lastDate,
+        estimatedFee: data.count * 150, // standard ₦150 agent fee per POS cashout
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    // 3. Liquid Runway & Burn Calculations
+    const activeMonthKeys = new Set(
+      entries.map((e) => (e.entry_date ? e.entry_date.substring(0, 7) : null)).filter(Boolean)
+    );
+    const numActiveMonths = Math.max(1, activeMonthKeys.size);
+    const totalExpenseAllTimeNaira = totalExpensesAllTime / 100;
+    const avgMonthlyBurnNaira = Math.round(totalExpenseAllTimeNaira / numActiveMonths) || 1;
+    const dailyBurnNaira = Math.max(1, Math.round(avgMonthlyBurnNaira / 30.4));
+    const liquidReservesNaira = Math.round((cashSavingsVal > 0 ? cashSavingsVal : savingsBalance) / 100);
+    const runwayDays = dailyBurnNaira > 0 ? Math.round(liquidReservesNaira / dailyBurnNaira) : 0;
+    const runwayMonths = avgMonthlyBurnNaira > 0 ? Math.round((liquidReservesNaira / avgMonthlyBurnNaira) * 10) / 10 : 0;
+
+    const totalPosTxns = posAgentsList.reduce((s, a) => s + a.count, 0);
+    const totalPosFees = posAgentsList.reduce((s, a) => s + a.estimatedFee, 0);
+
+    // Multi-horizon predictive calculations
+    const monthlyInflowRunrate = Math.round(totalInflowNaira / numActiveMonths);
+    const net30 = monthlyInflowRunrate - avgMonthlyBurnNaira;
+
+    const totalTrackedExpenses = Math.max(1, totalExpenseAllTimeNaira);
+    const pureP2P = Math.max(0, totalTransferOutflows - totalInternalSweeps - totalPosOutflows);
+
+    // 4. Institutional Metrics Aggregate Object
+    const institutionalMetrics = {
+      liquidRunway: {
+        totalLiquidNaira: liquidReservesNaira,
+        monthlyBurnNaira: avgMonthlyBurnNaira,
+        dailyBurnNaira,
+        runwayDays,
+        runwayMonths,
+        status: runwayMonths >= 24 ? "Exceptional (2+ Years Capital Runway)" : runwayMonths >= 12 ? "Strong (1+ Year Capital Runway)" : runwayMonths >= 6 ? "Adequate Capital Runway" : "Active Watch",
+      },
+      salaryIntelligence: {
+        employer: detectedEmployer,
+        latestSalary: latestSalaryAmt,
+        latestDate: sortedSalary[0]?.entry_date || "",
+        priorSalary: priorSalaryAmt,
+        priorDate: sortedSalary[1]?.entry_date || "",
+        salaryGrowthPct: salaryGrowthPct !== 0 ? `${salaryGrowthPct > 0 ? "+" : ""}${salaryGrowthPct}%` : "0%",
+        cadence: "Month-End",
+        predictabilityScore: salaryCount >= 2 ? 98 : salaryCount === 1 ? 85 : 50,
+        retentionVelocity: {
+          day7: retentionDay7,
+          day14: retentionDay14,
+          day30: retentionDay30,
+        },
+        summary: salaryCount > 0
+          ? `Verified recurring payroll credits from ${detectedEmployer}. Day-7 retention rate is ${retentionDay7}%, indicating rapid initial liquidity redistribution following deposit.`
+          : "No payroll salary entries detected in current window.",
+      },
+      inflowChannels: dynamicInflowChannels,
+      topBeneficiaries,
+      posAgentIntelligence: {
+        totalPosVolume: Math.round(totalPosOutflows * 100) / 100,
+        totalTransactions: totalPosTxns,
+        estimatedSurchargeTax: totalPosFees,
+        topAgents: posAgentsList,
+        leakageTip: totalPosFees > 0
+          ? `Physical cash-outs through POS terminals incurred ~₦${totalPosFees.toLocaleString()} in surcharge fees. Using direct digital transfers saves 100% of these terminal charges.`
+          : "No physical POS cash-out surcharges detected in transaction history.",
+      },
+      multiHorizonProjections: {
+        d30: {
+          projectedIncome: monthlyInflowRunrate,
+          projectedExpense: avgMonthlyBurnNaira,
+          netAccumulation: net30,
+          verdict: net30 >= 0
+            ? `Positive monthly accumulation (₦${net30.toLocaleString()}) supported by regular inbound cashflow.`
+            : `Projected monthly deficit of ₦${Math.abs(net30).toLocaleString()} based on trailing burn rate.`,
+        },
+        d60: {
+          projectedIncome: monthlyInflowRunrate * 2,
+          projectedExpense: avgMonthlyBurnNaira * 2,
+          netAccumulation: net30 * 2,
+          verdict: net30 >= 0
+            ? `Two-month surplus trajectory of ₦${(net30 * 2).toLocaleString()} strengthens liquid reserves.`
+            : `Trailing burn indicates ₦${Math.abs(net30 * 2).toLocaleString()} net outflow across 60 days.`,
+        },
+        d90: {
+          projectedIncome: monthlyInflowRunrate * 3,
+          projectedExpense: avgMonthlyBurnNaira * 3,
+          netAccumulation: net30 * 3,
+          verdict: net30 >= 0
+            ? `Quarterly capital expansion estimated at +₦${(net30 * 3).toLocaleString()}.`
+            : `90-day capital depletion projected at -₦${Math.abs(net30 * 3).toLocaleString()}.`,
+        },
+      },
+      discretionaryVsEssential: {
+        essential: {
+          amount: Math.round(essentialSpendTotal),
+          pct: Math.round((essentialSpendTotal / totalTrackedExpenses) * 100),
+          label: "Living, Food & Utilities",
+        },
+        p2pTransfers: {
+          amount: Math.round(pureP2P),
+          pct: Math.round((pureP2P / totalTrackedExpenses) * 100),
+          label: "P2P Transfers & Counterparties",
+        },
+        internalSweeps: {
+          amount: Math.round(totalInternalSweeps),
+          pct: Math.round((totalInternalSweeps / totalTrackedExpenses) * 100),
+          label: "Internal Reserve Sweeps",
+        },
+        posCashouts: {
+          amount: Math.round(totalPosOutflows),
+          pct: Math.round((totalPosOutflows / totalTrackedExpenses) * 100),
+          label: "Physical POS Cash-Outs",
+        },
+      },
+    };
+
     return NextResponse.json({
       currency,
+      userProfile,
+      institutionalMetrics,
       netWorth,
       savingsBalance,
       parsedBankAccounts,

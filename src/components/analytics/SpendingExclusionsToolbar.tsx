@@ -178,10 +178,9 @@ export function SpendingExclusionsToolbar({
 
   const allCategories = Array.from(
     new Set([
-      "Transfers",
-      "Subscriptions",
       ...detectedCategories,
-    ])
+      ...exclusions.categories,
+    ].filter(Boolean))
   );
 
   return (

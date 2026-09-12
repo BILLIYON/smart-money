@@ -28,8 +28,7 @@ const SUGGESTIONS_GROUP = [
   "What's the next priority after debt payoff?",
 ];
 
-const DATABANK_CTX =
-  "Monthly income: ₦450,000 (GTBank). Recent spend: Food & Dining ₦82k, Subscriptions ₦34k, Transport ₦28k. Active debt: credit card ₦95k at 24% APR. Savings: ₦200k idle. Goals: emergency fund (₦900k target), investment portfolio.";
+const DATABANK_CTX = {};
 
 async function streamToStore(
   res: Response,

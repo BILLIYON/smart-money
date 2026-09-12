@@ -157,7 +157,7 @@ async function tryStreamGemini(
 
   try {
     const model = client.getGenerativeModel({
-      model: "gemini-3.6-flash",
+      model: "gemini-2.0-flash",
       systemInstruction: system,
     });
 

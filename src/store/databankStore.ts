@@ -65,6 +65,17 @@ export type DatabankContextResponse = {
     value: number;
     pct: number;
   }[];
+  userProfile?: {
+    id: string;
+    fullName: string;
+    email: string;
+    currency: string;
+    plan: string;
+    operatingHub: string;
+    accountNumber: string;
+  };
+  institutionalMetrics?: any;
+  parsedBankAccounts?: any[];
 };
 
 export type DataSource = {
@@ -94,6 +105,7 @@ type DatabankStore = {
   context: DatabankContextResponse | null;
   sources: DataSource[];
   isLoading: boolean;
+  isUnauthorized: boolean;
   uploadError: string | null;
 
   // ── Actions ────────────────────────────────────────────
@@ -116,14 +128,15 @@ export const useDatabankStore = create<DatabankStore>((set, get) => ({
     { id: "manual",      label: "Manual Entry",       connected: true,  type: "manual" },
   ],
   isLoading: false,
+  isUnauthorized: false,
   uploadError: null,
 
   loadContext: async () => {
-    set({ isLoading: true });
+    set({ isLoading: true, isUnauthorized: false });
     try {
       const res = await fetch("/api/databank/context");
       if (res.status === 401) {
-        set({ context: null });
+        set({ context: null, isUnauthorized: true });
         return;
       }
       if (!res.ok) {
@@ -132,7 +145,7 @@ export const useDatabankStore = create<DatabankStore>((set, get) => ({
         return;
       }
       const data = (await res.json()) as DatabankContextResponse;
-      set({ context: data });
+      set({ context: data, isUnauthorized: false });
     } catch (e) {
       console.error("[databankStore] loadContext:", e);
     } finally {

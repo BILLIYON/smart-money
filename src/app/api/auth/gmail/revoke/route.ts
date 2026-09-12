@@ -36,7 +36,7 @@ export async function POST() {
     }
 
     await pool.query(`DELETE FROM user_integrations WHERE user_id = $1 AND provider = 'gmail';`, [user.id]);
-    await pool.query(`DELETE FROM databank_entries WHERE user_id = $1 AND source = 'gmail';`, [user.id]);
+    // NOTE: We do NOT delete databank_entries here. User data stays permanently in DataBank until explicitly cleared by user via DataBank wipe.
 
     return Response.json({ success: true });
   } finally {

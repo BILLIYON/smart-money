@@ -30,9 +30,11 @@ function safeStrDate(val: any): string {
 export async function GET(req: Request) {
   const pool = getPool();
   try {
-    const { userId, error } = await requireAuth();
-    if (error || !userId) {
-      return error || NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const authRes = await requireAuth(req);
+    const userId = authRes.userId;
+
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const url = new URL(req.url);

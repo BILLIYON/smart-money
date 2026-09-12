@@ -47,17 +47,20 @@ export async function GET(req: Request) {
     }
 
     const googleUser = await profileRes.json();
-    const email = googleUser.email;
+    const rawEmail = googleUser.email;
     const fullName = googleUser.name || googleUser.given_name || "";
 
-    if (!email) {
+    if (!rawEmail) {
       console.error("[/api/auth/google/callback] Google profile missing email");
       return NextResponse.redirect(`${origin}/login?error=google_auth_failed`);
     }
 
+    const email = String(rawEmail).toLowerCase().trim();
+
     // Find or create user in PostgreSQL
     let user = await findUserByEmail(email);
     if (!user) {
+      console.log(`[/api/auth/google/callback] Provisioning new user for Google sign-in: ${email}`);
       user = await createUser({
         email,
         full_name: fullName,
@@ -65,6 +68,7 @@ export async function GET(req: Request) {
     }
 
     if (!user) {
+      console.error(`[/api/auth/google/callback] Failed to find or create user for email: ${email}`);
       return NextResponse.redirect(`${origin}/login?error=google_auth_failed`);
     }
 

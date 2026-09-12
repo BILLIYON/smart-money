@@ -21,26 +21,36 @@ let _gemini: GoogleGenerativeAI | null = null;
 let _groq: Groq | null = null;
 
 function anthropic() {
-  if (!_anthropic) _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key || key.trim() === EXPIRED_ANTHROPIC_KEY) throw new Error("Anthropic API key unavailable or expired");
+  if (!_anthropic) _anthropic = new Anthropic({ apiKey: key });
   return _anthropic;
 }
 function openai() {
-  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const key = process.env.OPENAI_API_KEY;
+  if (!key || key.trim() === EXPIRED_OPENAI_KEY) throw new Error("OpenAI API key unavailable or expired");
+  if (!_openai) _openai = new OpenAI({ apiKey: key });
   return _openai;
 }
 function gemini() {
-  if (!_gemini) _gemini = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY!);
+  const key = process.env.GOOGLE_AI_API_KEY;
+  if (!key) throw new Error("Google AI API key unavailable");
+  if (!_gemini) _gemini = new GoogleGenerativeAI(key);
   return _gemini;
 }
 function groq() {
-  if (!_groq) _groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+  const key = process.env.GROQ_API_KEY;
+  if (!key) throw new Error("Groq API key unavailable");
+  if (!_groq) _groq = new Groq({ apiKey: key });
   return _groq;
 }
 let _nvidia: OpenAI | null = null;
 function nvidia() {
+  const key = process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY;
+  if (!key) throw new Error("NVIDIA API key unavailable");
   if (!_nvidia) {
     _nvidia = new OpenAI({
-      apiKey: process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY,
+      apiKey: key,
       baseURL: "https://integrate.api.nvidia.com/v1",
     });
   }
@@ -570,31 +580,45 @@ async function streamGemini(
   system: string,
   messages: Message[]
 ): Promise<ReadableStream<Uint8Array>> {
-  const model = gemini().getGenerativeModel({
-    model: "gemini-3.6-flash",
-    systemInstruction: system,
-  });
+  const geminiInstance = gemini();
+  const modelsToTry = ["gemini-3.6-flash", "gemini-1.5-flash", "gemini-2.0-flash"];
+  let lastErr: any = null;
 
-  // Gemini uses "model" instead of "assistant" for the assistant role
-  const geminiMessages = messages.map((m) => ({
-    role: m.role === "assistant" ? "model" : "user",
-    parts: [{ text: m.content }],
-  }));
+  for (const mName of modelsToTry) {
+    try {
+      const model = geminiInstance.getGenerativeModel({
+        model: mName,
+        systemInstruction: system,
+      });
 
-  const result = await model.generateContentStream({ contents: geminiMessages });
+      const geminiMessages = messages.map((m) => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content }],
+      }));
 
-  return new ReadableStream<Uint8Array>({
-    async start(controller) {
-      try {
-        for await (const chunk of result.stream) {
-          const text = chunk.text();
-          if (text) controller.enqueue(new TextEncoder().encode(text));
-        }
-      } finally {
-        controller.close();
-      }
-    },
-  });
+      const result = await model.generateContentStream({ contents: geminiMessages });
+
+      return new ReadableStream<Uint8Array>({
+        async start(controller) {
+          try {
+            for await (const chunk of result.stream) {
+              const text = chunk.text();
+              if (text) controller.enqueue(new TextEncoder().encode(text));
+            }
+          } catch (err) {
+            controller.error(err);
+          } finally {
+            controller.close();
+          }
+        },
+      });
+    } catch (err) {
+      console.warn(`[AI Engine] Gemini candidate ${mName} failed:`, err);
+      lastErr = err;
+    }
+  }
+
+  throw lastErr || new Error("All Gemini model candidates failed");
 }
 
 // ── NVIDIA Build (Gemma 4 31B / Llama 3.3 70B NIM) ───────────
@@ -733,9 +757,9 @@ async function askAI(prompt: string, fallbackModel = "claude-3-5-haiku-latest"):
     }
   }
 
-  // Strategy 3: Google Gemini 2.5 Flash
-  console.log("[AI] Attempting completion with Gemini: gemini-3.6-flash");
-  const model = gemini().getGenerativeModel({ model: "gemini-3.6-flash" });
+  // Strategy 3: Google Gemini
+  console.log("[AI] Attempting completion with Gemini: gemini-2.0-flash");
+  const model = gemini().getGenerativeModel({ model: "gemini-2.0-flash" });
   const result = await model.generateContent(prompt);
   const response = await result.response;
   return response.text();
@@ -872,19 +896,45 @@ export async function askAIWithEngine(
       return response.choices[0]?.message?.content || "";
     }
 
-    // 1. Groq (Llama 3.3 70B Versatile or 3.1 8B Instant)
+    // 1. Groq (Llama 3.3 70B Versatile, 3.1 70B, or 8B Instant)
     if (engine.includes("groq") || engine.includes("llama")) {
       if (!process.env.GROQ_API_KEY) {
         throw new Error("Groq API key is not configured in environment variables.");
       }
-      const modelName = engine.includes("8b") ? "llama-3.1-8b-instant" : "llama-3.3-70b-versatile";
-      console.log(`[AI Engine] Calling Groq (${modelName})`);
-      const response = await groq().chat.completions.create({
-        model: modelName,
-        max_tokens: 1024,
-        messages: [{ role: "user", content: prompt }],
-      });
-      return response.choices[0]?.message?.content || "";
+      const candidateModels = engine.includes("8b")
+        ? ["llama-3.1-8b-instant"]
+        : ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
+
+      let lastErr: any = null;
+      for (const modelName of candidateModels) {
+        try {
+          console.log(`[AI Engine] Calling Groq (${modelName})`);
+          const response = await groq().chat.completions.create({
+            model: modelName,
+            max_tokens: 1024,
+            messages: [{ role: "user", content: prompt }],
+          });
+          if (response.choices[0]?.message?.content) {
+            return response.choices[0].message.content;
+          }
+        } catch (e: any) {
+          console.warn(`[AI Engine] Groq model ${modelName} failed:`, e?.message || e);
+          lastErr = e;
+        }
+      }
+
+      // If Groq models fail, execute immediate Gemini fallback
+      try {
+        console.log("[AI Engine] Groq models failed. Executing immediate Gemini fallback...");
+        const model = gemini().getGenerativeModel({ model: "gemini-2.0-flash" });
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        if (response.text()) return response.text();
+      } catch (gErr: any) {
+        console.warn("[AI Engine] Gemini fallback after Groq failed:", gErr?.message || gErr);
+      }
+
+      throw lastErr || new Error("All Groq models and fallback failed.");
     }
 
     // 2. Google Gemini
@@ -892,11 +942,21 @@ export async function askAIWithEngine(
       if (!process.env.GOOGLE_AI_API_KEY) {
         throw new Error("Google AI (Gemini) API key is not configured in environment variables.");
       }
-      console.log("[AI Engine] Calling Gemini (gemini-3.6-flash)");
-      const model = gemini().getGenerativeModel({ model: "gemini-3.6-flash" });
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      return response.text();
+      const geminiCandidates = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
+      let geminiErr: any = null;
+      for (const mName of geminiCandidates) {
+        try {
+          console.log(`[AI Engine] Calling Gemini (${mName})`);
+          const model = gemini().getGenerativeModel({ model: mName });
+          const result = await model.generateContent(prompt);
+          const response = await result.response;
+          if (response.text()) return response.text();
+        } catch (e: any) {
+          console.warn(`[AI Engine] Gemini model ${mName} failed:`, e?.message || e);
+          geminiErr = e;
+        }
+      }
+      throw geminiErr || new Error("All Gemini models failed.");
     }
 
     // 3. Amazon Bedrock
@@ -1020,9 +1080,11 @@ If it IS a transaction alert, extract details into a valid JSON object matching 
   "amount_naira": <number representing transaction value in Naira, e.g. 50000 for ₦50,000>,
   "description": "<short descriptive summary of the transaction>",
   "entry_type": "income" | "expense",
-  "category": "income" | "transport" | "food" | "subscriptions" | "transfer" | "utilities" | "other",
+  "category": "<perform AI smart recognition based on full transaction details (merchant, narration, recipient, service) to assign an accurate, descriptive category e.g. 'Food & Dining', 'Transport & Fuel', 'Digital Subscriptions', 'Supermarket & Groceries', 'Salary & Payroll', 'Utilities & Bills', 'Healthcare', 'Education', 'Transfer', etc.>",
   "bank": "<the bank or provider name e.g. Kuda, OPay, GTBank, Zenith, Access, etc.>",
-  "account_balance": <number representing the available or ledger account balance in Naira after this transaction, or null if not mentioned>
+  "account_balance": <number representing the available or ledger account balance in Naira after this transaction, or null if not mentioned>,
+  "transaction_time": "<exact time string of the transaction alert e.g. '14:32:05', '02:32 PM', '08:15 AM', or null if not mentioned>",
+  "reason": "<clear, context-aware 1-sentence AI explanation of what the transaction was for, including merchant/counterparty and purpose, e.g. 'Transfer sent to John Doe for groceries at Shoprite', 'Salary payment received from ACME Corp', 'Card payment for Netflix subscription'>"
 }`;
 
   try {
@@ -1032,13 +1094,21 @@ If it IS a transaction alert, extract details into a valid JSON object matching 
       const parsed = JSON.parse(jsonMatch[0]);
       if (parsed.is_transaction && typeof parsed.amount_naira === "number") {
         const localParsed = parseFinancialEmailData(emailBody, subject, from);
-        // IMMUTABLE DIRECTION GUARD: Use local regex direction if available
-        const finalEntryType = localParsed?.entry_type
-          ? localParsed.entry_type
-          : (parsed.entry_type === "income" ? "income" : "expense");
+        // AI AUTHORITATIVE DIRECTION: Respect AI's determination for entry_type
+        const finalEntryType: "income" | "expense" =
+          parsed.entry_type === "income" || parsed.entry_type === "expense"
+            ? parsed.entry_type
+            : (localParsed?.entry_type ?? "expense");
 
-        const rawCategory = String(parsed.category || localParsed?.category || "other");
+        const rawCategory = String(parsed.category || localParsed?.category || "General Expense");
         const finalCategory = (finalEntryType === "expense" && (rawCategory.toLowerCase() === "income" || rawCategory.toLowerCase() === "salary")) ? "Transfer" : rawCategory;
+
+        const finalReason = parsed.reason
+          ? String(parsed.reason).slice(0, 200)
+          : (localParsed?.reason || String(parsed.description || "Bank Transaction"));
+        const finalTime = parsed.transaction_time
+          ? String(parsed.transaction_time)
+          : localParsed?.transaction_time;
 
         console.log(`[Gmail Deep AI Sync (${aiEngine})] Extracted transaction: ₦${parsed.amount_naira} (${parsed.description}) [${finalEntryType}]`);
         return {
@@ -1049,6 +1119,8 @@ If it IS a transaction alert, extract details into a valid JSON object matching 
           bank: parsed.bank ? String(parsed.bank) : localParsed?.bank,
           provider: parsed.bank ? String(parsed.bank) : localParsed?.provider,
           account_balance: typeof parsed.account_balance === "number" ? parsed.account_balance : localParsed?.account_balance,
+          transaction_time: finalTime,
+          reason: finalReason,
         };
       }
     }

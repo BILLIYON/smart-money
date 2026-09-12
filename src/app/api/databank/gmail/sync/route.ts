@@ -2,7 +2,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { syncGmailForUser } from "@/lib/gmail";
 import { Pool } from "pg";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",

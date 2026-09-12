@@ -159,7 +159,7 @@ function VerifyModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
             </label>
             <input
               type="text"
-              placeholder="e.g. Adeyemi Isaac Matthew"
+              placeholder="e.g. Alex Johnson"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               style={inputBase}

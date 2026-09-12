@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase-server";
 import { Pool } from "pg";
-import { parseFinancialEmailData, inferEntryType } from "@/lib/gmail-parser";
+import { parseFinancialEmailData, inferEntryType, inferCategory } from "@/lib/gmail-parser";
 
 function getPool() {
   return new Pool({
@@ -152,13 +152,7 @@ export async function GET(req: Request) {
       // ── Issue 4: Uncategorized or Generic Category ────────────────────────
       const lowerText = `${emailSubject} ${emailBodyText} ${emailFrom}`.toLowerCase();
       if (!isDirectionInverted && (cat === "other" || cat === "uncategorized" || cat === "general expense" || !row.category)) {
-        let suggestedCategory = "General Expense";
-        if (/(uber|bolt|indrive|transport|flight|ride)/i.test(lowerText)) suggestedCategory = "Transport";
-        else if (/(netflix|spotify|apple|subscription|dstv|gotv)/i.test(lowerText)) suggestedCategory = "Subscriptions";
-        else if (/(food|restaurant|pizza|kfc|eat|chow|bukka)/i.test(lowerText)) suggestedCategory = "Food & Dining";
-        else if (/(mtn|airtel|glo|9mobile|data|airtime|recharge)/i.test(lowerText)) suggestedCategory = "Phone & Data";
-        else if (/(shoprite|spar|supermarket|mall|store|buy|jumia|konga)/i.test(lowerText)) suggestedCategory = "Shopping";
-        else if (/(electricity|ikedc|ekedc|aedc|water|utility|bill)/i.test(lowerText)) suggestedCategory = "Utilities";
+        const suggestedCategory = inferCategory(lowerText, row.entry_type === "income" ? "income" : "expense");
 
         if (suggestedCategory !== "General Expense") {
           suggestions.push({

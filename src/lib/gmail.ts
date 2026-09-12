@@ -81,14 +81,26 @@ export async function getGmailClient(userId: string) {
   oauth2.on("tokens", async (newTokens) => {
     const poolInner = getPool();
     try {
-      await poolInner.query(
-        `UPDATE user_integrations SET access_token = $1, token_expiry = COALESCE($2, token_expiry) WHERE user_id = $3 AND provider = 'gmail';`,
-        [
-          encrypt(newTokens.access_token!),
-          newTokens.expiry_date ? new Date(newTokens.expiry_date).toISOString() : null,
-          userId,
-        ]
-      );
+      if (newTokens.refresh_token && newTokens.refresh_token.trim()) {
+        await poolInner.query(
+          `UPDATE user_integrations SET access_token = $1, refresh_token = $2, token_expiry = COALESCE($3, token_expiry) WHERE user_id = $4 AND provider = 'gmail';`,
+          [
+            encrypt(newTokens.access_token!),
+            encrypt(newTokens.refresh_token.trim()),
+            newTokens.expiry_date ? new Date(newTokens.expiry_date).toISOString() : null,
+            userId,
+          ]
+        );
+      } else {
+        await poolInner.query(
+          `UPDATE user_integrations SET access_token = $1, token_expiry = COALESCE($2, token_expiry) WHERE user_id = $3 AND provider = 'gmail';`,
+          [
+            encrypt(newTokens.access_token!),
+            newTokens.expiry_date ? new Date(newTokens.expiry_date).toISOString() : null,
+            userId,
+          ]
+        );
+      }
     } catch (err) {
       console.error("[getGmailClient] Token refresh error:", err);
     }
@@ -101,14 +113,35 @@ export async function getGmailClient(userId: string) {
 export async function searchEmails(
   gmail: Awaited<ReturnType<typeof getGmailClient>>,
   query: string,
-  maxResults = 50
+  maxResults = 500
 ): Promise<string[]> {
-  const res = await gmail.users.messages.list({
-    userId: "me",
-    q: query,
-    maxResults,
-  });
-  return (res.data.messages ?? []).map((m) => m.id as string);
+  try {
+    const res = await gmail.users.messages.list({
+      userId: "me",
+      q: query,
+      maxResults,
+    });
+    return (res.data.messages ?? []).map((m) => m.id as string);
+  } catch (err: any) {
+    console.warn(`[searchEmails] Query failed ("${query.slice(0, 60)}..."):`, err?.message || err);
+    if (query.includes("OR") || query.includes("subject:")) {
+      try {
+        const afterMatch = query.match(/after:\d+/);
+        const afterClause = afterMatch ? ` ${afterMatch[0]}` : "";
+        const fallbackQuery = `"debit alert" OR "credit alert" OR "transaction alert" OR "payment received"${afterClause}`;
+        console.log(`[searchEmails] Attempting simplified fallback query: ${fallbackQuery}`);
+        const res = await gmail.users.messages.list({
+          userId: "me",
+          q: fallbackQuery,
+          maxResults,
+        });
+        return (res.data.messages ?? []).map((m) => m.id as string);
+      } catch (fbErr: any) {
+        console.warn("[searchEmails] Fallback query also failed:", fbErr?.message || fbErr);
+      }
+    }
+    return [];
+  }
 }
 
 // ── 3. Get full email content from a message ID ───────────────
@@ -117,22 +150,24 @@ export async function getEmailBody(
   messageId: string
 ) {
   let res: any;
-  try {
-    res = await gmail.users.messages.get({
-      userId: "me",
-      id: messageId,
-      format: "full",
-    });
-  } catch (err: any) {
-    if (err?.status === 429 || err?.message?.includes("Quota exceeded") || err?.code === 429) {
-      await new Promise((r) => setTimeout(r, 1000));
+  let attempts = 0;
+  while (attempts < 3) {
+    try {
       res = await gmail.users.messages.get({
         userId: "me",
         id: messageId,
         format: "full",
       });
-    } else {
-      throw err;
+      break;
+    } catch (err: any) {
+      attempts++;
+      const isRateLimit = err?.status === 429 || err?.code === 429 || /quota|rate limit|too many requests/i.test(err?.message || "");
+      if (isRateLimit && attempts < 3) {
+        console.warn(`[getEmailBody] Quota limit hit for message ${messageId}, retrying attempt ${attempts}/3 after backoff...`);
+        await new Promise((r) => setTimeout(r, attempts * 1500));
+      } else {
+        throw err;
+      }
     }
   }
 
@@ -413,15 +448,20 @@ export async function syncGmailForUser(
       sync_updated_at: new Date().toISOString(),
     });
 
+    const activePresets: Array<{ id: string; query: string }> =
+      Array.isArray(metadata.presets) && metadata.presets.length > 0
+        ? metadata.presets
+        : DEFAULT_PRESETS;
+
     let queries: string[] = [];
     if (presetFilter === "all" || !presetFilter) {
-      queries = DEFAULT_PRESETS.map((p) => `${p.query} after:${lastSync}`);
+      queries = activePresets.map((p) => `${p.query} after:${lastSync}`);
     } else {
-      const preset = DEFAULT_PRESETS.find((p) => p.id === presetFilter);
+      const preset = activePresets.find((p) => p.id === presetFilter) || DEFAULT_PRESETS.find((p) => p.id === presetFilter);
       if (preset) {
         queries = [`${preset.query} after:${lastSync}`];
       } else {
-        queries = [`${DEFAULT_PRESETS[0].query} after:${lastSync}`];
+        queries = [`${activePresets[0]?.query || DEFAULT_PRESETS[0].query} after:${lastSync}`];
       }
     }
 
@@ -431,9 +471,13 @@ export async function syncGmailForUser(
 
     onProgress?.(5, 0);
 
-    const allIds = (
-      await Promise.all(queries.map((q) => searchEmails(gmail, q, 500)))
-    ).flat();
+    const searchResults = await Promise.allSettled(
+      queries.map((q) => searchEmails(gmail, q, 500))
+    );
+
+    const allIds = searchResults
+      .filter((r): r is PromiseFulfilledResult<string[]> => r.status === "fulfilled")
+      .flatMap((r) => r.value);
 
     const uniqueIds = [...new Set(allIds)];
 
@@ -452,7 +496,14 @@ export async function syncGmailForUser(
       return { synced: 0 };
     }
 
-    const BATCH = 10;
+function withTimeout<T>(promise: Promise<T>, ms: number, fallbackValue: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallbackValue), ms)),
+  ]);
+}
+
+    const BATCH = 8;
     const entries: DataBankEntry[] = [];
     onProgress?.(12, 0);
 
@@ -478,10 +529,14 @@ export async function syncGmailForUser(
       const batch = uniqueIds.slice(i, i + BATCH);
       const emails = await Promise.all(
         batch.map((id) =>
-          getEmailBody(gmail, id).catch((err) => {
-            console.warn(`[syncGmailForUser] Failed to fetch email ${id}:`, err?.message || err);
-            return null;
-          })
+          withTimeout(
+            getEmailBody(gmail, id).catch((err) => {
+              console.warn(`[syncGmailForUser] Failed to fetch email ${id}:`, err?.message || err);
+              return null;
+            }),
+            15000,
+            null
+          )
         )
       );
 
@@ -491,14 +546,18 @@ export async function syncGmailForUser(
           if (!email) return null;
           try {
             const cleanBody = stripHtml(email.body);
-            const data = await extractFinancialDataFromEmail(
-              cleanBody,
-              email.subject,
-              email.from,
-              syncMode,
-              aiPrompt,
-              aiEngine,
-              { enableFallback, fallbackEngine }
+            const data = await withTimeout(
+              extractFinancialDataFromEmail(
+                cleanBody,
+                email.subject,
+                email.from,
+                syncMode,
+                aiPrompt,
+                aiEngine,
+                { enableFallback, fallbackEngine }
+              ),
+              15000,
+              null
             );
             if (!data) return null;
 
@@ -516,6 +575,8 @@ export async function syncGmailForUser(
             };
             if (data.provider) metadataVal.provider = data.provider;
             if (data.bank) metadataVal.bank = data.bank;
+            if (data.reason) metadataVal.reason = data.reason;
+            if (data.transaction_time) metadataVal.transaction_time = data.transaction_time;
             if (typeof data.account_balance === "number" && data.account_balance > 0) {
               metadataVal.account_balance = Math.round(data.account_balance * 100);
             }
@@ -566,8 +627,12 @@ export async function syncGmailForUser(
             ON CONFLICT (gmail_message_id) WHERE gmail_message_id IS NOT NULL DO UPDATE SET
               entry_type = EXCLUDED.entry_type,
               amount = EXCLUDED.amount,
-              description = EXCLUDED.description,
-              category = EXCLUDED.category,
+              description = COALESCE(NULLIF(databank_entries.description, ''), EXCLUDED.description),
+              category = CASE
+                WHEN databank_entries.category IS NOT NULL AND databank_entries.category NOT IN ('', 'Uncategorized', 'General Expense')
+                THEN databank_entries.category
+                ELSE EXCLUDED.category
+              END,
               entry_date = EXCLUDED.entry_date,
               metadata = EXCLUDED.metadata;`,
             [
