@@ -572,6 +572,8 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallbackValue: T): Prom
             const metadataVal: Record<string, unknown> = {
               email_from: email.from,
               email_subject: email.subject,
+              email_date: email.date,
+              email_body_snippet: cleanBody.slice(0, 1500),
             };
             if (data.provider) metadataVal.provider = data.provider;
             if (data.bank) metadataVal.bank = data.bank;

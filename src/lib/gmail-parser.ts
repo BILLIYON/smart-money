@@ -46,6 +46,15 @@ function normalizeText(text: string): string {
 }
 
 function extractAmount(text: string): number | null {
+  // Priority 0: Explicit payment pattern e.g. "Your payment of ₦15,369.00 is successful"
+  const paymentMatch = text.match(
+    /(?:your\s+payment\s+of|payment\s+of|amount\s+of|sum\s+of|value\s+of)[:\s]*(?:₦|NGN|N|\$)?\s*([1-9]\d{0,2}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)/i
+  );
+  if (paymentMatch?.[1]) {
+    const val = parseFloat(paymentMatch[1].replace(/,/g, ""));
+    if (!isNaN(val) && val > 0) return val;
+  }
+
   // Priority 1: Match explicit transaction amount labels (e.g. "Amount: N5,000.00", "Txn Amount: ₦5,000.00", "Credit: ₦5,000", "Debit: ₦5,000", "Value: N5,000")
   const explicitMatch = text.match(
     /(?:Transaction\s*Amount|Txn\s*Amount|Credit\s*Amount|Debit\s*Amount|Amount\s*Credited|Amount\s*Debited|Paid|Received|Amount|Value|Val|Sum)[:\s]*(?:₦|NGN|N|\$)?\s*([+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)/i
@@ -73,7 +82,8 @@ function extractAmount(text: string): number | null {
 }
 
 function extractBalance(text: string): number | null {
-  const regex = /(?:Available\s+Balance|Ledger\s+Balance|Acct\s+Bal|Bal|Balance|New\s+Balance)[:\s]*(?:₦|NGN|N)?\s*([+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)/i;
+  // Matches "available balance is ₦3,215.96", "Ledger Balance: ₦50,000", "Acct Bal: 5,000"
+  const regex = /(?:Available\s+Balance|Ledger\s+Balance|Acct\s+Bal|Account\s+Balance|Bal|Balance|New\s+Balance)(?:\s+is)?[:\s]*(?:₦|NGN|N|\$)?\s*([+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)/i;
   const match = text.match(regex);
   if (match?.[1]) {
     const val = parseFloat(match[1].replace(/,/g, ""));
@@ -101,6 +111,10 @@ export function cleanExtractedDescription(candidate?: string | null, bank?: stri
     .replace(/^are shown below[:\s]*/i, "")
     .replace(/^transaction notification account number\s*:.*$/i, "")
     .replace(/account number\s*:.*$/i, "")
+    .replace(/\s+Merchant\s+Order.*$/i, "")
+    .replace(/\s+Order\s+(?:No|Number).*$/i, "")
+    .replace(/\s+Txn\s+(?:No|Ref).*$/i, "")
+    .replace(/\s+Transaction\s+(?:No|Date).*$/i, "")
     .replace(/\s+bank$/i, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -129,13 +143,22 @@ function extractReason(text: string, description: string, entryType: "income" | 
   if (/(shoprite|spar|supermarket|grocery|mall|store|buy|market|jumia|konga)/i.test(normalized)) return `Supermarket & grocery purchase`;
   if (/(electricity|ikedc|ekedc|aedc|phed|eedc|water|utility|bill)/i.test(normalized)) return `Utility bill payment`;
   if (/(salary|payroll|wages|stipend)/i.test(normalized)) return `Salary payout from employer`;
-  if (/(transfer|trf|sent|paid to|beneficiary)/i.test(normalized)) return `Interbank transfer (${cleanDesc})`;
+  if (/(transfer|trf|sent|paid to|beneficiary)/i.test(normalized)) return `Payment / transfer (${cleanDesc})`;
   if (entryType === "income") return `Inflow credit to ${bank || "account"}`;
   return `Debit transaction (${cleanDesc})`;
 }
 
 function extractDescription(text: string, from: string, bank?: string): string {
-  // 1. OPay transfer recipient pattern ("Name: PAUL KWAGWI DEMBO Bank: OPay Account Number: ...")
+  // 1. Explicit Merchant Name pattern (e.g. "Merchant Name: DEMERGE NIGERIA LIMITED Merchant Order Number: ...")
+  const merchantMatch = text.match(/(?:Merchant\s*Name|Merchant)[:\s\-=]+([^:\n\.,]{2,60})(?:\s+Merchant|\s+Order|\s+Txn|\s+Date|\s*$)/i);
+  if (merchantMatch?.[1]) {
+    const candidate = cleanExtractedDescription(merchantMatch[1], bank);
+    if (candidate && !/transaction|account|amount|debit|credit|notification/i.test(candidate)) {
+      return candidate.startsWith("Payment to") ? candidate : `Payment to ${candidate.slice(0, 50)}`;
+    }
+  }
+
+  // 2. OPay transfer recipient pattern ("Name: PAUL KWAGWI DEMBO Bank: OPay Account Number: ...")
   const opayMatch = text.match(/Name:\s*([^:\n\.\,]{2,50})(?:\s+Bank:|\s+Account|\s*$)/i) || text.match(/Name:\s*([^:\n\.\,]{2,40})/i);
   if (opayMatch?.[1]) {
     const candidate = cleanExtractedDescription(opayMatch[1], bank);
@@ -144,9 +167,9 @@ function extractDescription(text: string, from: string, bank?: string): string {
     }
   }
 
-  // 2. GTBank & explicit bank narration fields (Remarks, Narration, Beneficiary, Merchant, Paid To, Recipient)
+  // 3. GTBank & explicit bank narration fields (Remarks, Narration, Paid To, Received From, Beneficiary, Recipient, Sender)
   const explicitFieldMatch = text.match(
-    /(?:Remarks|Narration|Merchant|Paid to|Received from|Beneficiary|Recipient|Sender)[:\s\-=]+([^,\.\n]{2,80})/i
+    /(?:Remarks|Narration|Paid to|Received from|Beneficiary|Recipient|Sender)[:\s\-=]+([^,\.\n]{2,80})/i
   );
   if (explicitFieldMatch?.[1]) {
     const candidate = cleanExtractedDescription(explicitFieldMatch[1], bank);
@@ -155,7 +178,7 @@ function extractDescription(text: string, from: string, bank?: string): string {
     }
   }
 
-  // 3. Check for "Transfer to <Name>" or "Paid to <Name>" or "Received from <Name>" in body text
+  // 4. Check for "Transfer to <Name>" or "Paid to <Name>" or "Received from <Name>" in body text
   const transferNameMatch = text.match(/(?:transfer\s+to|paid\s+to|sent\s+to|credited\s+to|received\s+from)\s+([A-Z\s]{3,40})/i);
   if (transferNameMatch?.[1]) {
     const candidate = cleanExtractedDescription(transferNameMatch[1], bank);
@@ -164,7 +187,7 @@ function extractDescription(text: string, from: string, bank?: string): string {
     }
   }
 
-  // 4. Airtime / Mobile data patterns
+  // 5. Airtime / Mobile data patterns
   if (/\b(?:airtime|recharge|data top-up|data topup|mobile data)\b/i.test(text)) {
     const telcoMatch = text.match(/\b(MTN|Airtel|Glo|9mobile)\b/i);
     if (telcoMatch?.[1]) {
@@ -173,14 +196,14 @@ function extractDescription(text: string, from: string, bank?: string): string {
     return "Airtime & Data Top-up";
   }
 
-  // 5. Generic Description / Desc label (excluding GTBank boilerplate headers)
+  // 6. Generic Description / Desc label
   const descMatch = text.match(/(?:Desc|Description)[:\s\-=]+([^,\.\n]{2,80})/i);
   if (descMatch?.[1]) {
     const candidate = cleanExtractedDescription(descMatch[1], bank);
     if (candidate) return candidate.slice(0, 80);
   }
 
-  // 6. GTBank / Provider fallbacks
+  // 7. Bank fallbacks
   if (bank) {
     if (/\b(?:pos|pos purchase|pos payment)\b/i.test(text)) return `${bank} POS Purchase`;
     if (/\b(?:atm|atm withdrawal)\b/i.test(text)) return `${bank} ATM Withdrawal`;
@@ -221,6 +244,14 @@ export function inferEntryType(text: string, subject = "", from = ""): "income" 
   const combined = normalizeText(`${subject} ${text}`);
   const normalizedSubject = normalizeText(subject);
 
+  // Absolute Priority 0: Explicit Merchant / Payment Outflow Patterns
+  if (
+    /\b(?:merchant\s*name|merchant\s*order|your\s+payment\s+of|payment\s+successful|payment\s+receipt|paid\s+to|payment\s+details)\b/i.test(combined) &&
+    !/\b(?:payment\s+received|payout\s+received|received\s+payment|credit\s+alert)\b/i.test(combined)
+  ) {
+    return "expense";
+  }
+
   // 1. Explicit Credit / Inflow Signals (User received money)
   const isSubjectCredit =
     /\b(?:credit\s*alert|credit\s*notification|credit\s*advice|account\s*credited|money\s*received|payment\s*received|payout\s*received|transfer\s*received|deposit\s*successful|inward\s*transfer|salary|nip\s*credit|fip\s*credit|cr\s*alert)\b/i.test(
@@ -253,7 +284,7 @@ export function inferEntryType(text: string, subject = "", from = ""): "income" 
 
   // 2. Explicit Debit / Outflow Signals (User spent/sent money)
   const isSubjectDebit =
-    /\b(?:debit\s*alert|debit\s*notification|debit\s*advice|account\s*debited|transfer\s*sent|payment\s*sent|outward\s*transfer|pos\s*purchase|atm\s*withdrawal|dr\s*alert)\b/i.test(
+    /\b(?:debit\s*alert|debit\s*notification|debit\s*advice|account\s*debited|transfer\s*sent|payment\s*sent|payment\s*successful|payment\s*receipt|outward\s*transfer|pos\s*purchase|atm\s*withdrawal|dr\s*alert)\b/i.test(
       normalizedSubject
     );
 
@@ -264,6 +295,7 @@ export function inferEntryType(text: string, subject = "", from = ""): "income" 
     /\b(?:your\s+)?acct(?:ount)?\s*(?:[^\n\.\,]{0,40})?\bdebited\b/i.test(combined) ||
     /\bdebited\s+(?:with|for|by|of|amount)\b/i.test(combined) ||
     /\bamount\s*debited\b/i.test(combined) ||
+    /\b(?:your\s+)?payment\s+(?:of|for|to|is\s+successful)\b/i.test(combined) ||
     /\b(?:you\s+)?transferred\s+to\b/i.test(combined) ||
     /\b(?:you\s+)?sent\s+to\b/i.test(combined) ||
     /\b(?:you\s+)?paid\s+to\b/i.test(combined) ||
@@ -284,8 +316,8 @@ export function inferEntryType(text: string, subject = "", from = ""): "income" 
     /\boutward\s+transfer\b/i.test(combined);
 
   // 3. Priority Evaluation
-  if (isSubjectCredit) return "income";
-  if (isSubjectDebit) return "expense";
+  if (isSubjectCredit && !isSubjectDebit) return "income";
+  if (isSubjectDebit && !isSubjectCredit) return "expense";
 
   // If body has explicit CR transaction type or credited label, it's income
   if (isBodyCredit && !isBodyDebit) return "income";
@@ -295,7 +327,7 @@ export function inferEntryType(text: string, subject = "", from = ""): "income" 
     if (/\b(?:transaction\s*type\s*[:\s]*credit|cr\s*amount|amount\s*credited|credited\s*to\s*your)\b/i.test(combined)) {
       return "income";
     }
-    if (/\b(?:transaction\s*type\s*[:\s]*debit|dr\s*amount|amount\s*debited|debited\s*from\s*your)\b/i.test(combined)) {
+    if (/\b(?:transaction\s*type\s*[:\s]*debit|dr\s*amount|amount\s*debited|debited\s*from\s*your|payment\s*successful)\b/i.test(combined)) {
       return "expense";
     }
   }
@@ -304,7 +336,7 @@ export function inferEntryType(text: string, subject = "", from = ""): "income" 
   if (/\b(?:credit|cr|received|salary|deposit|inflow|inward|refund)\b/i.test(normalizedSubject)) {
     return "income";
   }
-  if (/\b(?:debit|dr|sent|paid|spent|transfer|withdrawal|pos|bill|recharge|outward)\b/i.test(normalizedSubject)) {
+  if (/\b(?:debit|dr|sent|paid|spent|transfer|withdrawal|pos|bill|recharge|outward|payment)\b/i.test(normalizedSubject)) {
     return "expense";
   }
 
@@ -334,6 +366,7 @@ export function inferCategory(text: string, entryType: "income" | "expense", ban
   if (/(hospital|pharmacy|drugs|health|clinic|medplus|healthplus|dental|optical|doctor|medical)/i.test(normalized)) return "Healthcare";
   if (/(school|tuition|course|udemy|coursera|exam|waec|jamb|education|training)/i.test(normalized)) return "Education";
   if (/(cinema|movie|event|ticket|bet9ja|sportybet|gaming|entertainment)/i.test(normalized)) return "Entertainment";
+  if (/(demerge|technology|technologies|solutions|services|consulting|ventures|enterprise|ltd|limited|inc|corp|company|business)/i.test(normalized)) return "Business & Services";
   if (/(transfer|trf|sent|pos transfer|paid to|beneficiary|withdrawal)/i.test(normalized)) return "Transfer";
 
   return "General Expense";

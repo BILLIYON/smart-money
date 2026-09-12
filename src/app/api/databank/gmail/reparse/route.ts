@@ -40,7 +40,7 @@ export async function POST(req: Request) {
       const from = meta.email_from || meta.from || "";
       const description = row.description || "";
 
-      const textToAnalyze = `${subject} ${description}`.trim();
+      const textToAnalyze = `${subject} ${description} ${meta.reason || ""}`.trim();
       if (!textToAnalyze) continue;
 
       const correctedType = inferEntryType(textToAnalyze, subject, from);
@@ -49,6 +49,7 @@ export async function POST(req: Request) {
       let needsUpdate = false;
       let newType = row.entry_type;
       let newCat = row.category;
+      let newDesc = row.description;
 
       if (correctedType !== row.entry_type) {
         newType = correctedType;
@@ -56,9 +57,22 @@ export async function POST(req: Request) {
         invertedCount++;
       }
 
-      if (row.category === "General Expense" || row.category === "Uncategorized" || !row.category) {
+      if (row.category === "General Expense" || row.category === "Uncategorized" || row.category === "Income" || !row.category) {
         if (correctedCategory && correctedCategory !== row.category) {
           newCat = correctedCategory;
+          needsUpdate = true;
+        }
+      }
+
+      // Clean up descriptions like "Transfer to DEMERGE NIGERIA LIMITED Merchant Order N"
+      if (row.description.includes("Merchant Order N") || row.description.includes("Order Number") || row.description.includes("Txn No")) {
+        const cleaned = row.description
+          .replace(/\s+Merchant\s+Order.*$/i, "")
+          .replace(/\s+Order\s+(?:No|Number).*$/i, "")
+          .replace(/\s+Txn\s+(?:No|Ref).*$/i, "")
+          .trim();
+        if (cleaned && cleaned !== row.description) {
+          newDesc = cleaned;
           needsUpdate = true;
         }
       }
@@ -66,9 +80,9 @@ export async function POST(req: Request) {
       if (needsUpdate) {
         await pool.query(
           `UPDATE databank_entries
-           SET entry_type = $1, category = $2
-           WHERE id = $3 AND user_id = $4;`,
-          [newType, newCat, row.id, userId]
+           SET entry_type = $1, category = $2, description = $3
+           WHERE id = $4 AND user_id = $5;`,
+          [newType, newCat, newDesc, row.id, userId]
         );
         updatedCount++;
       }

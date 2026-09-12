@@ -1515,20 +1515,20 @@ export function DatabankTransactionsTable({
       {/* ── 11. FULL TRANSACTION & EMAIL METADATA INSPECTOR MODAL ── */}
       <AnimatePresence>
         {inspectingEntry && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-md">
             <motion.div
               initial={{ scale: 0.95, opacity: 0, y: 10 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 10 }}
-              className="w-full max-w-2xl my-6 rounded-[20px] p-6 shadow-2xl flex flex-col gap-5 text-[13px] border"
+              className="w-full max-w-xl max-h-[85vh] rounded-[20px] p-5 shadow-2xl flex flex-col text-[13px] border overflow-hidden"
               style={{
                 background: "var(--card)",
                 borderColor: "var(--border)",
                 color: "var(--text)",
               }}
             >
-              {/* Header */}
-              <div className="flex items-start justify-between pb-3 border-b" style={{ borderColor: "var(--border)" }}>
+              {/* Header (Fixed) */}
+              <div className="flex items-start justify-between pb-3 border-b shrink-0" style={{ borderColor: "var(--border)" }}>
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-[18px]">🔍</span>
@@ -1549,165 +1549,192 @@ export function DatabankTransactionsTable({
                 </button>
               </div>
 
-              {/* Source & Date Banner */}
-              <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-[12px] text-[12px]" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold" style={{ color: "var(--text)" }}>Source:</span>
-                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider" style={{ background: "rgba(0,196,140,0.12)", color: "var(--green, #00C48C)" }}>
-                    {inspectingEntry.source === "gmail" ? "📧 Gmail Sync" : inspectingEntry.source === "upload" ? "📄 Statement Upload" : "✏️ Manual Entry"}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 text-[11px]" style={{ color: "var(--muted)" }}>
-                  <span>📅 Date: <strong style={{ color: "var(--text)" }}>{formatDate(editDate)}</strong></span>
-                  {inspectingEntry.metadata?.transaction_time && (
-                    <span>🕒 Time: <strong className="text-emerald-500 font-mono">{inspectingEntry.metadata.transaction_time}</strong></span>
-                  )}
-                </div>
-              </div>
-
-              {/* Editable Fields Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Description */}
-                <div className="md:col-span-2 flex flex-col gap-1">
-                  <label className="text-[11px] font-semibold" style={{ color: "var(--text)" }}>
-                    Transaction / Merchant Description
-                  </label>
-                  <input
-                    type="text"
-                    value={editDesc}
-                    onChange={(e) => setEditDesc(e.target.value)}
-                    className="w-full p-2.5 rounded-[10px] text-[13px] border font-medium outline-none focus:border-[var(--green)]"
-                    style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
-                  />
-                </div>
-
-                {/* Amount (Naira) */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-[11px] font-semibold" style={{ color: "var(--text)" }}>
-                    Amount (₦ Naira)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={editAmount}
-                    onChange={(e) => setEditAmount(e.target.value)}
-                    className="w-full p-2.5 rounded-[10px] text-[13px] border font-bold outline-none focus:border-[var(--green)]"
-                    style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--green, #00C48C)" }}
-                  />
-                </div>
-
-                {/* Category */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-[11px] font-semibold" style={{ color: "var(--text)" }}>
-                    Category
-                  </label>
-                  <select
-                    value={editCategory}
-                    onChange={(e) => setEditCategory(e.target.value)}
-                    className="w-full p-2.5 rounded-[10px] text-[12px] border cursor-pointer outline-none focus:border-[var(--green)]"
-                    style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
-                  >
-                    <option value="Uncategorized">Uncategorized</option>
-                    {availableCategories.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Direction (Income vs Expense 1-Click Toggle) */}
-                <div className="md:col-span-2 flex flex-col gap-1.5">
-                  <label className="text-[11px] font-semibold" style={{ color: "var(--text)" }}>
-                    Transaction Direction (Income vs Expense)
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {(["income", "expense", "subscription", "asset", "debt"] as const).map((t) => {
-                      const cfg = TYPE_CONFIG[t];
-                      const active = editType === t;
-                      return (
-                        <button
-                          key={t}
-                          type="button"
-                          onClick={() => setEditType(t)}
-                          className="px-3 py-1.5 rounded-[8px] text-[11px] font-bold border transition-all cursor-pointer"
-                          style={{
-                            background: active ? cfg.bg : "var(--bg)",
-                            color: active ? cfg.color : "var(--muted)",
-                            borderColor: active ? cfg.color : "var(--border)",
-                          }}
-                        >
-                          {cfg.icon} {cfg.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* Extracted Email & Financial Context Card */}
-              <div className="flex flex-col gap-2.5 p-3.5 rounded-[14px] border" style={{ background: "var(--bg)", borderColor: "var(--border)" }}>
-                <div className="text-[12px] font-bold flex items-center gap-1.5" style={{ color: "var(--text)" }}>
-                  <span>📧 Extracted Email & Account Context</span>
-                </div>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
-                  <div>
-                    <span className="text-[10px] uppercase font-semibold block" style={{ color: "var(--muted)" }}>Bank / Financial Provider</span>
-                    <span className="font-semibold text-[12px]" style={{ color: "var(--text)" }}>
-                      🏦 {inspectingEntry.metadata?.bank || inspectingEntry.metadata?.provider || "N/A"}
+              {/* Scrollable Body */}
+              <div className="flex-1 overflow-y-auto pr-1 py-3 flex flex-col gap-4">
+                {/* Source & Date Banner */}
+                <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-[12px] text-[12px]" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold" style={{ color: "var(--text)" }}>Source:</span>
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider" style={{ background: "rgba(0,196,140,0.12)", color: "var(--green, #00C48C)" }}>
+                      {inspectingEntry.source === "gmail" ? "📧 Gmail Sync" : inspectingEntry.source === "upload" ? "📄 Statement Upload" : "✏️ Manual Entry"}
                     </span>
                   </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-semibold block" style={{ color: "var(--muted)" }}>Account Balance After Transaction</span>
-                    <span className="font-mono font-bold text-[12px]" style={{ color: "var(--green, #00C48C)" }}>
-                      {formatBalance(inspectingEntry.metadata?.account_balance)}
-                    </span>
+                  <div className="flex items-center gap-3 text-[11px]" style={{ color: "var(--muted)" }}>
+                    <span>📅 Date: <strong style={{ color: "var(--text)" }}>{formatDate(editDate)}</strong></span>
+                    {inspectingEntry.metadata?.transaction_time && (
+                      <span>🕒 Time: <strong className="text-emerald-500 font-mono">{inspectingEntry.metadata.transaction_time}</strong></span>
+                    )}
                   </div>
-                  {inspectingEntry.metadata?.email_subject && (
-                    <div className="sm:col-span-2">
-                      <span className="text-[10px] uppercase font-semibold block" style={{ color: "var(--muted)" }}>Email Subject Header</span>
-                      <span className="font-medium" style={{ color: "var(--text)" }}>
-                        {inspectingEntry.metadata.email_subject}
-                      </span>
-                    </div>
-                  )}
-                  {inspectingEntry.metadata?.email_from && (
-                    <div className="sm:col-span-2">
-                      <span className="text-[10px] uppercase font-semibold block" style={{ color: "var(--muted)" }}>Email Sender (From)</span>
-                      <span className="font-mono" style={{ color: "var(--text)" }}>
-                        {inspectingEntry.metadata.email_from}
-                      </span>
-                    </div>
-                  )}
-                  {inspectingEntry.metadata?.reason && (
-                    <div className="sm:col-span-2 p-2 rounded-[8px]" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-                      <span className="text-[10px] uppercase font-semibold block mb-0.5" style={{ color: "var(--muted)" }}>🧠 AI Explanation & Purpose</span>
-                      <span className="italic" style={{ color: "var(--text)" }}>
-                        "{inspectingEntry.metadata.reason}"
-                      </span>
-                    </div>
-                  )}
                 </div>
 
-                {/* Raw Metadata JSON Inspector Toggle */}
-                <div className="pt-2 border-t" style={{ borderColor: "var(--border)" }}>
-                  <button
-                    type="button"
-                    onClick={() => setShowRawMetadata(!showRawMetadata)}
-                    className="text-[11px] font-semibold bg-transparent border-none cursor-pointer p-0"
-                    style={{ color: "var(--green, #00C48C)" }}
-                  >
-                    {showRawMetadata ? "▲ Hide Raw JSON Metadata" : "▼ Inspect Raw JSON Metadata"}
-                  </button>
-                  {showRawMetadata && (
-                    <pre className="mt-2 p-3 rounded-[8px] text-[10px] font-mono overflow-x-auto max-h-40" style={{ background: "#0B0E17", color: "#00C48C", border: "1px solid var(--border)" }}>
-                      {JSON.stringify(inspectingEntry.metadata || {}, null, 2)}
-                    </pre>
-                  )}
+                {/* Editable Fields Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Description */}
+                  <div className="md:col-span-2 flex flex-col gap-1">
+                    <label className="text-[11px] font-semibold" style={{ color: "var(--text)" }}>
+                      Transaction / Merchant Description
+                    </label>
+                    <input
+                      type="text"
+                      value={editDesc}
+                      onChange={(e) => setEditDesc(e.target.value)}
+                      className="w-full p-2.5 rounded-[10px] text-[13px] border font-medium outline-none focus:border-[var(--green)]"
+                      style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
+                    />
+                  </div>
+
+                  {/* Amount (Naira) */}
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-semibold" style={{ color: "var(--text)" }}>
+                      Amount (₦ Naira)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editAmount}
+                      onChange={(e) => setEditAmount(e.target.value)}
+                      className="w-full p-2.5 rounded-[10px] text-[13px] border font-bold outline-none focus:border-[var(--green)]"
+                      style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--green, #00C48C)" }}
+                    />
+                  </div>
+
+                  {/* Category */}
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-semibold" style={{ color: "var(--text)" }}>
+                      Category
+                    </label>
+                    <select
+                      value={editCategory}
+                      onChange={(e) => setEditCategory(e.target.value)}
+                      className="w-full p-2.5 rounded-[10px] text-[12px] border cursor-pointer outline-none focus:border-[var(--green)]"
+                      style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
+                    >
+                      <option value="Uncategorized">Uncategorized</option>
+                      {availableCategories.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Direction (Income vs Expense 1-Click Toggle) */}
+                  <div className="md:col-span-2 flex flex-col gap-1.5">
+                    <label className="text-[11px] font-semibold" style={{ color: "var(--text)" }}>
+                      Transaction Direction (Income vs Expense)
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {(["income", "expense", "subscription", "asset", "debt"] as const).map((t) => {
+                        const cfg = TYPE_CONFIG[t];
+                        const active = editType === t;
+                        return (
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={() => setEditType(t)}
+                            className="px-3 py-1.5 rounded-[8px] text-[11px] font-bold border transition-all cursor-pointer"
+                            style={{
+                              background: active ? cfg.bg : "var(--bg)",
+                              color: active ? cfg.color : "var(--muted)",
+                              borderColor: active ? cfg.color : "var(--border)",
+                            }}
+                          >
+                            {cfg.icon} {cfg.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Extracted Email & Financial Context Card */}
+                <div className="flex flex-col gap-3 p-4 rounded-[14px] border" style={{ background: "var(--bg)", borderColor: "var(--border)" }}>
+                  <div className="text-[12px] font-bold flex items-center gap-1.5 border-b pb-2" style={{ color: "var(--text)", borderColor: "var(--border)" }}>
+                    <span>📧 Extracted Email & Account Context</span>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
+                    <div>
+                      <span className="text-[10px] uppercase font-semibold block" style={{ color: "var(--muted)" }}>Bank / Financial Provider</span>
+                      <span className="font-semibold text-[12px]" style={{ color: "var(--text)" }}>
+                        🏦 {inspectingEntry.metadata?.bank || inspectingEntry.metadata?.provider || "N/A"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-semibold block" style={{ color: "var(--muted)" }}>Account Balance After Transaction</span>
+                      <span className="font-mono font-bold text-[12px]" style={{ color: "var(--green, #00C48C)" }}>
+                        {formatBalance(inspectingEntry.metadata?.account_balance)}
+                      </span>
+                    </div>
+                    {inspectingEntry.metadata?.email_subject && (
+                      <div className="sm:col-span-2">
+                        <span className="text-[10px] uppercase font-semibold block" style={{ color: "var(--muted)" }}>Email Subject Header</span>
+                        <span className="font-medium" style={{ color: "var(--text)" }}>
+                          {inspectingEntry.metadata.email_subject}
+                        </span>
+                      </div>
+                    )}
+                    {inspectingEntry.metadata?.email_from && (
+                      <div className="sm:col-span-2">
+                        <span className="text-[10px] uppercase font-semibold block" style={{ color: "var(--muted)" }}>Email Sender (From)</span>
+                        <span className="font-mono" style={{ color: "var(--text)" }}>
+                          {inspectingEntry.metadata.email_from}
+                        </span>
+                      </div>
+                    )}
+                    {inspectingEntry.metadata?.reason && (
+                      <div className="sm:col-span-2 p-2.5 rounded-[10px]" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                        <span className="text-[10px] uppercase font-semibold block mb-0.5" style={{ color: "var(--muted)" }}>🧠 AI Explanation & Context</span>
+                        <span className="italic" style={{ color: "var(--text)" }}>
+                          "{inspectingEntry.metadata.reason}"
+                        </span>
+                      </div>
+                    )}
+
+                    {/* 📩 Actual Email Body / Snippet Context Box */}
+                    <div className="sm:col-span-2 flex flex-col gap-1.5 p-3 rounded-[10px] border" style={{ background: "var(--card)", borderColor: "var(--border)" }}>
+                      <span className="text-[10px] uppercase font-bold tracking-wider flex items-center gap-1" style={{ color: "var(--green, #00C48C)" }}>
+                        <span>📩 Actual Email Content / Message Context</span>
+                      </span>
+                      <div className="text-[11.5px] leading-relaxed font-sans max-h-44 overflow-y-auto pr-1 select-text whitespace-pre-wrap" style={{ color: "var(--text)" }}>
+                        {(inspectingEntry.metadata?.email_body_snippet ||
+                          inspectingEntry.metadata?.email_body ||
+                          inspectingEntry.metadata?.snippet ||
+                          inspectingEntry.metadata?.raw_body) ? (
+                          String(
+                            inspectingEntry.metadata?.email_body_snippet ||
+                            inspectingEntry.metadata?.email_body ||
+                            inspectingEntry.metadata?.snippet ||
+                            inspectingEntry.metadata?.raw_body
+                          )
+                        ) : (
+                          <div className="py-1 opacity-80 italic text-[11px]">
+                            Original Email Subject: <strong>"{inspectingEntry.metadata?.email_subject || inspectingEntry.description}"</strong> from <code>{inspectingEntry.metadata?.email_from || inspectingEntry.source}</code>.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Raw Metadata JSON Inspector Toggle */}
+                  <div className="pt-2 border-t" style={{ borderColor: "var(--border)" }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowRawMetadata(!showRawMetadata)}
+                      className="text-[11px] font-semibold bg-transparent border-none cursor-pointer p-0"
+                      style={{ color: "var(--green, #00C48C)" }}
+                    >
+                      {showRawMetadata ? "▲ Hide Raw JSON Metadata" : "▼ Inspect Raw JSON Metadata"}
+                    </button>
+                    {showRawMetadata && (
+                      <pre className="mt-2 p-3 rounded-[8px] text-[10px] font-mono overflow-x-auto max-h-40" style={{ background: "#0B0E17", color: "#00C48C", border: "1px solid var(--border)" }}>
+                        {JSON.stringify(inspectingEntry.metadata || {}, null, 2)}
+                      </pre>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Actions Footer */}
-              <div className="flex items-center justify-end gap-2 pt-2 border-t" style={{ borderColor: "var(--border)" }}>
+              {/* Actions Footer (Fixed) */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t shrink-0" style={{ borderColor: "var(--border)" }}>
                 <button
                   type="button"
                   onClick={() => setInspectingEntry(null)}
