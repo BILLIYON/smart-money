@@ -46,17 +46,29 @@ function normalizeText(text: string): string {
 }
 
 function extractAmount(text: string): number | null {
-  const regex = /(?:₦|NGN|N|AMT|Amount|Val|Value|Sum)[:\s]*([+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)/i;
-  const match = text.match(regex);
-  if (match?.[1]) {
-    const val = parseFloat(match[1].replace(/,/g, ""));
+  // Priority 1: Match explicit transaction amount labels (e.g. "Amount: N5,000.00", "Txn Amount: ₦5,000.00", "Credit: ₦5,000", "Debit: ₦5,000", "Value: N5,000")
+  const explicitMatch = text.match(
+    /(?:Transaction\s*Amount|Txn\s*Amount|Credit\s*Amount|Debit\s*Amount|Amount\s*Credited|Amount\s*Debited|Paid|Received|Amount|Value|Val|Sum)[:\s]*(?:₦|NGN|N|\$)?\s*([+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)/i
+  );
+  if (explicitMatch?.[1]) {
+    const val = parseFloat(explicitMatch[1].replace(/,/g, ""));
     if (!isNaN(val) && Math.abs(val) > 0) return Math.abs(val);
   }
-  const fallbackMatch = text.match(/\b([1-9]\d{0,2}(?:,\d{3})*(?:\.\d{2}))\b/);
+
+  // Priority 2: Match currency symbols followed directly by numbers (e.g. "₦5,000.00", "N5,000.00", "NGN 5,000.00")
+  const currencyMatch = text.match(/(?:₦|NGN|\bN\b)\s*([1-9]\d{0,2}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)/i);
+  if (currencyMatch?.[1]) {
+    const val = parseFloat(currencyMatch[1].replace(/,/g, ""));
+    if (!isNaN(val) && Math.abs(val) > 0) return Math.abs(val);
+  }
+
+  // Priority 3: Fallback match for standard number format with thousand separators (e.g., 5,000.00 or 5000.00)
+  const fallbackMatch = text.match(/\b([1-9]\d{0,2}(?:,\d{3})+(?:\.\d{2})?)\b/) || text.match(/\b([1-9]\d{3,6}(?:\.\d{2})?)\b/);
   if (fallbackMatch?.[1]) {
     const val = parseFloat(fallbackMatch[1].replace(/,/g, ""));
     if (!isNaN(val) && val > 0) return val;
   }
+
   return null;
 }
 
@@ -211,9 +223,10 @@ export function inferEntryType(text: string, subject = "", from = ""): "income" 
 
   // 1. Explicit Credit / Inflow Signals (User received money)
   const isSubjectCredit =
-    /\b(?:credit\s*alert|credit\s*notification|credit\s*advice|account\s*credited|money\s*received|transfer\s*received|deposit\s*successful|inward\s*transfer|salary|nip\s*credit|fip\s*credit|cr\s*alert)\b/i.test(
+    /\b(?:credit\s*alert|credit\s*notification|credit\s*advice|account\s*credited|money\s*received|payment\s*received|payout\s*received|transfer\s*received|deposit\s*successful|inward\s*transfer|salary|nip\s*credit|fip\s*credit|cr\s*alert)\b/i.test(
       normalizedSubject
-    );
+    ) ||
+    /\[credit[:\s]/i.test(subject); // GTBank format: "Transaction Notification [Credit: N5,000.00]"
 
   const isBodyCredit =
     /\b(?:credit|cr)\s*alert\b/i.test(combined) ||
@@ -233,7 +246,10 @@ export function inferEntryType(text: string, subject = "", from = ""): "income" 
     /\bdeposit\s+(?:alert|successful)\b/i.test(combined) ||
     /\btransaction\s*type\s*[:\s]*(?:credit|cr)\b/i.test(combined) ||
     /\bcr\s+amount\b/i.test(combined) ||
-    /\bamount\s*credited\b/i.test(combined);
+    /\bamount\s*credited\b/i.test(combined) ||
+    /\bpayout\s*received\b/i.test(combined) ||
+    /\bpayment\s*received\b/i.test(combined) ||
+    /\bcredited\s*to\s*your\b/i.test(combined);
 
   // 2. Explicit Debit / Outflow Signals (User spent/sent money)
   const isSubjectDebit =
