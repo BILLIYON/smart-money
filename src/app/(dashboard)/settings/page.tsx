@@ -198,6 +198,7 @@ function ProfileTab() {
   const [riskTolerance, setRiskTolerance] = useState("Moderate (balanced growth)");
 
   const [aiEngine, setAiEngine] = useState("groq-70b");
+  const [syncerEngine, setSyncerEngine] = useState("python_transaction");
   const [enableFallback, setEnableFallback] = useState(true);
   const [fallbackEngine, setFallbackEngine] = useState("groq-70b");
 
@@ -235,6 +236,9 @@ function ProfileTab() {
           if (typeof window !== "undefined") {
             localStorage.setItem("databank_ai_engine", data.metadata.ai_engine);
           }
+        }
+        if (data?.metadata?.syncer_engine) {
+          setSyncerEngine(data.metadata.syncer_engine);
         }
         if (data?.metadata?.enable_fallback !== undefined) {
           setEnableFallback(Boolean(data.metadata.enable_fallback));
@@ -761,6 +765,57 @@ function ProfileTab() {
               </select>
               <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
                 The main AI model that processes your bank statements, Gmail sync, agentic actions, and finance council.
+              </div>
+            </div>
+
+            {/* Gmail Transaction Syncer Selector */}
+            <div style={{ borderTop: "1px solid var(--border)", paddingTop: "14px" }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: "var(--text)",
+                  textTransform: "uppercase",
+                  letterSpacing: ".5px",
+                  marginBottom: 6,
+                }}
+              >
+                🐍 Active Gmail Transaction Syncer
+              </div>
+              <select
+                value={syncerEngine}
+                onChange={async (e) => {
+                  const val = e.target.value;
+                  setSyncerEngine(val);
+                  try {
+                    await fetch("/api/databank/gmail/settings", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ syncer_engine: val }),
+                    });
+                    popup.success("Syncer Engine Updated", `Active syncer set to ${e.target.selectedOptions[0].text}`);
+                  } catch (err) {}
+                }}
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  border: "1px solid rgba(0,196,140,0.35)",
+                  borderRadius: 8,
+                  fontFamily: "inherit",
+                  fontSize: 13,
+                  color: "var(--text)",
+                  background: "var(--bg)",
+                  outline: "none",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                <option value="python_transaction">🐍 Python Transaction Syncer (FastAPI + BeautifulSoup DOM &amp; PDF Engine)</option>
+                <option value="ai_agentic">🤖 AI Agentic Syncer (Python Engine + Multi-pass LLM &amp; Self-Healing Agent)</option>
+                <option value="node_standard">⚡ Standard Node.js Syncer (Legacy Regex Parser)</option>
+              </select>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+                Select your preferred transaction sync engine. Python engines extract complex HTML tables and PDF bank statements with automatic Node.js fallback.
               </div>
             </div>
 

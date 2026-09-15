@@ -11,7 +11,7 @@ import Groq from "groq-sdk";
 import { getBuddy, type Buddy } from "./buddies";
 import { getCommunityBuddyById } from "./db";
 import { formatCurrency } from "./currency";
-import { parseFinancialEmailData } from "./gmail-parser";
+import { parseFinancialEmailData, isTransactionEmail } from "./gmail-parser";
 import { generateBedrockCompletion, streamBedrockCompletion, streamBedrockToReadableStream, BEDROCK_MODELS } from "./bedrock";
 
 // ── Clients (lazy-initialised to avoid import-time crashes in edge) ─────────
@@ -1039,6 +1039,13 @@ export async function extractFinancialDataFromEmail(
   aiEngine = "groq",
   options?: { enableFallback?: boolean; fallbackEngine?: string }
 ) {
+  // Pre-filter: verify it's a financial transaction email before proceeding to Regex or Deep AI
+  const cleanBody = emailBody.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  const fullText = `${subject} ${cleanBody}`;
+  if (!fullText.trim() || !isTransactionEmail(fullText, subject, from)) {
+    return null;
+  }
+
   // ── 1. LIGHTWEIGHT SEARCH MODE (Next.js regex extraction — ultra-fast & 100% reliable) ──
   if (syncMode === "lightweight") {
     try {

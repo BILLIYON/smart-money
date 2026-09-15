@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { sync_mode, preset_filter, custom_query, ai_prompt, ai_engine, enable_fallback, fallback_engine, presets } = await req.json();
+    const { sync_mode, preset_filter, custom_query, ai_prompt, ai_engine, enable_fallback, fallback_engine, presets, syncer_engine } = await req.json();
 
     const { rows } = await pool.query(
       `SELECT metadata FROM user_integrations WHERE user_id = $1 AND provider = 'gmail' LIMIT 1;`,
@@ -50,6 +50,7 @@ export async function POST(req: Request) {
       custom_query: custom_query !== undefined ? custom_query : (existingMetadata.custom_query || ""),
       ai_prompt: ai_prompt !== undefined ? ai_prompt : (existingMetadata.ai_prompt || ""),
       ai_engine: ai_engine || existingMetadata.ai_engine || "groq",
+      syncer_engine: syncer_engine || existingMetadata.syncer_engine || "python_transaction",
       enable_fallback: enable_fallback !== undefined ? Boolean(enable_fallback) : (existingMetadata.enable_fallback !== undefined ? Boolean(existingMetadata.enable_fallback) : true),
       fallback_engine: fallback_engine || existingMetadata.fallback_engine || "groq",
     };

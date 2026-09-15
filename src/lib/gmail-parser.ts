@@ -46,13 +46,21 @@ function normalizeText(text: string): string {
 }
 
 function extractAmount(text: string): number | null {
+  const isLikelyYear = (num: number, snippet: string) => {
+    if (num >= 1990 && num <= 2040 && Number.isInteger(num)) {
+      // If NOT explicitly prefixed by a currency symbol or amount label, reject year
+      return !/(?:₦|NGN|\bN\b|\$|Amount|Paid|Value|Txn|Credited|Debited)/i.test(snippet);
+    }
+    return false;
+  };
+
   // Priority 0: Explicit payment pattern e.g. "Your payment of ₦15,369.00 is successful"
   const paymentMatch = text.match(
     /(?:your\s+payment\s+of|payment\s+of|amount\s+of|sum\s+of|value\s+of)[:\s]*(?:₦|NGN|N|\$)?\s*([1-9]\d{0,2}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)/i
   );
   if (paymentMatch?.[1]) {
     const val = parseFloat(paymentMatch[1].replace(/,/g, ""));
-    if (!isNaN(val) && val > 0) return val;
+    if (!isNaN(val) && val > 0 && !isLikelyYear(val, paymentMatch[0])) return val;
   }
 
   // Priority 1: Match explicit transaction amount labels (e.g. "Amount: N5,000.00", "Txn Amount: ₦5,000.00", "Credit: ₦5,000", "Debit: ₦5,000", "Value: N5,000")
@@ -61,21 +69,21 @@ function extractAmount(text: string): number | null {
   );
   if (explicitMatch?.[1]) {
     const val = parseFloat(explicitMatch[1].replace(/,/g, ""));
-    if (!isNaN(val) && Math.abs(val) > 0) return Math.abs(val);
+    if (!isNaN(val) && Math.abs(val) > 0 && !isLikelyYear(val, explicitMatch[0])) return Math.abs(val);
   }
 
   // Priority 2: Match currency symbols followed directly by numbers (e.g. "₦5,000.00", "N5,000.00", "NGN 5,000.00")
-  const currencyMatch = text.match(/(?:₦|NGN|\bN\b)\s*([1-9]\d{0,2}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)/i);
+  const currencyMatch = text.match(/(?:₦|NGN|\bN\b|\$)\s*([1-9]\d{0,2}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)/i);
   if (currencyMatch?.[1]) {
     const val = parseFloat(currencyMatch[1].replace(/,/g, ""));
     if (!isNaN(val) && Math.abs(val) > 0) return Math.abs(val);
   }
 
-  // Priority 3: Fallback match for standard number format with thousand separators (e.g., 5,000.00 or 5000.00)
-  const fallbackMatch = text.match(/\b([1-9]\d{0,2}(?:,\d{3})+(?:\.\d{2})?)\b/) || text.match(/\b([1-9]\d{3,6}(?:\.\d{2})?)\b/);
-  if (fallbackMatch?.[1]) {
-    const val = parseFloat(fallbackMatch[1].replace(/,/g, ""));
-    if (!isNaN(val) && val > 0) return val;
+  // Priority 3: Fallback match for formatted numbers ONLY (MUST have comma separator or decimal point e.g., 5,000.00 or 15369.00)
+  const formattedMatch = text.match(/\b([1-9]\d{0,2}(?:,\d{3})+(?:\.\d{2})?)\b/) || text.match(/\b([1-9]\d{1,6}\.\d{2})\b/);
+  if (formattedMatch?.[1]) {
+    const val = parseFloat(formattedMatch[1].replace(/,/g, ""));
+    if (!isNaN(val) && val > 0 && !isLikelyYear(val, formattedMatch[0])) return val;
   }
 
   return null;
@@ -357,10 +365,13 @@ export function inferCategory(text: string, entryType: "income" | "expense", ban
     return "Income";
   }
 
-  if (/(uber|bolt|indrive|transport|flight|airline|ride|taxi|rail|bus|fuel|petrol|gas station)/i.test(normalized)) return "Transport & Fuel";
+  // Priority 1: Phone, Airtime, & Mobile Data
+  if (/(mtn|airtel|glo|9mobile|data|airtime|recharge|top-up|topup)/i.test(normalized)) return "Phone & Data";
+
+  // Priority 2: Subscriptions, Transport, Dining, Utilities
   if (/(netflix|spotify|apple|amazon prime|subscription|dstv|gotv|showmax|youtube|audible|patreon)/i.test(normalized)) return "Subscriptions";
+  if (/(uber|bolt|indrive|transport|flight|airline|ride|taxi|rail|bus|fuel|petrol|gas station)/i.test(normalized)) return "Transport & Fuel";
   if (/(food|restaurant|pizza|kfc|chicken republic|domino|eat|chow|sweet sensation|bukka|grill|cafe|dining|bistro)/i.test(normalized)) return "Food & Dining";
-  if (/(mtn|airtel|glo|9mobile|data|airtime|recharge)/i.test(normalized)) return "Phone & Data";
   if (/(shoprite|spar|supermarket|grocery|mall|store|market|hubmart|jumia|konga|boutique|retail)/i.test(normalized)) return "Shopping & Groceries";
   if (/(electricity|ikedc|ekedc|aedc|phed|eedc|water|waste|utility|utilities|bill|power)/i.test(normalized)) return "Utilities & Bills";
   if (/(hospital|pharmacy|drugs|health|clinic|medplus|healthplus|dental|optical|doctor|medical)/i.test(normalized)) return "Healthcare";
@@ -374,27 +385,31 @@ export function inferCategory(text: string, entryType: "income" | "expense", ban
 
 /**
  * Accept ONLY legitimate transaction / transfer / alert emails.
- * Marketing, newsletters, job alerts, security alerts, and system notifications are strictly rejected.
+ * Marketing, newsletters, job alerts, security alerts, customer support messages, and system notifications are strictly rejected.
  */
-function isTransactionEmail(text: string, subject = "", from = ""): boolean {
+export function isTransactionEmail(text: string, subject = "", from = ""): boolean {
   const normalizedFrom = (from || "").toLowerCase();
   const normalizedSubject = (subject || "").toLowerCase();
   const combined = `${normalizedSubject} ${text}`.toLowerCase();
 
   // 1. Sender Blacklist (Non-financial service senders)
   if (
-    /jobberman|linkedin|indeed|glassdoor|careers|recruitment|newsletter|no-reply@accounts\.google\.com|security-noreply@github\.com|facebook|twitter|instagram|x\.com|tiktok/i.test(
+    /jobberman|linkedin|indeed|glassdoor|careers|recruitment|newsletter|no-reply@accounts\.google\.com|security-noreply@github\.com|accounts\.google\.com|no-reply@google\.com|security@|auth@|facebook|twitter|instagram|x\.com|tiktok/i.test(
       normalizedFrom
     )
   ) {
-    return false;
+    // Only allow Google/Apple if subject explicitly contains invoice, purchase, or receipt
+    if (!/\b(?:invoice|receipt|purchase|subscription\s+charged|payment\s+receipt)\b/i.test(normalizedSubject)) {
+      return false;
+    }
   }
 
-  // 2. Subject Blacklist (Non-financial notification titles)
+  // 2. Promotional, Marketing, Customer Support, & Non-financial Subject Blacklist
   if (
-    /\b(?:job\s*alert|jobs\s*available|security\s*alert|login\s*alert|new\s*sign-in|password\s*reset|verify\s*your\s*email|verification\s*code|\botp\b|two-factor|\b2fa\b|newsletter|promotions|welcome\s*to|terms\s*of\s*service|privacy\s*policy)\b/i.test(
+    /\b(?:need\s*help|opay\s*support|customer\s*support|customer\s*care|here\s*to\s*assist|help\s*center|support\s*team|official\s*support|in-app\s*live\s*chat|call\s*customer\s*service|contact\s*us|how\s*to\s*contact|frequently\s*asked\s*questions|faq|helpdesk|raining|win\b|stand\s+a\s+chance|cashback|promo|promotion|special\s+offer|get\s+more|upgrade\s+your|introducing|discover|explore|newsletter|marketing|survey|reward|rewards|play4achild|get\s+to\s+know|know\s+opay|google\s*account|access\s*to\s*some\s*of\s*your\s*data|you\s*shared|data\s*access|job\s*alert|jobs\s*available|security\s*alert|login\s*alert|new\s*sign-in|device\s*activity|password\s*reset|verify\s*your\s*email|verification\s*code|\botp\b|two-factor|\b2fa\b|welcome\s*to|terms\s*of\s*service|privacy\s*policy)\b/i.test(
       normalizedSubject
-    )
+    ) ||
+    /\b(?:need\s+help\s+with\s+your\s+opay\s+account|find\s+our\s+official\s+support\s+channels|in-app\s+live\s+chat|call\s+customer\s+service|you\s*shared\s*some\s*google\s*account\s*data|security\s*alert|new\s*device\s*signed\s+in|verification\s*code\s*is|stand\s+a\s+chance\s+to\s+win|raining\s*credit)\b/i.test(combined)
   ) {
     return false;
   }
@@ -406,7 +421,7 @@ function isTransactionEmail(text: string, subject = "", from = ""): boolean {
 
   // 4. Require explicit transaction phrases (never match bare standalone word "alert")
   const hasExplicitTransactionPhrase =
-    /\b(?:debit\s*alert|credit\s*alert|debit\s*notification|credit\s*notification|transfer\s*notification|transfer\s*alert|transfer\s*successful|withdrawal\s*successful|deposit\s*successful|payment\s*successful|transaction\s*notification|transaction\s*alert|account\s*debited|account\s*credited|transfer\s*sent|transfer\s*received|pos\s*purchase|pos\s*transaction|atm\s*withdrawal|airtime\s*(?:top-up|topup|recharge)|bill\s*payment|refund\s*notification|salary\s*credit|inflow\s*alert|outflow\s*alert|money\s*received|you\s*sent|you\s*paid|you\s*received|you\s*spent|you\s*recharged|transaction\s*advice|payment\s*advice|debit\s*advice|credit\s*advice|transfer\s*advice|transaction\s*receipt|payment\s*receipt|nip\s*transfer|nibss|card\s*purchase|web\s*purchase|web\s*payment|ussd\s*transfer|direct\s*debit|standing\s*order|notice\s*of\s*credit|notice\s*of\s*debit|funds\s*transferred|funds\s*received|account\s*activity|bank\s*alert)\b/i.test(
+    /\b(?:debit\s*alert|credit\s*alert|debit\s*notification|credit\s*notification|transfer\s*notification|transfer\s*alert|transfer\s*successful|withdrawal\s*successful|deposit\s*successful|payment\s*successful|transaction\s*notification|transaction\s*alert|account\s*debited|account\s*credited|transfer\s*sent|transfer\s*received|pos\s*purchase|pos\s*transaction|atm\s*withdrawal|airtime\s*(?:top-up|topup|recharge)|bill\s*payment|refund\s*notification|salary\s*credit|inflow\s*alert|outflow\s*alert|money\s*received|you\s*sent|you\s*paid|you\s*received|you\s*spent|you\s*recharged|transaction\s*advice|payment\s*advice|debit\s*advice|credit\s*advice|transfer\s*advice|transaction\s*receipt|payment\s*receipt|nip\s*transfer|nibss|card\s*purchase|web\s*purchase|web\s*payment|ussd\s*transfer|direct\s*debit|standing\s*order|bank\s*alert)\b/i.test(
       combined
     );
 
@@ -414,7 +429,7 @@ function isTransactionEmail(text: string, subject = "", from = ""): boolean {
     return true;
   }
 
-  if (isFinancialDomain && /(?:amount|naira|ngn|₦|debited|credited|paid|sent|received|transferred|value)/i.test(combined)) {
+  if (isFinancialDomain && /(?:amount\s*[:\s]*[₦ngn\$]|naira|ngn|₦|debited\s+with|credited\s+with|paid\s+to|transferred\s+to)/i.test(combined)) {
     return true;
   }
 
@@ -432,7 +447,7 @@ export function parseFinancialEmailData(
   if (!isTransactionEmail(text, subject, from)) return null;
 
   const amount = extractAmount(text);
-  if (amount === null || amount <= 0) return null;
+  if (amount === null || amount < 10) return null;
 
   const entryType = inferEntryType(text, subject, from);
   const bankInfo = detectBank(text, from);

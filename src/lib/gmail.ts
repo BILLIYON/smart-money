@@ -30,26 +30,26 @@ type DataBankEntry = {
 export const DEFAULT_PRESETS = [
   {
     id: "all",
-    label: "Default Broad Scan (All Bank Alerts)",
-    query: `subject:(receipt OR payment OR transfer OR transaction OR alert OR notice OR advice OR purchase OR pos OR bank OR opay OR kuda OR palmpay OR moniepoint OR zenith OR gtbank OR access OR uba OR firstbank OR stanbic OR flutterwave OR paystack OR debit OR credit OR successful) OR "debit alert" OR "credit alert" OR "transaction alert" OR "transfer notification" OR "payment received"`,
+    label: "Default Broad Scan (All Bank Alerts & Fintechs)",
+    query: `("debit alert" OR "credit alert" OR "transaction alert" OR "transaction notification" OR "transfer notification" OR "payment received" OR "payment successful" OR "payment receipt" OR "transfer successful" OR "money sent" OR "money received" OR "you spent" OR "you received" OR "pos purchase" OR "atm withdrawal" OR "airtime recharge" OR "airtime top-up" OR "bill payment" OR "debit advice" OR "credit advice" OR subject:(receipt OR "debit alert" OR "credit alert" OR "transaction alert" OR "transfer notification" OR "payment receipt" OR "payment successful" OR opay OR kuda OR palmpay OR moniepoint OR zenith OR gtbank OR access OR uba OR firstbank OR stanbic OR fcmb OR sterling OR wema OR alat OR fidelity OR union OR providus OR flutterwave OR paystack) OR from:(accessbankplc.com OR gtbank.com OR firstbanknigeria.com OR zenithbank.com OR ubagroup.com OR kudabank.com OR opay-nigeria.com OR palmpay.com OR moniepoint.com OR stanbicibtc.com OR fcmb.com OR sterling.ng OR wemabank.com OR alat.ng OR fidelitybank.ng OR unionbankng.com OR providusbank.com OR flutterwavego.com OR paystack.com OR monnify.com)) -subject:("security alert" OR "login alert" OR "google account" OR "password reset" OR "verification code" OR "terms of service" OR "privacy policy" OR "shared some google account data" OR "need help" OR "opay support" OR "customer support" OR "customer care" OR "helpdesk" OR "support team")`,
     filter: ""
   },
   {
     id: "opay",
     label: "OPay alerts only",
-    query: `opay (subject:(receipt OR payment OR transfer OR alert OR transaction OR debit OR credit) OR "opay alert")`,
+    query: `(from:opay-nigeria.com OR opay) (subject:(receipt OR payment OR transfer OR alert OR transaction OR debit OR credit) OR "opay alert" OR "payment successful" OR "transfer successful") -subject:("security alert" OR "google account" OR "need help" OR "support")`,
     filter: "include:opay"
   },
   {
     id: "uba",
     label: "UBA bank alerts only",
-    query: `uba (subject:(receipt OR payment OR transfer OR alert OR transaction OR debit OR credit) OR "uba alert")`,
+    query: `(from:ubagroup.com OR uba) (subject:(receipt OR payment OR transfer OR alert OR transaction OR debit OR credit) OR "uba alert") -subject:("security alert" OR "google account" OR "raining credit")`,
     filter: "include:uba"
   },
   {
     id: "debits_credits",
     label: "Debits & Credits only",
-    query: `"debit alert" OR "credit alert" OR "transaction alert"`,
+    query: `"debit alert" OR "credit alert" OR "transaction alert" OR "transaction notification" OR "transfer notification" OR "account debited" OR "account credited"`,
     filter: ""
   }
 ];
@@ -109,38 +109,67 @@ export async function getGmailClient(userId: string) {
   return google.gmail({ version: "v1", auth: oauth2 });
 }
 
-// ── 2. Search Gmail with a query, return message IDs ─────────
+// ── 2. Search Gmail with a query, return message IDs with pagination ─────────
 export async function searchEmails(
   gmail: Awaited<ReturnType<typeof getGmailClient>>,
   query: string,
-  maxResults = 500
+  maxResults = 1000
 ): Promise<string[]> {
+  const ids: string[] = [];
+  let pageToken: string | undefined = undefined;
+
   try {
-    const res = await gmail.users.messages.list({
-      userId: "me",
-      q: query,
-      maxResults,
-    });
-    return (res.data.messages ?? []).map((m) => m.id as string);
+    do {
+      const res: any = await gmail.users.messages.list({
+        userId: "me",
+        q: query,
+        maxResults: Math.min(500, maxResults - ids.length),
+        pageToken,
+      });
+
+      const msgs = res.data.messages ?? [];
+      for (const m of msgs) {
+        if (m.id && !ids.includes(m.id)) {
+          ids.push(m.id);
+        }
+      }
+
+      pageToken = res.data.nextPageToken || undefined;
+    } while (pageToken && ids.length < maxResults);
+
+    return ids;
   } catch (err: any) {
     console.warn(`[searchEmails] Query failed ("${query.slice(0, 60)}..."):`, err?.message || err);
-    if (query.includes("OR") || query.includes("subject:")) {
+    if (query.includes("OR") || query.includes("subject:") || query.includes("from:")) {
       try {
         const afterMatch = query.match(/after:\d+/);
         const afterClause = afterMatch ? ` ${afterMatch[0]}` : "";
-        const fallbackQuery = `"debit alert" OR "credit alert" OR "transaction alert" OR "payment received"${afterClause}`;
+        const fallbackQuery = `"debit alert" OR "credit alert" OR "transaction alert" OR "payment received" OR "transfer notification" OR "payment successful"${afterClause}`;
         console.log(`[searchEmails] Attempting simplified fallback query: ${fallbackQuery}`);
-        const res = await gmail.users.messages.list({
-          userId: "me",
-          q: fallbackQuery,
-          maxResults,
-        });
-        return (res.data.messages ?? []).map((m) => m.id as string);
+        
+        let fbPageToken: string | undefined = undefined;
+        do {
+          const res: any = await gmail.users.messages.list({
+            userId: "me",
+            q: fallbackQuery,
+            maxResults: Math.min(500, maxResults - ids.length),
+            pageToken: fbPageToken,
+          });
+          const msgs = res.data.messages ?? [];
+          for (const m of msgs) {
+            if (m.id && !ids.includes(m.id)) {
+              ids.push(m.id);
+            }
+          }
+          fbPageToken = res.data.nextPageToken || undefined;
+        } while (fbPageToken && ids.length < maxResults);
+
+        return ids;
       } catch (fbErr: any) {
         console.warn("[searchEmails] Fallback query also failed:", fbErr?.message || fbErr);
       }
     }
-    return [];
+    return ids;
   }
 }
 

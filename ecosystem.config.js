@@ -24,6 +24,17 @@ module.exports = {
         PORT: 3000,
         LOCAL_DB_URL: "http://127.0.0.1:3001"
       }
+    },
+    {
+      name: "transaction-syncer",
+      script: "./venv/bin/uvicorn",
+      args: "main:app --host 127.0.0.1 --port 8000",
+      cwd: "/home/ec2-user/smart-money/services/transaction_syncer",
+      instances: 1,
+      exec_mode: "fork",
+      env: {
+        PORT: 8000
+      }
     }
   ]
 };
