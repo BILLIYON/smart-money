@@ -36,30 +36,8 @@ type Stats = {
 
 function getCleanDisplayBank(t: Transaction): string | null {
   const meta = t.metadata || {};
-  let bank = meta.bank || meta.provider;
-  if (bank && typeof bank === "string" && bank.toLowerCase() !== "gmail alert" && bank.toLowerCase() !== "bank alert" && bank.toLowerCase() !== "bank") {
-    if (/opay/i.test(bank)) return "OPay";
-    if (/kuda/i.test(bank)) return "Kuda Bank";
-    if (/palmpay/i.test(bank)) return "PalmPay";
-    if (/moniepoint/i.test(bank)) return "Moniepoint";
-    if (/gtbank|gtb/i.test(bank)) return "GTBank";
-    if (/zenith/i.test(bank)) return "Zenith Bank";
-    if (/access/i.test(bank)) return "Access Bank";
-    if (/uba/i.test(bank)) return "UBA";
-    if (/firstbank|first bank/i.test(bank)) return "FirstBank";
-    if (/stanbic/i.test(bank)) return "Stanbic IBTC";
-    if (/fcmb/i.test(bank)) return "FCMB";
-    if (/sterling/i.test(bank)) return "Sterling Bank";
-    if (/wema|alat/i.test(bank)) return "Wema / ALAT";
-    if (/taxtech|taxaide/i.test(bank)) return "Taxtech";
-    if (/jobberman/i.test(bank)) return "Jobberman";
-    if (/grey/i.test(bank)) return "Grey Finance";
-    if (/flutterwave/i.test(bank)) return "Flutterwave";
-    if (/paystack/i.test(bank)) return "Paystack";
-    return bank;
-  }
 
-  // Priority 1: Check email sender header (From)
+  // Priority 1: Check actual email sender header (From) - ALWAYS trust issuing sender first
   const from = (meta.email_from || meta.from || "").toLowerCase();
   if (from) {
     if (/gtbank|gtb|guaranty/i.test(from)) return "GTBank";
@@ -67,8 +45,8 @@ function getCleanDisplayBank(t: Transaction): string | null {
     if (/access/i.test(from)) return "Access Bank";
     if (/uba/i.test(from)) return "UBA";
     if (/firstbank|first bank/i.test(from)) return "FirstBank";
-    if (/kuda/i.test(from)) return "Kuda Bank";
     if (/opay/i.test(from)) return "OPay";
+    if (/kuda/i.test(from)) return "Kuda Bank";
     if (/palmpay/i.test(from)) return "PalmPay";
     if (/moniepoint/i.test(from)) return "Moniepoint";
     if (/stanbic/i.test(from)) return "Stanbic IBTC";
@@ -90,8 +68,8 @@ function getCleanDisplayBank(t: Transaction): string | null {
     if (/access/i.test(subj)) return "Access Bank";
     if (/uba/i.test(subj)) return "UBA";
     if (/firstbank|first bank/i.test(subj)) return "FirstBank";
-    if (/kuda/i.test(subj)) return "Kuda Bank";
     if (/opay/i.test(subj)) return "OPay";
+    if (/kuda/i.test(subj)) return "Kuda Bank";
     if (/palmpay/i.test(subj)) return "PalmPay";
     if (/moniepoint/i.test(subj)) return "Moniepoint";
     if (/stanbic/i.test(subj)) return "Stanbic IBTC";
@@ -103,6 +81,30 @@ function getCleanDisplayBank(t: Transaction): string | null {
     if (/grey/i.test(subj)) return "Grey Finance";
     if (/flutterwave/i.test(subj)) return "Flutterwave";
     if (/paystack/i.test(subj)) return "Paystack";
+  }
+
+  // Priority 3: Check stored bank/provider field
+  let bank = meta.bank || meta.provider;
+  if (bank && typeof bank === "string" && bank.toLowerCase() !== "gmail alert" && bank.toLowerCase() !== "bank alert" && bank.toLowerCase() !== "bank") {
+    if (/gtbank|gtb/i.test(bank)) return "GTBank";
+    if (/zenith/i.test(bank)) return "Zenith Bank";
+    if (/access/i.test(bank)) return "Access Bank";
+    if (/uba/i.test(bank)) return "UBA";
+    if (/firstbank|first bank/i.test(bank)) return "FirstBank";
+    if (/opay/i.test(bank)) return "OPay";
+    if (/kuda/i.test(bank)) return "Kuda Bank";
+    if (/palmpay/i.test(bank)) return "PalmPay";
+    if (/moniepoint/i.test(bank)) return "Moniepoint";
+    if (/stanbic/i.test(bank)) return "Stanbic IBTC";
+    if (/fcmb/i.test(bank)) return "FCMB";
+    if (/sterling/i.test(bank)) return "Sterling Bank";
+    if (/wema|alat/i.test(bank)) return "Wema / ALAT";
+    if (/taxtech|taxaide/i.test(bank)) return "Taxtech";
+    if (/jobberman/i.test(bank)) return "Jobberman";
+    if (/grey/i.test(bank)) return "Grey Finance";
+    if (/flutterwave/i.test(bank)) return "Flutterwave";
+    if (/paystack/i.test(bank)) return "Paystack";
+    return bank;
   }
 
   // Priority 3: Check Description text ONLY if not a beneficiary transfer recipient

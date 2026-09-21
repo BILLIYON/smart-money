@@ -80,12 +80,33 @@ export async function POST(req: Request) {
         }
       }
 
+      // Check bank resolution correctness from email_from
+      let newMeta = { ...meta };
+      let metaUpdated = false;
+      if (from) {
+        let correctBank = null;
+        if (/gtbank|gtb|guaranty/i.test(from)) correctBank = "GTBank";
+        else if (/zenith/i.test(from)) correctBank = "Zenith Bank";
+        else if (/access/i.test(from)) correctBank = "Access Bank";
+        else if (/uba/i.test(from)) correctBank = "UBA";
+        else if (/firstbank|first bank/i.test(from)) correctBank = "FirstBank";
+        else if (/stanbic/i.test(from)) correctBank = "Stanbic IBTC";
+        else if (/fcmb/i.test(from)) correctBank = "FCMB";
+
+        if (correctBank && meta.bank !== correctBank) {
+          newMeta.bank = correctBank;
+          newMeta.provider = correctBank;
+          metaUpdated = true;
+          needsUpdate = true;
+        }
+      }
+
       if (needsUpdate) {
         await pool.query(
           `UPDATE databank_entries
-           SET entry_type = $1, category = $2, description = $3
-           WHERE id = $4 AND user_id = $5;`,
-          [newType, newCat, newDesc, row.id, userId]
+           SET entry_type = $1, category = $2, description = $3, metadata = $4
+           WHERE id = $5 AND user_id = $6;`,
+          [newType, newCat, newDesc, JSON.stringify(newMeta), row.id, userId]
         );
         updatedCount++;
       }

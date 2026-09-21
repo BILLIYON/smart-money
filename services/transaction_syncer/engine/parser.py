@@ -125,10 +125,6 @@ def detect_bank_name(sender: str, subject: str, text: str) -> str:
     )
     clean_text = re.sub(r"(?:opay|kuda|palmpay|moniepoint|gtbank|zenith|access|uba|firstbank|stanbic|fcmb|sterling|wema)\s+account", "", clean_text, flags=re.IGNORECASE)
 
-    if "opay" in clean_text: return "OPay"
-    if "kuda" in clean_text: return "Kuda Bank"
-    if "palmpay" in clean_text: return "PalmPay"
-    if "moniepoint" in clean_text: return "Moniepoint"
     if "gtbank" in clean_text or "gtb" in clean_text: return "GTBank"
     if "zenith" in clean_text: return "Zenith Bank"
     if "access" in clean_text: return "Access Bank"
@@ -136,6 +132,10 @@ def detect_bank_name(sender: str, subject: str, text: str) -> str:
     if "firstbank" in clean_text or "first bank" in clean_text: return "FirstBank"
     if "stanbic" in clean_text: return "Stanbic IBTC"
     if "fcmb" in clean_text: return "FCMB"
+    if "opay" in clean_text: return "OPay"
+    if "kuda" in clean_text: return "Kuda Bank"
+    if "palmpay" in clean_text: return "PalmPay"
+    if "moniepoint" in clean_text: return "Moniepoint"
     if "sterling" in clean_text: return "Sterling Bank"
     if "wema" in clean_text or "alat" in clean_text: return "Wema / ALAT"
     if "flutterwave" in clean_text: return "Flutterwave"
