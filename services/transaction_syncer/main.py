@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import sys
@@ -48,7 +49,7 @@ reconciler = AgenticReconciler()
 class SyncRequest(BaseModel):
     user_id: str
     query: Optional[str] = None
-    max_results: Optional[int] = 100
+    max_results: Optional[int] = 1000
     mode: Optional[str] = "python_transaction" # "python_transaction" or "ai_agentic"
     save_to_db: Optional[bool] = True
 
@@ -121,7 +122,7 @@ async def execute_user_sync(
         return
 
     # 2. Build search query
-    default_query = '("debit alert" OR "credit alert" OR "transaction alert" OR "transfer notification" OR "payment received" OR opay OR kuda OR palmpay OR moniepoint OR zenith OR gtbank OR access OR uba OR firstbank) -subject:("security alert" OR "login alert" OR "verification code")'
+    default_query = '("debit alert" OR "credit alert" OR "transaction alert" OR "transaction notification" OR "transfer notification" OR "payment received" OR "payment successful" OR "payment receipt" OR "transfer successful" OR "money sent" OR "money received" OR "you spent" OR "you received" OR "pos purchase" OR "atm withdrawal" OR "airtime recharge" OR subject:(receipt OR "debit alert" OR "credit alert" OR "transaction alert" OR opay OR kuda OR palmpay OR moniepoint OR zenith OR gtbank OR access OR uba OR firstbank OR stanbic OR fcmb OR sterling OR wema OR alat OR fidelity OR union OR providus OR flutterwave OR paystack) OR from:(accessbankplc.com OR gtbank.com OR firstbanknigeria.com OR zenithbank.com OR ubagroup.com OR kudabank.com OR opay-nigeria.com OR palmpay.com OR moniepoint.com OR stanbicibtc.com OR fcmb.com OR sterling.ng OR wemabank.com OR alat.ng OR fidelitybank.ng OR unionbankng.com OR providusbank.com OR flutterwavego.com OR paystack.com OR monnify.com)) -subject:("security alert" OR "login alert" OR "verification code" OR "password reset")'
     final_query = custom_query if custom_query and custom_query.strip() else default_query
 
     update_sync_progress(user_id, 15.0, "Searching transaction emails...")
@@ -147,6 +148,8 @@ async def execute_user_sync(
     parsed_entries = []
     
     for idx, msg_stub in enumerate(messages):
+        # 40ms throttle prevents Google API per-minute quota rate limit spikes
+        await asyncio.sleep(0.04)
         msg_id = msg_stub["id"]
         detail = get_message_detail(service, msg_id)
         if not detail:
@@ -155,11 +158,11 @@ async def execute_user_sync(
         extracted = None
 
         # Pass 1: Regex
-        extracted = parse_with_regex_rules(detail["plain"] or detail["html"], detail["subject"])
+        extracted = parse_with_regex_rules(detail["plain"] or detail["html"], detail["subject"], detail["sender"])
 
         # Pass 2: BeautifulSoup DOM
         if not extracted and detail["html"]:
-            extracted = parse_html_dom(detail["html"], detail["subject"])
+            extracted = parse_html_dom(detail["html"], detail["subject"], detail["sender"])
 
         # Pass 3: PDF Attachment check
         if not extracted and detail["pdfs"]:
@@ -209,7 +212,7 @@ async def trigger_sync(req: SyncRequest):
         execute_user_sync(
             user_id=req.user_id,
             custom_query=req.query,
-            max_results=req.max_results or 100,
+            max_results=req.max_results or 1000,
             mode=req.mode or "python_transaction",
             save_to_db=req.save_to_db if req.save_to_db is not None else True
         ),

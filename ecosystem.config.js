@@ -27,8 +27,8 @@ module.exports = {
     },
     {
       name: "transaction-syncer",
-      script: "./venv/bin/uvicorn",
-      args: "main:app --host 127.0.0.1 --port 8000",
+      script: "main.py",
+      interpreter: "./venv/bin/python3",
       cwd: "/home/ec2-user/smart-money/services/transaction_syncer",
       instances: 1,
       exec_mode: "fork",

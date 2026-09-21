@@ -6,6 +6,19 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
 });
 
+function sanitizeDateToYYYYMMDD(rawDate: any): string {
+  if (!rawDate) return new Date().toISOString().split("T")[0];
+  const str = String(rawDate).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  // Strip trailing (UTC) or parenthetical text if present
+  const cleanStr = str.replace(/\s*\([^)]*\)/g, "").trim();
+  const d = new Date(cleanStr);
+  if (!isNaN(d.getTime())) {
+    return d.toISOString().split("T")[0];
+  }
+  return new Date().toISOString().split("T")[0];
+}
+
 export async function POST(req: Request) {
   try {
     const user = await getCurrentUser(req);
@@ -33,6 +46,9 @@ export async function POST(req: Request) {
             ? entry.gmail_message_id.trim()
             : null;
 
+        const cleanDate = sanitizeDateToYYYYMMDD(entry.entry_date);
+        const validSource = ["upload", "gmail", "manual", "openbanking"].includes(entry.source) ? entry.source : "gmail";
+
         await pool.query(
           `INSERT INTO databank_entries (
             user_id, source, entry_type, amount, description, category, entry_date, gmail_message_id, metadata
@@ -50,12 +66,12 @@ export async function POST(req: Request) {
             metadata = EXCLUDED.metadata;`,
           [
             user.id,
-            entry.source || "gmail",
+            validSource,
             entry.entry_type || "expense",
             entry.amount || 0,
             entry.description || "",
             entry.category || "Uncategorized",
-            entry.entry_date || new Date().toISOString(),
+            cleanDate,
             gmailMsgId,
             JSON.stringify(entry.metadata || {}),
           ]

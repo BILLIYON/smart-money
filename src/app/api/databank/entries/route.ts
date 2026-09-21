@@ -2,10 +2,17 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase-server";
 import { Pool } from "pg";
 
+let sharedPool: Pool | null = null;
+
 function getPool() {
-  return new Pool({
-    connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
-  });
+  if (!sharedPool) {
+    sharedPool = new Pool({
+      connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+      max: 20,
+      idleTimeoutMillis: 30000,
+    });
+  }
+  return sharedPool;
 }
 
 function toNum(val: any): number {
@@ -171,8 +178,6 @@ export async function GET(req: Request) {
   } catch (err: any) {
     console.error("[/api/databank/entries] GET Error:", err);
     return NextResponse.json({ error: err.message || "Failed to fetch entries" }, { status: 500 });
-  } finally {
-    await pool.end();
   }
 }
 
@@ -218,7 +223,5 @@ export async function POST(req: Request) {
   } catch (err: any) {
     console.error("[/api/databank/entries] POST Error:", err);
     return NextResponse.json({ error: err.message || "Failed to create entry" }, { status: 500 });
-  } finally {
-    await pool.end();
   }
 }

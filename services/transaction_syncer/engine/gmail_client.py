@@ -102,40 +102,51 @@ def extract_mime_parts(part: Dict[str, Any]) -> Tuple[str, str, List[Dict[str, A
         
     return plain, html, pdf_attachments
 
-def get_message_detail(service, message_id: str) -> Optional[Dict[str, Any]]:
-    try:
-        msg = service.users().messages().get(
-            userId="me", 
-            id=message_id, 
-            format="full"
-        ).execute()
-        
-        payload = msg.get("payload", {})
-        headers = payload.get("headers", [])
-        
-        subject = next((h["value"] for h in headers if h["name"].lower() == "subject"), "")
-        sender = next((h["value"] for h in headers if h["name"].lower() == "from"), "")
-        date_str = next((h["value"] for h in headers if h["name"].lower() == "date"), "")
-        
-        plain, html, pdfs = extract_mime_parts(payload)
-        
-        # Internal date timestamp in ms
-        internal_date_ms = int(msg.get("internalDate", "0"))
-        
-        return {
-            "id": message_id,
-            "subject": subject,
-            "sender": sender,
-            "date": date_str,
-            "internal_date_ms": internal_date_ms,
-            "snippet": msg.get("snippet", ""),
-            "plain": plain,
-            "html": html,
-            "pdfs": pdfs
-        }
-    except Exception as e:
-        print(f"[GmailClient] Error fetching msg {message_id}: {e}")
-        return None
+import time
+from googleapiclient.errors import HttpError
+
+def get_message_detail(service, message_id: str, max_retries: int = 3) -> Optional[Dict[str, Any]]:
+    for attempt in range(max_retries):
+        try:
+            msg = service.users().messages().get(
+                userId="me", 
+                id=message_id, 
+                format="full"
+            ).execute()
+            
+            payload = msg.get("payload", {})
+            headers = payload.get("headers", [])
+            
+            subject = next((h["value"] for h in headers if h["name"].lower() == "subject"), "")
+            sender = next((h["value"] for h in headers if h["name"].lower() == "from"), "")
+            date_str = next((h["value"] for h in headers if h["name"].lower() == "date"), "")
+            
+            plain, html, pdfs = extract_mime_parts(payload)
+            internal_date_ms = int(msg.get("internalDate", "0"))
+            
+            return {
+                "id": message_id,
+                "subject": subject,
+                "sender": sender,
+                "date": date_str,
+                "internal_date_ms": internal_date_ms,
+                "snippet": msg.get("snippet", ""),
+                "plain": plain,
+                "html": html,
+                "pdfs": pdfs
+            }
+        except HttpError as e:
+            if e.resp.status in [429, 403] and any(w in str(e) for w in ["rateLimitExceeded", "quotaExceeded", "Quota exceeded", "User Rate Limit Exceeded"]):
+                sleep_time = (2 ** attempt) * 1.5
+                print(f"[GmailClient] Rate limit hit on msg {message_id}, retrying in {sleep_time}s (attempt {attempt+1}/{max_retries})...")
+                time.sleep(sleep_time)
+                continue
+            print(f"[GmailClient] HttpError fetching msg {message_id}: {e}")
+            return None
+        except Exception as e:
+            print(f"[GmailClient] Error fetching msg {message_id}: {e}")
+            return None
+    return None
 
 def download_attachment_bytes(service, message_id: str, attachment_id: str) -> Optional[bytes]:
     try:

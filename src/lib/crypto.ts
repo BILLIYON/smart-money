@@ -23,10 +23,15 @@ export function encrypt(plaintext: string): string {
 }
 
 export function decrypt(stored: string): string {
-  const [ivB64, tagB64, encB64] = stored.split(":");
-  if (!ivB64 || !tagB64 || !encB64) {
-    throw new Error("DECRYPTION_FAILED: Invalid stored format");
+  if (!stored) return "";
+  if (stored.startsWith("ya29.") || stored.startsWith("1//") || stored.startsWith("4/")) {
+    return stored;
   }
+  const parts = stored.split(":");
+  if (parts.length !== 3) {
+    return stored;
+  }
+  const [ivB64, tagB64, encB64] = parts;
   const iv        = Buffer.from(ivB64,  "base64");
   const tag       = Buffer.from(tagB64, "base64");
   const encrypted = Buffer.from(encB64, "base64");
@@ -45,7 +50,8 @@ export function decrypt(stored: string): string {
       decipher.setAuthTag(tag);
       return decipher.update(encrypted) + decipher.final("utf8");
     } catch (fallbackErr) {
-      throw new Error("DECRYPTION_FAILED: Decryption key mismatch");
+      console.warn("[decrypt] Decryption fallback failed; using stored token value.");
+      return stored;
     }
   }
 }

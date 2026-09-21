@@ -459,6 +459,12 @@ export async function syncGmailForUser(
       lastSync = Math.floor(new Date(integration.last_synced_at).getTime() / 1000);
     }
 
+    const formatDateForGmail = (sec: number) => {
+      const d = new Date(sec * 1000);
+      return `${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}`;
+    };
+    const dateQueryStr = formatDateForGmail(lastSync);
+
     metadata = (integration?.metadata as any) || {};
     const syncMode = (metadata.sync_mode as "lightweight" | "deep") || "lightweight";
     const presetFilter = metadata.preset_filter || "all";
@@ -484,18 +490,18 @@ export async function syncGmailForUser(
 
     let queries: string[] = [];
     if (presetFilter === "all" || !presetFilter) {
-      queries = activePresets.map((p) => `${p.query} after:${lastSync}`);
+      queries = activePresets.map((p) => `${p.query} after:${dateQueryStr}`);
     } else {
       const preset = activePresets.find((p) => p.id === presetFilter) || DEFAULT_PRESETS.find((p) => p.id === presetFilter);
       if (preset) {
-        queries = [`${preset.query} after:${lastSync}`];
+        queries = [`${preset.query} after:${dateQueryStr}`];
       } else {
-        queries = [`${activePresets[0]?.query || DEFAULT_PRESETS[0].query} after:${lastSync}`];
+        queries = [`${activePresets[0]?.query || DEFAULT_PRESETS[0].query} after:${dateQueryStr}`];
       }
     }
 
     if (customQuery.trim()) {
-      queries.push(`${customQuery.trim()} after:${lastSync}`);
+      queries.push(`${customQuery.trim()} after:${dateQueryStr}`);
     }
 
     onProgress?.(5, 0);
@@ -532,7 +538,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallbackValue: T): Prom
   ]);
 }
 
-    const BATCH = 8;
+    const BATCH = 3;
     const entries: DataBankEntry[] = [];
     onProgress?.(12, 0);
 
@@ -556,6 +562,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallbackValue: T): Prom
       }
 
       const batch = uniqueIds.slice(i, i + BATCH);
+      // 1.2s throttle between batches guarantees Gmail API quota limits are preserved
+      await new Promise((r) => setTimeout(r, 1200));
+
       const emails = await Promise.all(
         batch.map((id) =>
           withTimeout(

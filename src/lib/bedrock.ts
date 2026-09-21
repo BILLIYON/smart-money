@@ -8,8 +8,8 @@ import {
  * Bedrock Model ID Mapping
  */
 export const BEDROCK_MODELS = {
-  "claude-3-5-sonnet": "anthropic.claude-3-5-sonnet-20241022-v2:0",
-  "claude-3-5-haiku": "anthropic.claude-3-5-haiku-20241022-v1:0",
+  "claude-3-5-sonnet": "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+  "claude-3-5-haiku": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
   "llama-3-3-70b": "meta.llama3-3-70b-instruct-v1:0",
   "nova-pro": "amazon.nova-pro-v1:0",
   "nova-lite": "amazon.nova-lite-v1:0",

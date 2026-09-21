@@ -105,41 +105,78 @@ def save_databank_entries(user_id: str, entries: List[Dict[str, Any]]) -> int:
     with psycopg.connect(db_url) as conn:
         with conn.cursor() as cur:
             for entry in entries:
-                msg_id = entry.get("gmail_message_id")
-                
-                # Check for existing message id if present
-                if msg_id:
-                    cur.execute(
-                        "SELECT id FROM databank_entries WHERE user_id = %s AND metadata->>'gmail_message_id' = %s LIMIT 1;",
-                        (user_id, msg_id)
-                    )
-                    if cur.fetchone():
-                        continue
-                
-                meta = entry.get("metadata") or {}
-                if msg_id:
-                    meta["gmail_message_id"] = msg_id
-                
-                cur.execute(
-                    """
-                    INSERT INTO databank_entries (
-                        user_id, source, entry_type, amount, description, category, entry_date, metadata
-                    ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s
-                    ) RETURNING id;
-                    """,
-                    (
-                        user_id,
-                        entry.get("source", "Gmail Transaction Syncer"),
-                        entry.get("entry_type", "expense"),
-                        entry.get("amount", 0),  # stored in cents
-                        entry.get("description", "Bank Transaction"),
-                        entry.get("category", "Uncategorized"),
-                        entry.get("entry_date"),
-                        json.dumps(meta, default=str)
-                    )
-                )
-                inserted_count += 1
+                try:
+                    with conn.transaction():
+                        msg_id = entry.get("gmail_message_id")
+                        if isinstance(msg_id, str):
+                            msg_id = msg_id.strip() or None
+
+                        meta = entry.get("metadata") or {}
+                        if msg_id:
+                            meta["gmail_message_id"] = msg_id
+                        
+                        # Check for existing entry by gmail_message_id column or metadata
+                        if msg_id:
+                            cur.execute(
+                                """
+                                SELECT id, description FROM databank_entries 
+                                WHERE user_id = %s AND (gmail_message_id = %s OR metadata->>'gmail_message_id' = %s)
+                                LIMIT 1;
+                                """,
+                                (user_id, msg_id, msg_id)
+                            )
+                            existing = cur.fetchone()
+                            if existing:
+                                # Update existing entry with clean description, category, entry_date, amount, metadata, and ensure gmail_message_id column is set
+                                cur.execute(
+                                    """
+                                    UPDATE databank_entries
+                                    SET entry_type = %s,
+                                        amount = %s,
+                                        description = %s,
+                                        category = %s,
+                                        entry_date = %s,
+                                        metadata = %s,
+                                        gmail_message_id = %s
+                                    WHERE id = %s;
+                                    """,
+                                    (
+                                        entry.get("entry_type", "expense"),
+                                        entry.get("amount", 0),
+                                        entry.get("description", "Bank Transaction"),
+                                        entry.get("category", "Uncategorized"),
+                                        entry.get("entry_date"),
+                                        json.dumps(meta, default=str),
+                                        msg_id,
+                                        existing["id"] if isinstance(existing, dict) else existing[0]
+                                    )
+                                )
+                                continue
+
+                        cur.execute(
+                            """
+                            INSERT INTO databank_entries (
+                                user_id, source, entry_type, amount, description, category, entry_date, metadata, gmail_message_id
+                            ) VALUES (
+                                %s, %s, %s, %s, %s, %s, %s, %s, %s
+                            ) RETURNING id;
+                            """,
+                            (
+                                user_id,
+                                entry.get("source") if entry.get("source") in ["upload", "gmail", "manual", "openbanking"] else "gmail",
+                                entry.get("entry_type", "expense"),
+                                entry.get("amount", 0),  # stored in cents
+                                entry.get("description", "Bank Transaction"),
+                                entry.get("category", "Uncategorized"),
+                                entry.get("entry_date"),
+                                json.dumps(meta, default=str),
+                                msg_id
+                            )
+                        )
+                        inserted_count += 1
+                except Exception as row_err:
+                    print(f"[DB] Error saving row entry: {row_err}")
+                    continue
             conn.commit()
             
     return inserted_count

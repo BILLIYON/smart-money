@@ -11,10 +11,6 @@ export type ParsedFinancialEmail = {
 };
 
 const BANK_PATTERNS: Array<{ id: string; label: string; pattern: RegExp }> = [
-  { id: "opay", label: "OPay", pattern: /\bopay(?:web)?\b/i },
-  { id: "kuda", label: "Kuda Bank", pattern: /\bkuda\b/i },
-  { id: "palmpay", label: "PalmPay", pattern: /\bpalmpay\b/i },
-  { id: "moniepoint", label: "Moniepoint", pattern: /\bmoniepoint\b/i },
   { id: "gtbank", label: "GTBank", pattern: /\b(?:gtbank|gtb|guaranty\s*trust|gtco)\b/i },
   { id: "zenith", label: "Zenith Bank", pattern: /\bzenith\b/i },
   { id: "access", label: "Access Bank", pattern: /\baccess\s*bank\b|\baccessbank\b|\baccess\s*more\b/i },
@@ -22,6 +18,10 @@ const BANK_PATTERNS: Array<{ id: string; label: string; pattern: RegExp }> = [
   { id: "firstbank", label: "First Bank", pattern: /\bfirst\s*bank\b|\bfirstbank\b|\bfirstmonie\b/i },
   { id: "stanbic", label: "Stanbic IBTC", pattern: /\bstanbic\b/i },
   { id: "fcmb", label: "FCMB", pattern: /\bfcmb\b|first\s*city\s*monument\s*bank/i },
+  { id: "opay", label: "OPay", pattern: /\bopay(?:web)?\b/i },
+  { id: "kuda", label: "Kuda Bank", pattern: /\bkuda\b/i },
+  { id: "palmpay", label: "PalmPay", pattern: /\bpalmpay\b/i },
+  { id: "moniepoint", label: "Moniepoint", pattern: /\bmoniepoint\b/i },
   { id: "fidelity", label: "Fidelity Bank", pattern: /\bfidelity\b/i },
   { id: "union", label: "Union Bank", pattern: /\bunion\s*bank\b/i },
   { id: "wema", label: "Wema Bank", pattern: /\bwema\b|\balat\b/i },
@@ -39,6 +39,8 @@ const BANK_PATTERNS: Array<{ id: string; label: string; pattern: RegExp }> = [
   { id: "chipper", label: "Chipper Cash", pattern: /\bchipper\s*cash\b/i },
   { id: "remita", label: "Remita", pattern: /\bremita\b/i },
   { id: "interswitch", label: "Interswitch", pattern: /\binterswitch\b|\bquickteller\b/i },
+  { id: "taxtech", label: "Taxtech", pattern: /\b(?:taxtech|taxaide)\b/i },
+  { id: "jobberman", label: "Jobberman", pattern: /\bjobberman\b/i },
 ];
 
 function normalizeText(text: string): string {
@@ -113,6 +115,12 @@ export function cleanExtractedDescription(candidate?: string | null, bank?: stri
   if (!candidate) return null;
 
   let cleaned = candidate
+    .replace(/<[^>]+>/g, " ")
+    .replace(/width=["']?\d+["']?/gi, "")
+    .replace(/height=["']?\d+["']?/gi, "")
+    .replace(/alt=["']?[^"']*["']?/gi, "")
+    .replace(/src=["']?[^"']*["']?/gi, "")
+    .replace(/Logo"?\s*/gi, "")
     .replace(/^of this transaction are shown below[:\s]*/i, "")
     .replace(/^the details of this transaction are shown below[:\s]*/i, "")
     .replace(/^details of this transaction[:\s]*/i, "")
@@ -123,6 +131,7 @@ export function cleanExtractedDescription(candidate?: string | null, bank?: stri
     .replace(/\s+Order\s+(?:No|Number).*$/i, "")
     .replace(/\s+Txn\s+(?:No|Ref).*$/i, "")
     .replace(/\s+Transaction\s+(?:No|Date).*$/i, "")
+    .replace(/(?:current|available|ledger|acct)?\s*balance\s*(?:is)?\s*(?:₦|ngn|n|\$)?\s*[\d,]+(?:\.\d{2})?/gi, "")
     .replace(/\s+bank$/i, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -130,8 +139,8 @@ export function cleanExtractedDescription(candidate?: string | null, bank?: stri
   if (
     !cleaned ||
     cleaned.length < 2 ||
-    /^(of this transaction|transaction notification|transaction occurred|details of this|are shown below|account number|transaction type|we write to inform you)$/i.test(cleaned) ||
-    /inform you that a (?:debit|credit) transaction/i.test(cleaned)
+    /^(of this transaction|transaction notification|transaction occurred|details of this|are shown below|account number|transaction type|we write to inform you|current balance|available balance|ledger balance|acct bal|logo)$/i.test(cleaned) ||
+    /(?:current|available|ledger)\s*balance|inform you that a (?:debit|credit) transaction/i.test(cleaned)
   ) {
     return null;
   }
@@ -156,12 +165,12 @@ function extractReason(text: string, description: string, entryType: "income" | 
   return `Debit transaction (${cleanDesc})`;
 }
 
-function extractDescription(text: string, from: string, bank?: string): string {
+export function extractDescription(text: string, from: string, bank?: string): string {
   // 1. Explicit Merchant Name pattern (e.g. "Merchant Name: DEMERGE NIGERIA LIMITED Merchant Order Number: ...")
   const merchantMatch = text.match(/(?:Merchant\s*Name|Merchant)[:\s\-=]+([^:\n\.,]{2,60})(?:\s+Merchant|\s+Order|\s+Txn|\s+Date|\s*$)/i);
   if (merchantMatch?.[1]) {
     const candidate = cleanExtractedDescription(merchantMatch[1], bank);
-    if (candidate && !/transaction|account|amount|debit|credit|notification/i.test(candidate)) {
+    if (candidate && !/transaction|account|amount|debit|credit|notification|balance/i.test(candidate)) {
       return candidate.startsWith("Payment to") ? candidate : `Payment to ${candidate.slice(0, 50)}`;
     }
   }
@@ -170,7 +179,7 @@ function extractDescription(text: string, from: string, bank?: string): string {
   const opayMatch = text.match(/Name:\s*([^:\n\.\,]{2,50})(?:\s+Bank:|\s+Account|\s*$)/i) || text.match(/Name:\s*([^:\n\.\,]{2,40})/i);
   if (opayMatch?.[1]) {
     const candidate = cleanExtractedDescription(opayMatch[1], bank);
-    if (candidate && !/transaction|account|amount|debit|credit|notification/i.test(candidate)) {
+    if (candidate && !/transaction|account|amount|debit|credit|notification|balance/i.test(candidate)) {
       return `Transfer to ${candidate.slice(0, 50)}`;
     }
   }
@@ -181,7 +190,7 @@ function extractDescription(text: string, from: string, bank?: string): string {
   );
   if (explicitFieldMatch?.[1]) {
     const candidate = cleanExtractedDescription(explicitFieldMatch[1], bank);
-    if (candidate) {
+    if (candidate && !/current balance|available balance|ledger balance/i.test(candidate)) {
       return candidate.slice(0, 80);
     }
   }
@@ -190,7 +199,7 @@ function extractDescription(text: string, from: string, bank?: string): string {
   const transferNameMatch = text.match(/(?:transfer\s+to|paid\s+to|sent\s+to|credited\s+to|received\s+from)\s+([A-Z\s]{3,40})/i);
   if (transferNameMatch?.[1]) {
     const candidate = cleanExtractedDescription(transferNameMatch[1], bank);
-    if (candidate && candidate.length >= 3 && !/transaction|account|amount|debit|credit|notification/i.test(candidate)) {
+    if (candidate && candidate.length >= 3 && !/transaction|account|amount|debit|credit|notification|balance/i.test(candidate)) {
       return `Transfer to ${candidate.slice(0, 50)}`;
     }
   }
@@ -204,14 +213,27 @@ function extractDescription(text: string, from: string, bank?: string): string {
     return "Airtime & Data Top-up";
   }
 
-  // 6. Generic Description / Desc label
+  // 6. Known Senders & Organizations (e.g. Taxtech, Taxaide, Jobberman, Uber, Bolt, Jumia, Konga)
+  if (from) {
+    const cleanedFrom = from.split("<")[0].replace(/"/g, "").trim();
+    if (cleanedFrom && !/no-reply|noreply|notification|alert|service|info/i.test(cleanedFrom)) {
+      const fromOrg = cleanExtractedDescription(cleanedFrom, bank);
+      if (fromOrg && fromOrg.length > 2) {
+        if (/jobberman/i.test(fromOrg)) return "Jobberman Payment";
+        if (/taxtech|taxaide/i.test(fromOrg)) return `Payment to ${fromOrg}`;
+        return fromOrg.length <= 40 ? fromOrg : fromOrg.slice(0, 40);
+      }
+    }
+  }
+
+  // 7. Generic Description / Desc label
   const descMatch = text.match(/(?:Desc|Description)[:\s\-=]+([^,\.\n]{2,80})/i);
   if (descMatch?.[1]) {
     const candidate = cleanExtractedDescription(descMatch[1], bank);
     if (candidate) return candidate.slice(0, 80);
   }
 
-  // 7. Bank fallbacks
+  // 8. Bank fallbacks
   if (bank) {
     if (/\b(?:pos|pos purchase|pos payment)\b/i.test(text)) return `${bank} POS Purchase`;
     if (/\b(?:atm|atm withdrawal)\b/i.test(text)) return `${bank} ATM Withdrawal`;
@@ -220,18 +242,11 @@ function extractDescription(text: string, from: string, bank?: string): string {
     return `${bank} Alert`;
   }
 
-  if (from) {
-    const cleanedFrom = from.split("<")[0].replace(/"/g, "").trim().slice(0, 50);
-    if (cleanedFrom && !/no-reply|noreply|notification|alert/i.test(cleanedFrom)) {
-      return cleanedFrom;
-    }
-  }
-
   return "Bank Transaction";
 }
 
-function detectBank(text: string, from: string): { id: string; label: string } | null {
-  // Priority 1: Check the email sender address (From)
+function detectBank(text: string, from: string, subject = ""): { id: string; label: string } | null {
+  // Priority 1: Check the email sender address (From header)
   if (from) {
     for (const bank of BANK_PATTERNS) {
       if (bank.pattern.test(from)) {
@@ -239,12 +254,27 @@ function detectBank(text: string, from: string): { id: string; label: string } |
       }
     }
   }
-  // Priority 2: Search text content
+
+  // Priority 2: Check email Subject header
+  if (subject) {
+    for (const bank of BANK_PATTERNS) {
+      if (bank.pattern.test(subject)) {
+        return { id: bank.id, label: bank.label };
+      }
+    }
+  }
+
+  // Priority 3: Search body text content — EXCEPT beneficiary/recipient transfer phrases
+  const cleanBodyForBank = text
+    .replace(/(?:transfer\s+to|paid\s+to|sent\s+to|credited\s+to|beneficiary(?:\s+bank)?[:\s]+|recipient(?:\s+bank)?[:\s]+|dest(?:\s+bank)?[:\s]+|to\s+bank[:\s]+)\s*([a-z0-9\s]{2,30})/gi, "")
+    .replace(/(?:opay|kuda|palmpay|moniepoint|gtbank|zenith|access|uba|firstbank|stanbic|fcmb|sterling|wema)\s+account/gi, "");
+
   for (const bank of BANK_PATTERNS) {
-    if (bank.pattern.test(text)) {
+    if (bank.pattern.test(cleanBodyForBank)) {
       return { id: bank.id, label: bank.label };
     }
   }
+
   return null;
 }
 
@@ -357,6 +387,8 @@ export function inferEntryType(text: string, subject = "", from = ""): "income" 
 
 export function inferCategory(text: string, entryType: "income" | "expense", bank?: string): string {
   const normalized = normalizeText(text);
+
+  if (/(cowrywise|piggyvest|piggybank|risevest|stanbic\s*mmf|mutual\s*fund|bamboo|trove|kuda\s*save|savebox|owealth|fairmoney\s*savings|savi|investik|branch\s*savings)/i.test(normalized)) return "Savings & Investments";
 
   if (entryType === "income") {
     if (/(salary|payroll|wages|stipend)/i.test(normalized)) return "Salary";

@@ -1078,17 +1078,20 @@ CRITICAL CLASSIFICATION RULES:
 1. entry_type DIRECTION:
    - Use "expense" if money was debited, sent, paid, spent, charged, or withdrawn from the user's account (transfers sent to someone, POS purchases, card debits, bill payments, airtime top-ups, ATM withdrawals). NOTE: Phrases like "Account Credited: [Beneficiary]" in transfer notifications describe the RECIPIENT's account — the user's account was DEBITED, so entry_type MUST be "expense".
    - Use "income" if money was credited, deposited, or received into the user's account (salary, transfers received, credit alerts, refunds, cash-in).
+   - Use "asset" if money was transferred to a savings or investment platform (Cowrywise, PiggyVest, Risevest, Stanbic MMF, Bamboo, Trove, Kuda Save, etc.).
 2. AMOUNT:
    - amount_naira must be the actual transaction amount in Naira (not kobo), NOT the available or ledger account balance.
+3. SAVINGS & INVESTMENTS:
+   - Transfers to Cowrywise, PiggyVest, Risevest, Stanbic MMF, Bamboo, Trove, etc. MUST be categorized as 'Savings & Investments' and assigned entry_type 'asset'.
 
 If it IS a transaction alert, extract details into a valid JSON object matching this structure (no markdown or commentary):
 {
   "is_transaction": true,
   "amount_naira": <number representing transaction value in Naira, e.g. 50000 for ₦50,000>,
   "description": "<short descriptive summary of the transaction>",
-  "entry_type": "income" | "expense",
-  "category": "<perform AI smart recognition based on full transaction details (merchant, narration, recipient, service) to assign an accurate, descriptive category e.g. 'Food & Dining', 'Transport & Fuel', 'Digital Subscriptions', 'Supermarket & Groceries', 'Salary & Payroll', 'Utilities & Bills', 'Healthcare', 'Education', 'Transfer', etc.>",
-  "bank": "<the bank or provider name e.g. Kuda, OPay, GTBank, Zenith, Access, etc.>",
+  "entry_type": "income" | "expense" | "asset",
+  "category": "<perform AI smart recognition based on full transaction details e.g. 'Savings & Investments', 'Food & Dining', 'Transport & Fuel', 'Digital Subscriptions', 'Supermarket & Groceries', 'Salary & Payroll', 'Utilities & Bills', 'Healthcare', 'Education', 'Transfer', etc.>",
+  "bank": "<the issuing financial institution that sent this alert email (e.g. Zenith Bank for emails from @zenithbank.com). Do NOT set bank to a destination/beneficiary bank mentioned in a transfer narration>",
   "account_balance": <number representing the available or ledger account balance in Naira after this transaction, or null if not mentioned>,
   "transaction_time": "<exact time string of the transaction alert e.g. '14:32:05', '02:32 PM', '08:15 AM', or null if not mentioned>",
   "reason": "<clear, context-aware 1-sentence AI explanation of what the transaction was for, including merchant/counterparty and purpose, e.g. 'Transfer sent to John Doe for groceries at Shoprite', 'Salary payment received from ACME Corp', 'Card payment for Netflix subscription'>"
@@ -1101,14 +1104,18 @@ If it IS a transaction alert, extract details into a valid JSON object matching 
       const parsed = JSON.parse(jsonMatch[0]);
       if (parsed.is_transaction && typeof parsed.amount_naira === "number") {
         const localParsed = parseFinancialEmailData(emailBody, subject, from);
+
+        const isSavingsPlatform = /(cowrywise|piggyvest|piggybank|risevest|stanbic\s*mmf|mutual\s*fund|bamboo|trove|kuda\s*save|savebox|owealth|fairmoney\s*savings|savi|investik|branch\s*savings)/i.test(`${subject} ${emailBody} ${parsed.description || ""}`);
+
         // AI AUTHORITATIVE DIRECTION: Respect AI's determination for entry_type
-        const finalEntryType: "income" | "expense" =
-          parsed.entry_type === "income" || parsed.entry_type === "expense"
-            ? parsed.entry_type
-            : (localParsed?.entry_type ?? "expense");
+        const finalEntryType: any = isSavingsPlatform
+          ? "asset"
+          : (parsed.entry_type === "income" || parsed.entry_type === "expense" || parsed.entry_type === "asset"
+              ? parsed.entry_type
+              : (localParsed?.entry_type ?? "expense"));
 
         const rawCategory = String(parsed.category || localParsed?.category || "General Expense");
-        const finalCategory = (finalEntryType === "expense" && (rawCategory.toLowerCase() === "income" || rawCategory.toLowerCase() === "salary")) ? "Transfer" : rawCategory;
+        const finalCategory = isSavingsPlatform ? "Savings & Investments" : ((finalEntryType === "expense" && (rawCategory.toLowerCase() === "income" || rawCategory.toLowerCase() === "salary")) ? "Transfer" : rawCategory);
 
         const finalReason = parsed.reason
           ? String(parsed.reason).slice(0, 200)
@@ -1117,14 +1124,22 @@ If it IS a transaction alert, extract details into a valid JSON object matching 
           ? String(parsed.transaction_time)
           : localParsed?.transaction_time;
 
-        console.log(`[Gmail Deep AI Sync (${aiEngine})] Extracted transaction: ₦${parsed.amount_naira} (${parsed.description}) [${finalEntryType}]`);
+        let finalBank = parsed.bank ? String(parsed.bank) : localParsed?.bank;
+        if (from) {
+          const senderBank = localParsed?.bank ? { label: localParsed.bank } : null;
+          if (senderBank?.label) {
+            finalBank = senderBank.label;
+          }
+        }
+
+        console.log(`[Gmail Deep AI Sync (${aiEngine})] Extracted transaction: ₦${parsed.amount_naira} (${parsed.description}) [${finalEntryType}] Bank: ${finalBank}`);
         return {
           amount: parsed.amount_naira,
           description: String(parsed.description || localParsed?.description || "Gmail Transaction").slice(0, 120),
           entry_type: finalEntryType,
           category: finalCategory,
-          bank: parsed.bank ? String(parsed.bank) : localParsed?.bank,
-          provider: parsed.bank ? String(parsed.bank) : localParsed?.provider,
+          bank: finalBank,
+          provider: finalBank,
           account_balance: typeof parsed.account_balance === "number" ? parsed.account_balance : localParsed?.account_balance,
           transaction_time: finalTime,
           reason: finalReason,

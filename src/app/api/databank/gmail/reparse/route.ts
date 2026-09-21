@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase-server";
-import { inferEntryType, inferCategory } from "@/lib/gmail-parser";
+import { inferEntryType, inferCategory, extractDescription, cleanExtractedDescription } from "@/lib/gmail-parser";
 import { Pool } from "pg";
 
 const dbUrl = process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money";
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     }
 
     const { rows } = await pool.query(
-      `SELECT id, entry_type, amount, description, category, metadata
+      `SELECT id, entry_type, amount, description, category, metadata, gmail_message_id
        FROM databank_entries
        WHERE user_id = $1
        ORDER BY created_at DESC;`,
@@ -36,11 +36,12 @@ export async function POST(req: Request) {
 
     for (const row of rows) {
       const meta = typeof row.metadata === "string" ? JSON.parse(row.metadata) : (row.metadata || {});
-      const subject = meta.email_subject || meta.subject || row.description || "";
+      const subject = meta.email_subject || meta.subject || "";
       const from = meta.email_from || meta.from || "";
+      const bodySnippet = meta.email_body_snippet || "";
       const description = row.description || "";
 
-      const textToAnalyze = `${subject} ${description} ${meta.reason || ""}`.trim();
+      const textToAnalyze = `${subject} ${description} ${bodySnippet} ${meta.reason || ""}`.trim();
       if (!textToAnalyze) continue;
 
       const correctedType = inferEntryType(textToAnalyze, subject, from);
@@ -64,15 +65,17 @@ export async function POST(req: Request) {
         }
       }
 
-      // Clean up descriptions like "Transfer to DEMERGE NIGERIA LIMITED Merchant Order N"
-      if (row.description.includes("Merchant Order N") || row.description.includes("Order Number") || row.description.includes("Txn No")) {
-        const cleaned = row.description
-          .replace(/\s+Merchant\s+Order.*$/i, "")
-          .replace(/\s+Order\s+(?:No|Number).*$/i, "")
-          .replace(/\s+Txn\s+(?:No|Ref).*$/i, "")
-          .trim();
-        if (cleaned && cleaned !== row.description) {
-          newDesc = cleaned;
+      // Check if description is dirty (contains Current Balance, Available Balance, Order Number, or is generic)
+      const isDirtyDesc =
+        !description ||
+        /current\s*balance|available\s*balance|ledger\s*balance|merchant\s*order|order\s*number|txn\s*no/i.test(description) ||
+        /^(bank transaction|html bank alert|bank alert|transaction notification|debit alert|credit alert)$/i.test(description);
+
+      if (isDirtyDesc) {
+        const extracted = extractDescription(`${subject} ${bodySnippet} ${description}`, from, meta.bank || meta.provider);
+        const cleanedExt = cleanExtractedDescription(extracted, meta.bank || meta.provider);
+        if (cleanedExt && cleanedExt !== description) {
+          newDesc = cleanedExt;
           needsUpdate = true;
         }
       }

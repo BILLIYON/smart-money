@@ -135,6 +135,7 @@ function GmailCard() {
   const [showSettings, setShowSettings] = useState(true);
   const [syncMode, setSyncMode] = useState<"lightweight" | "deep">("lightweight");
   const [aiEngine, setAiEngine] = useState<string>("groq");
+  const [syncerEngine, setSyncerEngine] = useState<string>("python_transaction");
   const [enableFallback, setEnableFallback] = useState<boolean>(true);
   const [fallbackEngine, setFallbackEngine] = useState<string>("groq");
   const [presetFilter, setPresetFilter] = useState<string>(DEFAULT_PRESETS[0].id);
@@ -161,6 +162,9 @@ function GmailCard() {
         setAiEngine(activeEngine);
         if (typeof window !== "undefined") {
           localStorage.setItem("databank_ai_engine", activeEngine);
+        }
+        if (data.metadata.syncer_engine) {
+          setSyncerEngine(data.metadata.syncer_engine);
         }
         if (data.metadata.enable_fallback !== undefined) {
           setEnableFallback(Boolean(data.metadata.enable_fallback));
@@ -282,6 +286,30 @@ function GmailCard() {
     }
   };
 
+  const updateSyncerEngine = async (newSyncer: string) => {
+    setSyncerEngine(newSyncer);
+    try {
+      await fetch("/api/databank/gmail/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ai_engine: aiEngine,
+          syncer_engine: newSyncer,
+          sync_mode: syncMode,
+          enable_fallback: enableFallback,
+          fallback_engine: fallbackEngine,
+          preset_filter: presetFilter,
+          custom_query: presetQuery,
+          ai_prompt: aiPrompt,
+          presets: presets,
+        }),
+      });
+      popup.success("Syncer Engine Updated", `Active transaction syncer updated successfully!`);
+    } catch (err) {
+      console.error("Failed to persist syncer engine setting:", err);
+    }
+  };
+
   async function handleSaveSettings() {
     setSavingSettings(true);
     try {
@@ -291,6 +319,7 @@ function GmailCard() {
         body: JSON.stringify({
           sync_mode: syncMode,
           ai_engine: aiEngine,
+          syncer_engine: syncerEngine,
           enable_fallback: enableFallback,
           fallback_engine: fallbackEngine,
           preset_filter: presetFilter,
@@ -687,6 +716,24 @@ function GmailCard() {
               {syncMode === "lightweight"
                 ? "Recommended. Programmatic extraction with AI verification."
                 : "Passes entire email body straight to selected AI model."}
+            </p>
+          </div>
+
+          {/* Syncer Engine Selection */}
+          <div className="p-2.5 rounded-[8px] border" style={{ background: "var(--card)", borderColor: "rgba(0,196,140,0.35)" }}>
+            <label className="font-semibold block mb-1 text-[11px]" style={{ color: "var(--text)" }}>🐍 Active Gmail Transaction Syncer</label>
+            <select
+              value={syncerEngine}
+              onChange={(e) => updateSyncerEngine(e.target.value)}
+              className="w-full p-[8px] rounded-[8px] border text-[12px] outline-none mb-1 cursor-pointer font-semibold"
+              style={{ background: "var(--bg)", color: "var(--text)", borderColor: "rgba(0,196,140,0.35)" }}
+            >
+              <option value="python_transaction">🐍 Python Transaction Syncer (FastAPI + BeautifulSoup DOM &amp; PDF Engine)</option>
+              <option value="ai_agentic">🤖 AI Agentic Syncer (Python Engine + Multi-pass LLM &amp; Self-Healing Agent)</option>
+              <option value="node_standard">⚡ Standard Node.js Syncer (Legacy Regex Parser)</option>
+            </select>
+            <p className="text-[10px]" style={{ color: "var(--muted)", lineHeight: 1.4 }}>
+              Synced live with Settings page. Python engine extracts complex HTML tables and PDF bank statements with Node.js fallback.
             </p>
           </div>
 

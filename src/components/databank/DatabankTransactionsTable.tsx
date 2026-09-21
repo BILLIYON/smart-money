@@ -34,23 +34,138 @@ type Stats = {
   netCashflowNaira: number;
 };
 
+function getCleanDisplayBank(t: Transaction): string | null {
+  const meta = t.metadata || {};
+  let bank = meta.bank || meta.provider;
+  if (bank && typeof bank === "string" && bank.toLowerCase() !== "gmail alert" && bank.toLowerCase() !== "bank alert" && bank.toLowerCase() !== "bank") {
+    if (/opay/i.test(bank)) return "OPay";
+    if (/kuda/i.test(bank)) return "Kuda Bank";
+    if (/palmpay/i.test(bank)) return "PalmPay";
+    if (/moniepoint/i.test(bank)) return "Moniepoint";
+    if (/gtbank|gtb/i.test(bank)) return "GTBank";
+    if (/zenith/i.test(bank)) return "Zenith Bank";
+    if (/access/i.test(bank)) return "Access Bank";
+    if (/uba/i.test(bank)) return "UBA";
+    if (/firstbank|first bank/i.test(bank)) return "FirstBank";
+    if (/stanbic/i.test(bank)) return "Stanbic IBTC";
+    if (/fcmb/i.test(bank)) return "FCMB";
+    if (/sterling/i.test(bank)) return "Sterling Bank";
+    if (/wema|alat/i.test(bank)) return "Wema / ALAT";
+    if (/taxtech|taxaide/i.test(bank)) return "Taxtech";
+    if (/jobberman/i.test(bank)) return "Jobberman";
+    if (/grey/i.test(bank)) return "Grey Finance";
+    if (/flutterwave/i.test(bank)) return "Flutterwave";
+    if (/paystack/i.test(bank)) return "Paystack";
+    return bank;
+  }
+
+  // Priority 1: Check email sender header (From)
+  const from = (meta.email_from || meta.from || "").toLowerCase();
+  if (from) {
+    if (/gtbank|gtb|guaranty/i.test(from)) return "GTBank";
+    if (/zenith/i.test(from)) return "Zenith Bank";
+    if (/access/i.test(from)) return "Access Bank";
+    if (/uba/i.test(from)) return "UBA";
+    if (/firstbank|first bank/i.test(from)) return "FirstBank";
+    if (/kuda/i.test(from)) return "Kuda Bank";
+    if (/opay/i.test(from)) return "OPay";
+    if (/palmpay/i.test(from)) return "PalmPay";
+    if (/moniepoint/i.test(from)) return "Moniepoint";
+    if (/stanbic/i.test(from)) return "Stanbic IBTC";
+    if (/fcmb/i.test(from)) return "FCMB";
+    if (/sterling/i.test(from)) return "Sterling Bank";
+    if (/wema|alat/i.test(from)) return "Wema / ALAT";
+    if (/taxtech|taxaide/i.test(from)) return "Taxtech";
+    if (/jobberman/i.test(from)) return "Jobberman";
+    if (/grey/i.test(from)) return "Grey Finance";
+    if (/flutterwave/i.test(from)) return "Flutterwave";
+    if (/paystack/i.test(from)) return "Paystack";
+  }
+
+  // Priority 2: Check email Subject header
+  const subj = (meta.email_subject || meta.subject || "").toLowerCase();
+  if (subj) {
+    if (/gtbank|gtb/i.test(subj)) return "GTBank";
+    if (/zenith/i.test(subj)) return "Zenith Bank";
+    if (/access/i.test(subj)) return "Access Bank";
+    if (/uba/i.test(subj)) return "UBA";
+    if (/firstbank|first bank/i.test(subj)) return "FirstBank";
+    if (/kuda/i.test(subj)) return "Kuda Bank";
+    if (/opay/i.test(subj)) return "OPay";
+    if (/palmpay/i.test(subj)) return "PalmPay";
+    if (/moniepoint/i.test(subj)) return "Moniepoint";
+    if (/stanbic/i.test(subj)) return "Stanbic IBTC";
+    if (/fcmb/i.test(subj)) return "FCMB";
+    if (/sterling/i.test(subj)) return "Sterling Bank";
+    if (/wema|alat/i.test(subj)) return "Wema / ALAT";
+    if (/taxtech|taxaide/i.test(subj)) return "Taxtech";
+    if (/jobberman/i.test(subj)) return "Jobberman";
+    if (/grey/i.test(subj)) return "Grey Finance";
+    if (/flutterwave/i.test(subj)) return "Flutterwave";
+    if (/paystack/i.test(subj)) return "Paystack";
+  }
+
+  // Priority 3: Check Description text ONLY if not a beneficiary transfer recipient
+  const descClean = (t.description || "")
+    .toLowerCase()
+    .replace(/(?:transfer\s+to|paid\s+to|sent\s+to|credited\s+to|beneficiary[:\s]+)\s*([a-z0-9\s]{2,30})/gi, "");
+
+  if (/gtbank|gtb/i.test(descClean)) return "GTBank";
+  if (/zenith/i.test(descClean)) return "Zenith Bank";
+  if (/access/i.test(descClean)) return "Access Bank";
+  if (/uba/i.test(descClean)) return "UBA";
+  if (/firstbank|first bank/i.test(descClean)) return "FirstBank";
+  if (/kuda/i.test(descClean)) return "Kuda Bank";
+  if (/opay/i.test(descClean)) return "OPay";
+  if (/palmpay/i.test(descClean)) return "PalmPay";
+  if (/moniepoint/i.test(descClean)) return "Moniepoint";
+  if (/stanbic/i.test(descClean)) return "Stanbic IBTC";
+  if (/fcmb/i.test(descClean)) return "FCMB";
+  if (/sterling/i.test(descClean)) return "Sterling Bank";
+  if (/wema|alat/i.test(descClean)) return "Wema / ALAT";
+  if (/taxtech|taxaide/i.test(descClean)) return "Taxtech";
+  if (/jobberman/i.test(descClean)) return "Jobberman";
+  if (/grey/i.test(descClean)) return "Grey Finance";
+  if (/flutterwave/i.test(descClean)) return "Flutterwave";
+  if (/paystack/i.test(descClean)) return "Paystack";
+
+  if (meta.email_from) {
+    const cleanedFrom = meta.email_from.split("<")[0].replace(/"/g, "").trim();
+    if (cleanedFrom && !/no-reply|noreply|notification|alert|service|info/i.test(cleanedFrom)) {
+      return cleanedFrom.slice(0, 30);
+    }
+  }
+
+  if (t.source === "gmail") return "Gmail Bank Alert";
+  if (t.source === "upload") return "Bank Statement";
+  return null;
+}
+
 function getCleanDisplayDescription(desc?: string, bank?: string): string {
   if (!desc) return bank ? `${bank} Alert` : "Bank Transaction";
 
   let cleaned = desc
+    .replace(/<[^>]+>/g, " ")
+    .replace(/width=["']?\d+["']?/gi, "")
+    .replace(/height=["']?\d+["']?/gi, "")
+    .replace(/alt=["']?[^"']*["']?/gi, "")
+    .replace(/src=["']?[^"']*["']?/gi, "")
+    .replace(/Logo"?\s*/gi, "")
     .replace(/^of this transaction are shown below[:\s]*/i, "")
     .replace(/^the details of this transaction are shown below[:\s]*/i, "")
     .replace(/^details of this transaction[:\s]*/i, "")
     .replace(/^are shown below[:\s]*/i, "")
     .replace(/transaction notification account number\s*:.*$/i, "")
     .replace(/account number\s*:.*$/i, "")
+    .replace(/(?:current|available|ledger|acct)?\s*balance\s*(?:is)?\s*(?:₦|ngn|n|\$)?\s*[\d,]+(?:\.\d{2})?/gi, "")
     .replace(/\s+bank$/i, "")
     .replace(/\s+/g, " ")
     .trim();
 
   if (
     !cleaned ||
-    /^(of this transaction|transaction notification|transaction occurred|details of this|are shown below|account number|transaction type)$/i.test(cleaned)
+    cleaned.length < 2 ||
+    /^(of this transaction|transaction notification|transaction occurred|details of this|are shown below|account number|transaction type|logo)$/i.test(cleaned)
   ) {
     return bank ? `${bank} Alert` : "Bank Transaction";
   }
@@ -58,16 +173,33 @@ function getCleanDisplayDescription(desc?: string, bank?: string): string {
   return cleaned;
 }
 
-function getCleanDisplayReason(reason?: string, desc?: string, bank?: string): string {
-  const cleanDesc = getCleanDisplayDescription(desc, bank);
-  if (!reason || /of this transaction|are shown below|transaction notification|account number/i.test(reason)) {
-    return `Transaction alert (${cleanDesc})`;
+function getCleanDisplayReason(reason?: string, desc?: string, bank?: string, snippet?: string, subject?: string): string {
+  if (reason && typeof reason === "string") {
+    const cleaned = reason
+      .replace(/<[^>]+>/g, " ")
+      .replace(/of this transaction are shown below[:\s]*/gi, "")
+      .replace(/transaction notification account number\s*:.*$/gi, "")
+      .replace(/Transaction alert \([^)]+\)/gi, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (cleaned && !cleaned.toLowerCase().startsWith("transaction alert") && cleaned.length > 3) {
+      return cleaned;
+    }
   }
-  return reason
-    .replace(/of this transaction are shown below[:\s]*/gi, "")
-    .replace(/transaction notification account number\s*:.*$/gi, "")
-    .replace(/\(of this transaction are shown below:.*?\)/gi, `(${cleanDesc})`)
-    .trim();
+
+  if (snippet && typeof snippet === "string") {
+    const cleanedSnip = snippet.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    if (cleanedSnip && cleanedSnip.length > 5 && !cleanedSnip.toLowerCase().startsWith("transaction alert")) {
+      return cleanedSnip.length > 140 ? `${cleanedSnip.slice(0, 140)}...` : cleanedSnip;
+    }
+  }
+
+  if (subject && typeof subject === "string" && subject.trim()) {
+    return subject.trim();
+  }
+
+  return getCleanDisplayDescription(desc, bank);
 }
 
 const TYPE_CONFIG: Record<
@@ -144,6 +276,7 @@ export function DatabankTransactionsTable({
   const availableCategories = Array.from(
     new Set(
       [
+        "Savings & Investments",
         ...categories.map((c) => c.name),
         ...entries.map((e) => e.category),
       ]
@@ -892,8 +1025,7 @@ export function DatabankTransactionsTable({
                 entries.map((t) => {
                   const cfg = TYPE_CONFIG[t.entry_type] || TYPE_CONFIG.expense;
                   const isSelected = selectedIds.has(t.id);
-                  const bankName =
-                    t.metadata?.bank || t.metadata?.provider || (t.source === "gmail" ? "Gmail Alert" : null);
+                  const bankName = getCleanDisplayBank(t);
 
                   return (
                     <tr
@@ -939,7 +1071,7 @@ export function DatabankTransactionsTable({
                       </td>
                       <td className="py-3 px-3 max-w-[260px]">
                         <div className="text-[11px] leading-snug line-clamp-2" style={{ color: "var(--text)" }}>
-                          {getCleanDisplayReason(t.metadata?.reason, t.description, bankName || undefined)}
+                          {getCleanDisplayReason(t.metadata?.reason, t.description, bankName || undefined, t.metadata?.email_body_snippet || t.metadata?.snippet, t.metadata?.email_subject || t.metadata?.subject)}
                         </div>
                         {t.metadata?.email_subject && (
                           <div className="text-[10px] mt-1 truncate" style={{ color: "var(--muted)" }}>
@@ -1706,8 +1838,11 @@ export function DatabankTransactionsTable({
                             inspectingEntry.metadata?.raw_body
                           )
                         ) : (
-                          <div className="py-1 opacity-80 italic text-[11px]">
-                            Original Email Subject: <strong>"{inspectingEntry.metadata?.email_subject || inspectingEntry.description}"</strong> from <code>{inspectingEntry.metadata?.email_from || inspectingEntry.source}</code>.
+                          <div className="py-1 space-y-1 select-text">
+                            <div><strong>Subject:</strong> {inspectingEntry.metadata?.email_subject || inspectingEntry.description}</div>
+                            <div><strong>From:</strong> {inspectingEntry.metadata?.email_from || inspectingEntry.source}</div>
+                            <div><strong>Description:</strong> {inspectingEntry.description}</div>
+                            {inspectingEntry.metadata?.reason && <div><strong>AI Note:</strong> {inspectingEntry.metadata.reason}</div>}
                           </div>
                         )}
                       </div>

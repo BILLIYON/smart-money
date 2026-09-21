@@ -31,11 +31,14 @@ def decrypt(stored: str, raw_key: str = None) -> str:
             aesgcm = AESGCM(key)
             return aesgcm.decrypt(iv, data_to_decrypt, None).decode("utf-8")
         except Exception:
-            fallback_key = get_encryption_key(DEFAULT_KEY_RAW)
-            aesgcm_fb = AESGCM(fallback_key)
-            return aesgcm_fb.decrypt(iv, data_to_decrypt, None).decode("utf-8")
-    except Exception as e:
-        raise ValueError(f"DECRYPTION_FAILED: {str(e)}")
+            try:
+                fallback_key = get_encryption_key(DEFAULT_KEY_RAW)
+                aesgcm_fb = AESGCM(fallback_key)
+                return aesgcm_fb.decrypt(iv, data_to_decrypt, None).decode("utf-8")
+            except Exception:
+                return stored
+    except Exception:
+        return stored
 
 def encrypt(plaintext: str, raw_key: str = None) -> str:
     key = get_encryption_key(raw_key)
