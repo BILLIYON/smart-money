@@ -1,10 +1,18 @@
 import { type DatabankContext } from "@/lib/ai";
 import { Pool } from "pg";
 
+let sharedPool: Pool | null = null;
 function getPool() {
-  return new Pool({
-    connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
-  });
+  if (!sharedPool) {
+    const dbUrl = process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money";
+    const isRemote = dbUrl.includes("supabase.com") || dbUrl.includes("pooler") || dbUrl.includes("aws-");
+    sharedPool = new Pool({
+      connectionString: dbUrl,
+      ssl: isRemote ? { rejectUnauthorized: false } : false,
+      max: 10,
+    });
+  }
+  return sharedPool;
 }
 
 function monthStart(): string {
@@ -43,13 +51,14 @@ export async function getDatabankContextForUser(
   const pool = getPool();
 
   try {
-    // Fetch all user databank entries, goals, integrations, active signals, and currency in parallel
+    // Fetch user databank entries (limit 200 recent entries), goals, integrations, active signals, and currency in parallel
     const [entriesRes, goalsRes, integrationsRes, signalsRes, userRes] = await Promise.all([
       pool.query(
         `SELECT entry_type, amount, description, category, entry_date, source, metadata, created_at
          FROM databank_entries
          WHERE user_id = $1
-         ORDER BY entry_date DESC, created_at DESC;`,
+         ORDER BY entry_date DESC, created_at DESC
+         LIMIT 200;`,
         [userId]
       ),
 

@@ -19,7 +19,8 @@ function getSESClient() {
 }
 
 function getDefaultSender() {
-  return process.env.SES_FROM_EMAIL || "Smart Money <hi@smartmoney.technology>";
+  const raw = (process.env.SES_FROM_EMAIL || "").replace(/^["']|["']$/g, "").trim();
+  return raw || "Smart Money <hi@smartmoney.technology>";
 }
 
 export type SendEmailOptions = {

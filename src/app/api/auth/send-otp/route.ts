@@ -92,22 +92,27 @@ export async function POST(req: Request) {
       await pool.end();
     }
 
-    // Render HTML email based on purpose
+    // Render HTML & Plain-text email based on purpose
     let htmlContent = "";
     let subjectLine = "";
+    let textContent = "";
 
     if (purpose === "registration") {
       subjectLine = `${code} is your Smart Money registration verification code`;
       htmlContent = renderRegistrationOTPEmail(code, nameForEmail);
+      textContent = `Hi ${nameForEmail}, your Smart Money registration verification code is: ${code}. This code is valid for 15 minutes.`;
     } else if (purpose === "email_change") {
       subjectLine = `${code} is your Smart Money email change verification code`;
       htmlContent = renderEmailChangeOTPEmail(code, emailToSend);
+      textContent = `Your Smart Money email change verification code is: ${code}.`;
     } else if (purpose === "phone_change") {
       subjectLine = `${code} is your Smart Money phone verification code`;
       htmlContent = renderPhoneChangeOTPEmail(code, targetPhone || "");
+      textContent = `Your Smart Money phone verification code is: ${code}.`;
     } else {
       subjectLine = `${code} is your Smart Money security verification code`;
       htmlContent = renderProfileUpdateOTPEmail(code);
+      textContent = `Your Smart Money security verification code is: ${code}.`;
     }
 
     // Dispatch via AWS SES
@@ -116,9 +121,11 @@ export async function POST(req: Request) {
         to: emailToSend,
         subject: subjectLine,
         html: htmlContent,
+        text: textContent,
       });
     } catch (sesErr: any) {
       console.error("[/api/auth/send-otp] AWS SES dispatch error:", sesErr);
+      return NextResponse.json({ error: sesErr?.message || "Failed to deliver verification email." }, { status: 500 });
     }
 
     return NextResponse.json({

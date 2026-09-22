@@ -444,13 +444,13 @@ export async function sendMessage(params: {
   // ALWAYS start with the exact model selected for this buddy upon creation!
   modelsToTry.push(resolvedModel);
 
-  // Append fallbacks in order of active availability
+  // Append fallbacks in order of speed and availability
   const fallbacks: ModelType[] = [
+    "groq",
     "gemini",
     "gemma",
     "nvidia",
     "bedrock",
-    "groq",
     "gpt4",
     "claude",
   ];
@@ -581,7 +581,7 @@ async function streamGemini(
   messages: Message[]
 ): Promise<ReadableStream<Uint8Array>> {
   const geminiInstance = gemini();
-  const modelsToTry = ["gemini-3.6-flash", "gemini-1.5-flash", "gemini-2.0-flash"];
+  const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash-exp"];
   let lastErr: any = null;
 
   for (const mName of modelsToTry) {
