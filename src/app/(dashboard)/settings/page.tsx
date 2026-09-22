@@ -6,6 +6,7 @@ import { useUserStore } from "@/store/userStore";
 import { useBuddyStore } from "@/store/buddyStore";
 import { popup } from "@/store/popupStore";
 import { OTPModal } from "@/components/auth/OTPModal";
+import { PartnerAccessControl } from "@/components/partner/PartnerAccessControl";
 
 // ── Types ──────────────────────────────────────────────────
 type Tab = "profile" | "notifs" | "subs" | "privacy" | "appear";
@@ -1360,6 +1361,12 @@ function PrivacyTab() {
           </button>
         </div>
       </div>
+
+      {/* ── Partner Data Sharing ── */}
+      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>
+        Partner Data Sharing
+      </div>
+      <PartnerAccessControl />
 
       <SettingsRow
         label="Gmail integration"

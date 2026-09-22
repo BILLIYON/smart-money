@@ -351,3 +351,77 @@ export const PARTNER_CATEGORY_FILTERS = [
   "Business Finance",
   "Free Intro Call",
 ];
+
+export type PartnerReview = { name: string; stars: string; text: string };
+
+export const PARTNER_FIRM_DETAILS: Record<
+  string,
+  { fullDescription: string; includes: string[]; reviews: PartnerReview[] }
+> = {
+  meristem: {
+    fullDescription:
+      "Meristem Securities has operated in the Nigerian capital markets for over two decades, combining licensed brokerage execution with independent equity research. Clients get a named relationship manager, direct NGX trade execution, and access to fixed-income instruments (T-bills, Eurobonds, commercial paper) alongside their Smart Money AI buddy — the AI handles day-to-day questions, Meristem handles the trades and the paperwork.",
+    includes: [
+      "Named relationship manager",
+      "NGX trade execution",
+      "T-bills, Eurobonds & structured products",
+      "Weekly equity research notes",
+      "Free 30-minute intro consultation",
+    ],
+    reviews: [
+      { name: "Adaobi K.", stars: "★★★★★", text: "My AI buddy flags the opportunities, my Meristem advisor executes them. Best of both worlds." },
+      { name: "Segun T.", stars: "★★★★★", text: "Research quality is genuinely institutional-grade, not retail fluff." },
+    ],
+  },
+  cowrywise: {
+    fullDescription:
+      "Cowrywise Pro Advisory extends the familiar Cowrywise savings and mutual fund product with a human advisor layer for clients who've outgrown pure self-serve investing. No minimum balance to start a relationship, transparent fee structure, and a strong focus on dollar-denominated savings for Nigerians managing currency risk.",
+    includes: [
+      "No minimum portfolio to join",
+      "MMF & mutual fund access",
+      "Dollar savings & FX guidance",
+      "Quarterly portfolio check-ins",
+      "Free 30-minute intro consultation",
+    ],
+    reviews: [
+      { name: "Ifeoma B.", stars: "★★★★★", text: "Zero minimum was the reason I applied. Didn't expect this level of attention at my portfolio size." },
+      { name: "Dapo A.", stars: "★★★★☆", text: "Good for getting started. Might outgrow it if my portfolio gets much bigger." },
+    ],
+  },
+  arm: {
+    fullDescription:
+      "ARM Investment Managers is one of Nigeria's oldest and largest independent asset managers, running the ARM Money Market Fund alongside pension, real estate investment trust (REIT), and bespoke private wealth mandates. This tier is aimed at clients with meaningful assets who want a dedicated portfolio manager, not just fund access.",
+    includes: [
+      "Dedicated portfolio manager",
+      "ARM Money Market Fund access",
+      "Pension & REIT products",
+      "Bespoke private wealth mandates",
+      "Free intro consultation for qualifying portfolios",
+    ],
+    reviews: [
+      { name: "Chukwuemeka O.", stars: "★★★★★", text: "Been with ARM's MMF for years. The advisor layer on top is a genuinely useful addition." },
+      { name: "Halima Y.", stars: "★★★★☆", text: "Entry threshold is real, but the private wealth service justifies it." },
+    ],
+  },
+};
+
+export type MyPartnerAccessScope = {
+  key: string;
+  label: string;
+  desc: string;
+  on: boolean;
+};
+
+export const MY_PARTNER = {
+  name: "Stanbic Wealth Management",
+  advisor: "Adaeze Akunna",
+  since: "Feb 2026",
+};
+
+export const MY_PARTNER_SCOPES: MyPartnerAccessScope[] = [
+  { key: "transactions", label: "Transactions & Spending", desc: "Full DataBank transaction history and spending analytics", on: true },
+  { key: "networth", label: "Net Worth & Investments", desc: "Account balances, assets, and investment holdings", on: true },
+  { key: "goals", label: "Goals & Progress", desc: "Financial goals you've set and how you're tracking against them", on: true },
+  { key: "chat", label: "Chat History", desc: "Past conversations with your AI Finance Buddies", on: false },
+  { key: "actions", label: "Agentic Action Requests", desc: "Lets your partner review and approve agent actions above your set limit", on: true },
+];

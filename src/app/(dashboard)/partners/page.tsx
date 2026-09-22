@@ -1,14 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { comingSoon } from "@/components/partner/shared";
 import { PARTNER_FIRMS, PARTNER_CATEGORY_FILTERS, type PartnerFirm } from "@/components/partner/mockData";
 
 function PartnerCard({ firm }: { firm: PartnerFirm }) {
-  const [applied, setApplied] = useState(false);
   return (
-    <div
-      className="rounded-[16px] overflow-hidden transition-all duration-200"
+    <Link
+      href={`/partners/${firm.id}`}
+      className="block rounded-[16px] overflow-hidden transition-all duration-200 hover:-translate-y-[2px]"
       style={{ background: "var(--card)", border: "1px solid var(--border)" }}
     >
       <div style={{ height: 80, background: firm.banner }} />
@@ -36,20 +37,14 @@ function PartnerCard({ firm }: { firm: PartnerFirm }) {
           <div><div className="text-[14px] font-bold" style={{ color: "var(--text)" }}>{firm.clients}</div><div className="text-[10px]" style={{ color: "var(--muted)" }}>Clients</div></div>
           <div><div className="text-[14px] font-bold" style={{ color: "var(--text)" }}>{firm.minPortfolio}</div><div className="text-[10px]" style={{ color: "var(--muted)" }}>Min. Portfolio</div></div>
         </div>
-        <button
-          onClick={() => {
-            if (applied) return;
-            setApplied(true);
-            comingSoon("Submitting a partner application");
-          }}
-          disabled={applied}
-          className="w-full mt-[14px] py-[10px] rounded-[10px] text-[13px] font-semibold text-white border-none"
-          style={{ background: applied ? "var(--border)" : "var(--green)", color: applied ? "var(--muted)" : "#fff" }}
+        <div
+          className="w-full mt-[14px] py-[10px] rounded-[10px] text-[13px] font-semibold text-white text-center"
+          style={{ background: "var(--green)" }}
         >
-          {applied ? "✓ Application Submitted" : "Apply to Join"}
-        </button>
+          View Profile & Apply →
+        </div>
       </div>
-    </div>
+    </Link>
   );
 }
 
