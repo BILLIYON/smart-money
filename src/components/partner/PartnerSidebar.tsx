@@ -14,6 +14,7 @@ export type PartnerTab =
   | "database"
   | "research"
   | "goals-cfg"
+  | "opportunities-cfg"
   | "api";
 
 const NAV_SECTIONS: { label: string; items: { id: PartnerTab; icon: string; label: string; badge?: string; badgeTone?: "green" | "orange" }[] }[] = [
@@ -41,6 +42,7 @@ const NAV_SECTIONS: { label: string; items: { id: PartnerTab; icon: string; labe
     items: [
       { id: "research", icon: "🔬", label: "AI Research" },
       { id: "goals-cfg", icon: "🎯", label: "Write Client Goals" },
+      { id: "opportunities-cfg", icon: "💡", label: "Send Opportunities" },
       { id: "api", icon: "📡", label: "API & Docs" },
     ],
   },

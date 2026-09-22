@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useUserStore } from "@/store/userStore";
 import { currencySymbol } from "@/lib/currency";
 import { popup } from "@/store/popupStore";
+import { OpportunitiesPanel } from "@/components/opportunities/OpportunitiesPanel";
 
 // ── Types ─────────────────────────────────────────────────
 type Goal = {
@@ -382,6 +383,7 @@ export default function GoalsPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<Goal | null>(null);
+  const [activeTab, setActiveTab] = useState<"goals" | "opportunities">("goals");
 
   // Edit Goal modal state
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
@@ -623,6 +625,26 @@ export default function GoalsPage() {
           </div>
         </div>
 
+        {/* Tab switcher */}
+        <div className="flex gap-1 mb-6 border-b" style={{ borderColor: "var(--border)" }}>
+          {(["goals", "opportunities"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className="px-4 py-[10px] text-[13px] font-semibold transition-all duration-150 border-b-2 cursor-pointer"
+              style={{
+                color: activeTab === tab ? "var(--green)" : "var(--muted)",
+                borderColor: activeTab === tab ? "var(--green)" : "transparent",
+                background: "transparent",
+              }}
+            >
+              {tab === "goals" ? "🎯 Goals" : "💡 Opportunities"}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === "goals" && (
+        <>
         {/* Hint badge */}
         <div
           className="inline-flex items-center gap-2 px-3 py-[5px] rounded-full text-[11px] font-medium mb-6"
@@ -720,6 +742,10 @@ export default function GoalsPage() {
             ))}
           </div>
         )}
+        </>
+        )}
+
+        {activeTab === "opportunities" && <OpportunitiesPanel />}
       </div>
 
       {/* Edit / Create Modal Overlay */}

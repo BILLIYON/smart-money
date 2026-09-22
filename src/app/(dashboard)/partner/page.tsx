@@ -13,6 +13,7 @@ import { AnalyticsRulesPanel } from "@/components/partner/panels/AnalyticsRulesP
 import { DatabasePanel } from "@/components/partner/panels/DatabasePanel";
 import { ResearchPanel } from "@/components/partner/panels/ResearchPanel";
 import { GoalsPanel } from "@/components/partner/panels/GoalsPanel";
+import { PartnerOpportunitiesPanel } from "@/components/partner/panels/OpportunitiesPanel";
 import { ApiPanel } from "@/components/partner/panels/ApiPanel";
 
 export default function PartnerPage() {
@@ -33,6 +34,7 @@ export default function PartnerPage() {
         {tab === "database" && <DatabasePanel />}
         {tab === "research" && <ResearchPanel />}
         {tab === "goals-cfg" && <GoalsPanel />}
+        {tab === "opportunities-cfg" && <PartnerOpportunitiesPanel />}
         {tab === "api" && <ApiPanel />}
       </div>
     </div>
