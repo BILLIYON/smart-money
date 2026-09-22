@@ -18,6 +18,8 @@ import {
   Shield,
   MessageSquareHeart,
   Download,
+  Building2,
+  Handshake,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
@@ -30,10 +32,12 @@ const NAV_MAIN = [
 ];
 
 const NAV_TOOLS = [
-  { href: "/studio",  icon: PenLine,   label: "AI Studio" },
-  { href: "/creator", icon: BarChart2, label: "Creator Dashboard" },
-  { href: "/agent",   icon: Zap,       label: "Agentic Actions" },
-  { href: "/admin",   icon: Shield,    label: "Admin Console" },
+  { href: "/studio",   icon: PenLine,   label: "AI Studio" },
+  { href: "/creator",  icon: BarChart2, label: "Creator Dashboard" },
+  { href: "/agent",    icon: Zap,       label: "Agentic Actions" },
+  { href: "/partner",  icon: Building2, label: "Partner Portal" },
+  { href: "/partners", icon: Handshake, label: "Find a Partner" },
+  { href: "/admin",    icon: Shield,    label: "Admin Console" },
 ];
 
 function NavItem({
