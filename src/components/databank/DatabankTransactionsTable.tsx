@@ -256,9 +256,11 @@ const TYPE_CONFIG: Record<
 export function DatabankTransactionsTable({
   onDataChanged,
   onOpenCleaner,
+  onOpenIQ,
 }: {
   onDataChanged?: () => void;
   onOpenCleaner?: () => void;
+  onOpenIQ?: () => void;
 }) {
   const [entries, setEntries] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -680,6 +682,20 @@ export function DatabankTransactionsTable({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {onOpenIQ && (
+            <button
+              onClick={onOpenIQ}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-[9px] text-[12px] font-bold border transition-all cursor-pointer hover:opacity-90 shadow-sm"
+              style={{
+                background: "linear-gradient(135deg, rgba(0, 196, 140, 0.22) 0%, rgba(59, 130, 246, 0.16) 100%)",
+                color: "#00C48C",
+                border: "1px solid rgba(0, 196, 140, 0.4)",
+              }}
+              title="Open DataBank IQ quiz session to batch-resolve transactions and build merchant memory"
+            >
+              <span>⚡ DataBank IQ (Quiz)</span>
+            </button>
+          )}
           <button
             onClick={() => {
               const el = document.getElementById("ai-cleaner-widget");

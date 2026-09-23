@@ -54,7 +54,7 @@ export async function getDatabankContextForUser(
     // Fetch user databank entries (limit 200 recent entries), goals, integrations, active signals, and currency in parallel
     const [entriesRes, goalsRes, integrationsRes, signalsRes, userRes] = await Promise.all([
       pool.query(
-        `SELECT entry_type, amount, description, category, entry_date, source, metadata, created_at
+        `SELECT entry_type, amount, description, category, intent, entry_date, source, metadata, created_at
          FROM databank_entries
          WHERE user_id = $1
          ORDER BY entry_date DESC, created_at DESC
@@ -85,7 +85,7 @@ export async function getDatabankContextForUser(
       ),
 
       pool.query(
-        `SELECT currency, primary_goal
+        `SELECT currency, primary_goal, databank_iq_score, databank_iq_level
          FROM users
          WHERE id = $1 LIMIT 1;`,
         [userId]
@@ -275,6 +275,27 @@ export async function getDatabankContextForUser(
       date: info.date,
     }));
 
+    // ── DataBank IQ and Intent summaries ────────────────────
+    const intentMap: Record<string, { totalAmount: number; count: number }> = {};
+    entries.forEach((e) => {
+      if (e.intent && typeof e.intent === "string" && e.intent.trim()) {
+        const key = e.intent.trim();
+        if (!intentMap[key]) intentMap[key] = { totalAmount: 0, count: 0 };
+        intentMap[key].totalAmount += Math.abs(Number(e.amount));
+        intentMap[key].count++;
+      }
+    });
+
+    const capturedIntents = Object.entries(intentMap).map(([intent, data]) => ({
+      intent,
+      totalAmount: data.totalAmount,
+      count: data.count,
+    }));
+
+    const iqScore = userRes.rows[0]?.databank_iq_score ?? 50;
+    const iqLevel = userRes.rows[0]?.databank_iq_level ?? "Developing";
+    const databankIQ = { score: iqScore, level: iqLevel };
+
     return {
       currency,
       primaryGoal,
@@ -284,6 +305,8 @@ export async function getDatabankContextForUser(
       netWorth,
       savingsBalance,
       bankBalances,
+      databankIQ,
+      capturedIntents,
       monthlySummary: {
         totalIncome,
         totalExpenses,
@@ -300,7 +323,8 @@ export async function getDatabankContextForUser(
       recentTransactions,
       activeGoals,
     };
-  } finally {
-    await pool.end();
+  } catch (err) {
+    console.error("[getDatabankContextForUser] Query error:", err);
+    throw err;
   }
 }

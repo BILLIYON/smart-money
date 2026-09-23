@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { AnalyticsDashboard } from "@/components/analytics/AnalyticsDashboard";
 import { DatabankTransactionsTable } from "@/components/databank/DatabankTransactionsTable";
 import { DatabankCleanerWidget } from "@/components/databank/DatabankCleanerWidget";
+import { DataBankIQScreen } from "@/components/databank/iq/DataBankIQScreen";
 import { createClient } from "@/lib/supabase/client";
 
 import { useDatabankStore } from "@/store/databankStore";
@@ -119,7 +120,7 @@ type GmailStatus = {
 };
 
 // ── Gmail Card ────────────────────────────────────────────────
-function GmailCard() {
+function GmailCard({ onSyncComplete }: { onSyncComplete?: () => void }) {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<GmailStatus | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -244,6 +245,9 @@ function GmailCard() {
               setSyncMsg(data.metadata.sync_message);
             }
           } else if (data.metadata && !data.metadata.is_syncing) {
+            if (syncing) {
+              onSyncComplete?.();
+            }
             setSyncing(false);
             setSyncProgress(null);
             setSyncMsg(data.metadata?.sync_message || "Sync complete!");
@@ -428,6 +432,7 @@ function GmailCard() {
       }
       await loadStatus();
       await useDatabankStore.getState().loadContext();
+      onSyncComplete?.();
     } catch (err: any) {
       if (err.name === "AbortError") {
         setSyncMsg("Sync stopped");
@@ -484,6 +489,7 @@ function GmailCard() {
         setPreviewEntries([]);
         await loadStatus();
         await useDatabankStore.getState().loadContext();
+        onSyncComplete?.();
       } else {
         const err = await res.json().catch(() => ({}));
         popup.error("Failed to Save", err.error || "Could not save your transactions.");
@@ -1438,6 +1444,7 @@ type UploadedFile = {
 
 // ── DataBank page ─────────────────────────────────────────
 export default function DataBankPage() {
+  const [showDataBankIQ, setShowDataBankIQ] = useState(false);
   const [tab, setTab] = useState<"sources" | "transactions" | "analytics">("sources");
   const [signalTab, setSignalTab] = useState<"news" | "social" | "podcasts" | "newsletters" | "api">("news");
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -1904,6 +1911,43 @@ export default function DataBankPage() {
           </div>
         </div>
 
+        {/* ── DATABANK IQ GAMIFIED CLEANING BANNER ── */}
+        <div
+          onClick={() => setShowDataBankIQ(true)}
+          className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 rounded-[16px] mb-6 border cursor-pointer transition-all hover:scale-[1.005]"
+          style={{
+            background: "linear-gradient(135deg, rgba(0, 196, 140, 0.12) 0%, rgba(59, 130, 246, 0.08) 100%)",
+            borderColor: "rgba(0, 196, 140, 0.25)",
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#00C48C]/20 border border-[#00C48C]/40 flex items-center justify-center text-[20px]">
+              ⚡
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[14px] font-bold text-white">DataBank IQ · Gamified AI Cleaning</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#00C48C]/20 text-[#00C48C] uppercase tracking-wider">
+                  Quiz Mode
+                </span>
+              </div>
+              <p className="text-[12px] text-gray-400 mt-0.5">
+                Resolve multiple transactions in 1-click answers, build merchant memory rules, and sharpen your Buddy&apos;s advice.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowDataBankIQ(true);
+            }}
+            className="mt-3 sm:mt-0 px-4 py-2 rounded-[10px] text-[12px] font-bold text-[#0B0E17] bg-[#00C48C] hover:bg-[#00B07D] transition-colors border-none cursor-pointer flex items-center gap-1.5 shadow"
+          >
+            <span>Start / Resume Quiz</span>
+            <span>→</span>
+          </button>
+        </div>
+
         {/* Main tabs */}
         <div className="flex mb-6 overflow-x-auto" style={{ borderBottom: "1px solid var(--border)" }}>
 
@@ -2081,7 +2125,7 @@ export default function DataBankPage() {
 
               {/* Gmail Integration */}
               <Suspense>
-                <GmailCard />
+                <GmailCard onSyncComplete={() => setShowDataBankIQ(true)} />
               </Suspense>
 
               {/* Manual Entry Form */}
@@ -2692,6 +2736,7 @@ export default function DataBankPage() {
           <div className="mb-6">
             <DatabankTransactionsTable
               onDataChanged={() => useDatabankStore.getState().loadContext()}
+              onOpenIQ={() => setShowDataBankIQ(true)}
             />
           </div>
         )}
@@ -2846,6 +2891,13 @@ export default function DataBankPage() {
           </div>
         </div>
       )}
+
+      {/* ── DATABANK IQ GAMIFIED CLEANING SCREEN MODAL ── */}
+      <DataBankIQScreen
+        isOpen={showDataBankIQ}
+        onClose={() => setShowDataBankIQ(false)}
+        onComplete={() => useDatabankStore.getState().loadContext()}
+      />
     </div>
   );
 }

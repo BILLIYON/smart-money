@@ -713,6 +713,15 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallbackValue: T): Prom
       }
     }
 
+    if (saveToDb && entries.length > 0) {
+      try {
+        const { applyMerchantRules } = await import("@/lib/merchant-rules");
+        await applyMerchantRules(userId);
+      } catch (err) {
+        console.warn("[syncGmailForUser] Failed to apply merchant rules:", err);
+      }
+    }
+
     await updateMeta(
       {
         ...metadata,

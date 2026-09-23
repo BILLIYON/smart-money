@@ -124,6 +124,17 @@ export type DatabankContext = {
   savingsBalance?: number;     // total cash savings in cents
   bankBalances?: { bank: string; balance: number; date: string }[];
 
+  // DataBank IQ & Intent Capture (Gamified cleaning context)
+  databankIQ?: {
+    score: number;
+    level: string;
+  };
+  capturedIntents?: {
+    intent: string;
+    totalAmount: number;
+    count: number;
+  }[];
+
   // Legacy flat fields — kept for backwards compat with older callers
   monthlyIncome?: number;
   monthlyExpenses?: number;
@@ -185,6 +196,23 @@ function formatDatabankContext(ctx: DatabankContext): string {
 
   if (ctx.primaryGoal) {
     lines.push(`User's primary financial goal: "${ctx.primaryGoal}"`);
+  }
+
+  if (ctx.databankIQ) {
+    lines.push(
+      `DataBank IQ Score: ${ctx.databankIQ.score}/100 (${ctx.databankIQ.level}) — ${
+        ctx.databankIQ.score >= 80
+          ? "High precision financial clarity"
+          : "Partial context with spending blind spots"
+      }`
+    );
+  }
+
+  if (ctx.capturedIntents?.length) {
+    const intentStrs = ctx.capturedIntents
+      .map((i) => `${i.intent}: ${f(i.totalAmount)} (${i.count} transactions)`)
+      .join("; ");
+    lines.push(`User's Stated Financial Goals & Intents: ${intentStrs}`);
   }
 
   // ── New structured context ──────────────────────────────

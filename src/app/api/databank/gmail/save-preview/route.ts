@@ -79,6 +79,14 @@ export async function POST(req: Request) {
       }
     }
 
+    // Apply merchant rules automatically to newly saved entries
+    try {
+      const { applyMerchantRules } = await import("@/lib/merchant-rules");
+      await applyMerchantRules(user.id);
+    } catch (ruleErr) {
+      console.warn("[save-preview] Could not apply merchant rules:", ruleErr);
+    }
+
     const { rows } = await pool.query(
       `SELECT metadata FROM user_integrations WHERE user_id = $1 AND provider = 'gmail' LIMIT 1;`,
       [user.id]
