@@ -1904,9 +1904,6 @@ export default function DataBankPage() {
           </div>
         </div>
 
-        {/* ── AI DATABANK CLEANER WIDGET ── */}
-        <DatabankCleanerWidget onCleanComplete={() => useDatabankStore.getState().loadContext()} />
-
         {/* Main tabs */}
         <div className="flex mb-6 overflow-x-auto" style={{ borderBottom: "1px solid var(--border)" }}>
 
@@ -2693,11 +2690,11 @@ export default function DataBankPage() {
         {/* ── ALL TRANSACTIONS PANEL ── */}
         {tab === "transactions" && (
           <div className="mb-6">
-            <DatabankTransactionsTable onDataChanged={() => useDatabankStore.getState().loadContext()} />
+            <DatabankTransactionsTable
+              onDataChanged={() => useDatabankStore.getState().loadContext()}
+            />
           </div>
         )}
-
-
 
         {/* ── ANALYTICS PANEL ── */}
         {tab === "analytics" && <AnalyticsDashboard />}

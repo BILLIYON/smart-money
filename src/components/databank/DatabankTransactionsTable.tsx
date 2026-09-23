@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDatabankStore } from "@/store/databankStore";
 import { SpendingExclusionsToolbar } from "@/components/analytics/SpendingExclusionsToolbar";
+import { DatabankCleanerWidget } from "./DatabankCleanerWidget";
 import { popup } from "@/store/popupStore";
 
 
@@ -254,8 +255,10 @@ const TYPE_CONFIG: Record<
 
 export function DatabankTransactionsTable({
   onDataChanged,
+  onOpenCleaner,
 }: {
   onDataChanged?: () => void;
+  onOpenCleaner?: () => void;
 }) {
   const [entries, setEntries] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -678,6 +681,21 @@ export function DatabankTransactionsTable({
 
         <div className="flex items-center gap-2 flex-wrap">
           <button
+            onClick={() => {
+              const el = document.getElementById("ai-cleaner-widget");
+              if (el) el.scrollIntoView({ behavior: "smooth" });
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-[9px] text-[12px] font-semibold border transition-all cursor-pointer hover:opacity-90"
+            style={{
+              background: "rgba(0, 196, 140, 0.12)",
+              color: "var(--green, #00C48C)",
+              border: "1px solid rgba(0, 196, 140, 0.3)",
+            }}
+            title="Scan and bulk-clean 500+ transaction records with AI"
+          >
+            <span>✨ AI Smart-Clean (500+)</span>
+          </button>
+          <button
             onClick={handleReparse}
             disabled={reparsing}
             className="flex items-center gap-1.5 px-3 py-2 rounded-[9px] text-[12px] font-semibold transition-all cursor-pointer hover:opacity-90 disabled:opacity-50"
@@ -721,6 +739,9 @@ export function DatabankTransactionsTable({
           </button>
         </div>
       </div>
+
+      {/* ── AI SMART-CLEAN ENGINE FOR 500+ TRANSACTIONS ── */}
+      <DatabankCleanerWidget onCleanComplete={fetchEntries} />
 
       {/* ── SPENDING ANALYTICS EXCLUSIONS (CLICK-TO-TOGGLE PLATFORMS: PAYSTACK, OPAY, PALMPAY, ETC.) ── */}
       <SpendingExclusionsToolbar />

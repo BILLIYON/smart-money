@@ -7,18 +7,11 @@ import { popup } from "@/store/popupStore";
 import { useDatabankStore } from "@/store/databankStore";
 import type { CleaningSuggestion } from "@/app/api/databank/clean/scan/route";
 
-type GameTab = "auto_sweep" | "speed_swipe" | "ai_prompt" | "badges";
-
-type UserBadge = {
-  id: string;
-  title: string;
-  description: string;
-  icon: string;
-  unlocked: boolean;
-};
+type CleanTab = "auto_clean" | "interactive_review" | "ai_prompt";
 
 export function DatabankCleanerWidget({ onCleanComplete }: { onCleanComplete?: () => void }) {
-  const [activeTab, setActiveTab] = useState<GameTab>("auto_sweep");
+  const [activeTab, setActiveTab] = useState<CleanTab>("auto_clean");
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   // Audit state
   const [scanning, setScanning] = useState(false);
@@ -32,12 +25,7 @@ export function DatabankCleanerWidget({ onCleanComplete }: { onCleanComplete?: (
   const [applying, setApplying] = useState(false);
   const [successSummary, setSuccessSummary] = useState<string | null>(null);
   const [analyticsImpact, setAnalyticsImpact] = useState<{ incomeChange: number; expenseChange: number } | null>(null);
-
-  // Gamification State
-  const [xp, setXp] = useState(120);
-  const [streak, setStreak] = useState(0);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [showLevelUp, setShowLevelUp] = useState(false);
 
   // Compute Cleanliness Score (0 - 100%)
   const cleanScore = Math.max(
@@ -50,10 +38,6 @@ export function DatabankCleanerWidget({ onCleanComplete }: { onCleanComplete?: (
     )
   );
 
-  // Compute Level based on XP
-  const level = Math.floor(xp / 100) + 1;
-  const xpInCurrentLevel = xp % 100;
-
   const triggerConfetti = () => {
     try {
       confetti({
@@ -65,18 +49,6 @@ export function DatabankCleanerWidget({ onCleanComplete }: { onCleanComplete?: (
     } catch {
       // Fallback if canvas environment doesn't support confetti
     }
-  };
-
-  const addXp = (amount: number) => {
-    setXp((prev) => {
-      const next = prev + amount;
-      if (Math.floor(next / 100) > Math.floor(prev / 100)) {
-        setShowLevelUp(true);
-        triggerConfetti();
-        setTimeout(() => setShowLevelUp(false), 3500);
-      }
-      return next;
-    });
   };
 
   const handleScan = useCallback(async () => {
@@ -100,12 +72,6 @@ export function DatabankCleanerWidget({ onCleanComplete }: { onCleanComplete?: (
         if ((data.suggestions || []).length === 0) {
           popup.success("100% Data Hygiene! 🎯", "All your financial entries are clean and accurate.");
           triggerConfetti();
-        } else {
-          popup.alert(
-            "Data Quality Audit Complete 🔍",
-            `Found ${data.suggestions.length} issues across ${data.totalEntries} entries.`,
-            "info"
-          );
         }
       } else {
         popup.error("Scan Failed", data.error || "Could not scan DataBank entries.");
@@ -148,25 +114,22 @@ export function DatabankCleanerWidget({ onCleanComplete }: { onCleanComplete?: (
         setAnalyticsImpact(data.analyticsImpact || null);
         setCurrentIndex(0);
 
-        if ((data.suggestions || []).length === 0) {
-          popup.alert("AI Agent Response 🤖", data.message || "No matching transactions found for your prompt.", "info");
-        } else {
-          popup.success("AI Agent Generated Fixes ⚡", `Found ${data.suggestions.length} entries matching: "${text.slice(0, 40)}..."`);
-          addXp(30);
-        }
+        popup.success("AI Rule Applied 🪄", `Identified ${data.suggestions.length} entries matching: "${text}"`);
       } else {
-        popup.error("Prompt Failed", data.error || "Could not process AI agent prompt.");
+        popup.error("AI Assistant Error", data.error || "Could not process custom cleaning rule.");
       }
     } catch {
-      popup.error("Error", "Failed to communicate with AI agent server.");
+      popup.error("Error", "Failed to connect to AI assistant.");
     } finally {
       setPrompting(false);
     }
   };
 
-  const handleApplyFixes = async (targetFixes?: CleaningSuggestion[], isAutoSweep = false) => {
-    const itemsToApply = targetFixes || suggestions.filter((s) => selectedIds.has(s.id));
-    if (itemsToApply.length === 0) return;
+  const handleApplyFixes = async (itemsToApply: CleaningSuggestion[], isAutoClean = false) => {
+    if (itemsToApply.length === 0) {
+      popup.alert("No Fixes Selected", "Please select at least one item to clean.", "info");
+      return;
+    }
 
     setApplying(true);
     try {
@@ -193,10 +156,9 @@ export function DatabankCleanerWidget({ onCleanComplete }: { onCleanComplete?: (
         const summary = `Cleaned ${data.totalProcessed} transactions (${data.updatedCount} updated, ${data.deletedCount} duplicates/zero entries removed)!`;
         
         setSuccessSummary(summary);
-        popup.success(isAutoSweep ? "🏆 1-CLICK BULK SWEEP COMPLETE!" : "DataBank Cleaned! ⚡", summary);
+        popup.success(isAutoClean ? "🏆 1-CLICK BULK CLEAN COMPLETE!" : "DataBank Cleaned! ⚡", summary);
         
         triggerConfetti();
-        addXp(isAutoSweep ? 250 : itemsToApply.length * 15);
 
         // Remove applied items
         setSuggestions((prev) => prev.filter((s) => !appliedSet.has(s.id)));
@@ -219,18 +181,14 @@ export function DatabankCleanerWidget({ onCleanComplete }: { onCleanComplete?: (
     }
   };
 
-  // Speed Swipe Card Handlers
-  const handleSwipeApprove = async () => {
+  // Card Review Handlers
+  const handleApproveCurrent = async () => {
     const currentItem = suggestions[currentIndex];
     if (!currentItem) return;
-
-    setStreak((prev) => prev + 1);
-    addXp(15 + Math.min(streak * 5, 50));
     await handleApplyFixes([currentItem]);
   };
 
-  const handleSwipeSkip = () => {
-    setStreak(0);
+  const handleSkipCurrent = () => {
     if (currentIndex < suggestions.length - 1) {
       setCurrentIndex((prev) => prev + 1);
     } else {
@@ -280,451 +238,347 @@ export function DatabankCleanerWidget({ onCleanComplete }: { onCleanComplete?: (
     { label: "💼 Cowrywise to Savings", prompt: "Find all Cowrywise, PiggyVest, and investment transfers and set category to Savings & Investments." },
   ];
 
-  const badges: UserBadge[] = [
-    { id: "clean_starter", title: "Data Novice", description: "Ran your first DataBank audit scan", icon: "🧹", unlocked: hasScanned },
-    { id: "streak_master", title: "Streak Master", description: "Achieved a 5x cleaning streak", icon: "🔥", unlocked: streak >= 5 || xp >= 200 },
-    { id: "turbo_cleaner", title: "1-Click Auto-Sweeper", description: "Cleaned 20+ transactions in 1 click", icon: "⚡", unlocked: xp >= 300 },
-    { id: "master_auditor", title: "Master Financial Auditor", description: "Achieved 100% Data Quality Score", icon: "🏆", unlocked: cleanScore === 100 && totalEntries > 0 },
-  ];
+  const currentCard = suggestions[currentIndex];
 
   return (
     <div
-      className="rounded-[20px] p-5 mb-6 transition-all duration-300 overflow-hidden border"
+      id="ai-cleaner-widget"
+      className="rounded-[16px] p-4 mb-5 transition-all duration-300 border shadow-sm"
       style={{
-        background: "linear-gradient(135deg, rgba(11, 21, 40, 0.95) 0%, rgba(19, 35, 61, 0.95) 100%)",
-        borderColor: cleanScore === 100 ? "var(--green, #00C48C)" : "rgba(255, 215, 0, 0.3)",
-        boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-        color: "#ffffff",
+        background: "var(--card)",
+        borderColor: cleanScore === 100 ? "var(--green, #00C48C)" : "var(--border)",
+        color: "var(--text)",
       }}
     >
-      {/* ── Level Up Celebration Banner ── */}
-      <AnimatePresence>
-        {showLevelUp && (
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0, y: -20 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.8, opacity: 0, y: -20 }}
-            className="p-4 mb-4 rounded-[14px] text-center font-bold text-white shadow-xl flex items-center justify-center gap-3"
-            style={{ background: "linear-gradient(90deg, #FFD700 0%, #FF4081 50%, #00C48C 100%)" }}
-          >
-            <span className="text-[28px]">🎉</span>
-            <div>
-              <div className="text-[16px]">LEVEL UP! Welcome to Level {level} Auditor!</div>
-              <div className="text-[12px] opacity-90 font-normal">You earned bonus XP and unlocked new Data Cleanliness badges!</div>
+      {/* ── HEADER & SCORE BAR ── */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-3" style={{ borderBottom: "1px solid var(--border)" }}>
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-[10px] flex items-center justify-center text-[18px] bg-[var(--green)]/10 text-[var(--green)]">
+            ✨
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[15px] font-bold" style={{ color: "var(--text)" }}>
+                AI Data Cleaner & Bulk Auditor
+              </span>
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[var(--green)]/15 text-[var(--green)]">
+                500+ Batch Fix Engine
+              </span>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <p className="text-[12px] m-0" style={{ color: "var(--muted)" }}>
+              {suggestions.length === 0
+                ? "✨ 100% Verified Data Perfection — all records are clean."
+                : `⚠️ Found ${suggestions.length} issues across ${totalEntries} transactions requiring optimization.`}
+            </p>
+          </div>
+        </div>
 
-      {/* ── GAMIFIED HEALTH SCORE & XP HEADER ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 mb-5 rounded-[16px] border" style={{ background: "rgba(255,255,255,0.03)", borderColor: "rgba(255,255,255,0.08)" }}>
-        {/* Quality Score Meter */}
-        <div className="flex flex-col justify-center">
-          <div className="flex items-center justify-between text-[12px] font-semibold mb-1">
-            <span className="text-gray-300">Data Quality Hygiene</span>
-            <span className="font-bold text-[14px]" style={{ color: cleanScore >= 80 ? "#00C48C" : cleanScore >= 50 ? "#FFD700" : "#EF4444" }}>
+        <div className="flex items-center gap-3">
+          {/* Health Score Pill */}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-[10px] bg-[var(--bg)] border" style={{ borderColor: "var(--border)" }}>
+            <span className="text-[11px] font-medium" style={{ color: "var(--muted)" }}>Hygiene Score:</span>
+            <span className="text-[13px] font-bold" style={{ color: cleanScore >= 80 ? "var(--green)" : cleanScore >= 50 ? "#F5A623" : "#EF4444" }}>
               {cleanScore}% Clean
             </span>
           </div>
-          <div className="w-full h-3 rounded-full overflow-hidden bg-black/40 border border-white/10">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${cleanScore}%` }}
-              transition={{ duration: 1 }}
-              className="h-full rounded-full"
-              style={{
-                background: cleanScore >= 80 ? "linear-gradient(90deg, #00C48C, #10B981)" : cleanScore >= 50 ? "linear-gradient(90deg, #F59E0B, #FFD700)" : "linear-gradient(90deg, #EF4444, #F59E0B)",
-              }}
-            />
-          </div>
-          <div className="text-[11px] mt-1 text-gray-400">
-            {suggestions.length === 0 ? "✨ 100% Verified Data Perfection" : `⚠️ ${suggestions.length} issues detected across ${totalEntries} entries`}
-          </div>
-        </div>
 
-        {/* Level & XP Progress */}
-        <div className="flex flex-col justify-center">
-          <div className="flex items-center justify-between text-[12px] font-semibold mb-1">
-            <span className="text-gray-300">Level {level} Auditor</span>
-            <span className="text-[#FFD700] font-mono font-bold">{xp} XP Total</span>
-          </div>
-          <div className="w-full h-3 rounded-full overflow-hidden bg-black/40 border border-white/10">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-amber-400 to-yellow-300 transition-all"
-              style={{ width: `${xpInCurrentLevel}%` }}
-            />
-          </div>
-          <div className="text-[11px] mt-1 text-gray-400 flex items-center justify-between">
-            <span>{100 - xpInCurrentLevel} XP to Level {level + 1}</span>
-            {streak > 0 && <span className="text-amber-400 font-bold">🔥 {streak}x Streak!</span>}
-          </div>
-        </div>
-
-        {/* Action Button */}
-        <div className="flex items-center justify-end gap-2">
           <button
             onClick={handleScan}
             disabled={scanning || prompting}
-            className="w-full md:w-auto px-4 py-2.5 rounded-[12px] text-[13px] font-bold text-white border-none cursor-pointer transition-all active:scale-95 shadow-lg flex items-center justify-center gap-2"
+            className="px-3.5 py-1.5 rounded-[9px] text-[12px] font-semibold border transition-all cursor-pointer hover:opacity-90 disabled:opacity-50"
             style={{
-              background: "linear-gradient(135deg, #00C48C 0%, #009E70 100%)",
-              opacity: scanning || prompting ? 0.7 : 1,
+              background: "var(--bg)",
+              color: "var(--text)",
+              borderColor: "var(--border)",
             }}
           >
-            {scanning ? (
-              <>
-                <span className="animate-spin text-[14px]">🔄</span> Scanning DataBank...
-              </>
-            ) : (
-              <>
-                <span>🔍 Re-Audit DataBank</span>
-              </>
-            )}
+            {scanning ? "🔄 Scanning..." : "🔍 Re-Scan"}
+          </button>
+
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="p-1.5 rounded-[8px] text-[12px] cursor-pointer hover:bg-[var(--border)]/30"
+            style={{ border: "1px solid var(--border)", color: "var(--muted)", background: "transparent" }}
+            title={isCollapsed ? "Expand Smart Cleaner" : "Collapse Smart Cleaner"}
+          >
+            {isCollapsed ? "▼ Expand" : "▲ Collapse"}
           </button>
         </div>
       </div>
 
-      {/* ── ARCADE GAME TABS ── */}
-      <div className="flex flex-wrap items-center gap-2 mb-4 border-b pb-3" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-        <button
-          onClick={() => setActiveTab("auto_sweep")}
-          className={`px-4 py-2 rounded-[10px] text-[12.5px] font-bold cursor-pointer transition-all flex items-center gap-1.5 border ${
-            activeTab === "auto_sweep"
-              ? "bg-[#00C48C] text-[#0B0E17] border-[#00C48C]"
-              : "bg-white/5 text-gray-300 border-white/10 hover:bg-white/10"
-          }`}
-        >
-          <span>⚡ 1-Click Auto-Sweep (500+)</span>
-          {suggestions.length > 0 && (
-            <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-black/30 text-white font-bold">
-              {suggestions.length}
-            </span>
-          )}
-        </button>
-
-        <button
-          onClick={() => setActiveTab("speed_swipe")}
-          className={`px-4 py-2 rounded-[10px] text-[12.5px] font-bold cursor-pointer transition-all flex items-center gap-1.5 border ${
-            activeTab === "speed_swipe"
-              ? "bg-amber-400 text-[#0B0E17] border-amber-400"
-              : "bg-white/5 text-gray-300 border-white/10 hover:bg-white/10"
-          }`}
-        >
-          <span>🃏 Speed Card Swipe Game</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab("ai_prompt")}
-          className={`px-4 py-2 rounded-[10px] text-[12.5px] font-bold cursor-pointer transition-all flex items-center gap-1.5 border ${
-            activeTab === "ai_prompt"
-              ? "bg-blue-500 text-white border-blue-500"
-              : "bg-white/5 text-gray-300 border-white/10 hover:bg-white/10"
-          }`}
-        >
-          <span>🪄 AI Magic Wand Console</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab("badges")}
-          className={`px-4 py-2 rounded-[10px] text-[12.5px] font-bold cursor-pointer transition-all flex items-center gap-1.5 border ${
-            activeTab === "badges"
-              ? "bg-purple-500 text-white border-purple-500"
-              : "bg-white/5 text-gray-300 border-white/10 hover:bg-white/10"
-          }`}
-        >
-          <span>🏆 Badges & Ranks</span>
-        </button>
-      </div>
-
-      {/* ── TAB 1: 1-CLICK AI AUTO-SWEEP ── */}
-      {activeTab === "auto_sweep" && (
-        <div className="flex flex-col gap-4">
-          <div className="p-4 rounded-[14px] bg-white/5 border border-white/10 flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h4 className="text-[15px] font-bold text-white m-0 flex items-center gap-2">
-                <span>⚡ Bulk AI Auto-Sweep Mode</span>
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#00C48C]/20 text-[#00C48C] font-semibold">
-                  Designed for 500+ Transactions
-                </span>
-              </h4>
-              <p className="text-[12px] text-gray-300 m-0 mt-1">
-                Don't edit entries one by one! 1-Click Auto-Sweep detects and repairs all inverted debits, duplicates, and unclassified entries automatically.
-              </p>
-            </div>
-
+      {!isCollapsed && (
+        <div className="mt-4">
+          {/* ── MODE TABS ── */}
+          <div className="flex flex-wrap items-center gap-2 mb-4">
             <button
-              onClick={() => handleApplyFixes(suggestions, true)}
-              disabled={applying || suggestions.length === 0}
-              className="px-6 py-3 rounded-[12px] text-[14px] font-extrabold text-[#0B0E17] border-none cursor-pointer transition-all shadow-xl hover:scale-105 active:scale-95"
+              onClick={() => setActiveTab("auto_clean")}
+              className="px-3.5 py-1.5 rounded-[8px] text-[12px] font-semibold cursor-pointer transition-all border"
               style={{
-                background: "linear-gradient(90deg, #FFD700 0%, #00C48C 100%)",
-                opacity: applying || suggestions.length === 0 ? 0.6 : 1,
+                background: activeTab === "auto_clean" ? "var(--green)" : "var(--bg)",
+                color: activeTab === "auto_clean" ? "#0B0E17" : "var(--text)",
+                borderColor: activeTab === "auto_clean" ? "var(--green)" : "var(--border)",
               }}
             >
-              {applying ? "Sweeping 500+ Items..." : `🏆 1-CLICK AUTO-SWEEP ALL ${suggestions.length} FIXES (+250 XP)`}
+              ⚡ 1-Click Auto-Clean (500+) {suggestions.length > 0 && `(${suggestions.length})`}
+            </button>
+
+            <button
+              onClick={() => setActiveTab("interactive_review")}
+              className="px-3.5 py-1.5 rounded-[8px] text-[12px] font-semibold cursor-pointer transition-all border"
+              style={{
+                background: activeTab === "interactive_review" ? "var(--green)" : "var(--bg)",
+                color: activeTab === "interactive_review" ? "#0B0E17" : "var(--text)",
+                borderColor: activeTab === "interactive_review" ? "var(--green)" : "var(--border)",
+              }}
+            >
+              🎴 Fast Interactive Card Review
+            </button>
+
+            <button
+              onClick={() => setActiveTab("ai_prompt")}
+              className="px-3.5 py-1.5 rounded-[8px] text-[12px] font-semibold cursor-pointer transition-all border"
+              style={{
+                background: activeTab === "ai_prompt" ? "var(--green)" : "var(--bg)",
+                color: activeTab === "ai_prompt" ? "#0B0E17" : "var(--text)",
+                borderColor: activeTab === "ai_prompt" ? "var(--green)" : "var(--border)",
+              }}
+            >
+              🪄 Custom AI Prompt Rules
             </button>
           </div>
 
-          {/* Categorized Issue Cards */}
-          {suggestions.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="p-3 rounded-[12px] bg-amber-500/10 border border-amber-500/20 text-center">
-                <div className="text-[20px] font-extrabold text-amber-400">{countByType.inverted}</div>
-                <div className="text-[11px] text-gray-300 font-semibold mt-0.5">🔄 Inverted Debits/Credits</div>
-              </div>
-              <div className="p-3 rounded-[12px] bg-red-500/10 border border-red-500/20 text-center">
-                <div className="text-[20px] font-extrabold text-red-400">{countByType.duplicate}</div>
-                <div className="text-[11px] text-gray-300 font-semibold mt-0.5">👯 Duplicate Charges</div>
-              </div>
-              <div className="p-3 rounded-[12px] bg-blue-500/10 border border-blue-500/20 text-center">
-                <div className="text-[20px] font-extrabold text-blue-400">{countByType.uncategorized}</div>
-                <div className="text-[11px] text-gray-300 font-semibold mt-0.5">🏷️ Uncategorized Items</div>
-              </div>
-              <div className="p-3 rounded-[12px] bg-purple-500/10 border border-purple-500/20 text-center">
-                <div className="text-[20px] font-extrabold text-purple-400">{countByType.zero_amount}</div>
-                <div className="text-[11px] text-gray-300 font-semibold mt-0.5">⚠️ Zero Amount Alerts</div>
-              </div>
-            </div>
-          )}
-
-          {/* Suggestions List Table */}
-          {hasScanned && (
-            <div className="mt-2">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[12px] font-bold text-gray-300">
-                  Select Specific Fixes to Apply ({selectedIds.size} / {suggestions.length} selected):
-                </span>
+          {/* ── TAB 1: 1-CLICK BULK AUTO-CLEAN ── */}
+          {activeTab === "auto_clean" && (
+            <div className="flex flex-col gap-4">
+              <div className="p-3.5 rounded-[12px] bg-[var(--bg)] border flex flex-wrap items-center justify-between gap-3" style={{ borderColor: "var(--border)" }}>
+                <div>
+                  <div className="text-[13px] font-bold" style={{ color: "var(--text)" }}>
+                    ⚡ Bulk AI Auto-Clean Mode (500+ Transactions)
+                  </div>
+                  <div className="text-[12px] mt-0.5" style={{ color: "var(--muted)" }}>
+                    Instantly repairs all inverted debits/credits, duplicate records, zero amounts, and missing categories across your entire database.
+                  </div>
+                </div>
                 <button
-                  onClick={toggleSelectAll}
-                  className="text-[11.5px] font-bold text-[#00C48C] bg-transparent border-none cursor-pointer"
-                >
-                  {filteredSuggestions.every((s) => selectedIds.has(s.id)) ? "Deselect All" : "Select All Visible"}
-                </button>
-              </div>
-
-              <div className="flex flex-col gap-2.5 max-h-[360px] overflow-y-auto pr-1">
-                {filteredSuggestions.map((item) => {
-                  const isSelected = selectedIds.has(item.id);
-                  const isDelete = item.suggested.action === "delete";
-
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => toggleSelect(item.id)}
-                      className="flex flex-wrap items-center justify-between p-3 rounded-[12px] border cursor-pointer transition-all hover:border-[#00C48C]"
-                      style={{
-                        background: isSelected ? "rgba(0,196,140,0.08)" : "rgba(255,255,255,0.03)",
-                        borderColor: isSelected ? "#00C48C" : "rgba(255,255,255,0.08)",
-                      }}
-                    >
-                      <div className="flex items-center gap-3 min-w-[260px]">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleSelect(item.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="cursor-pointer"
-                        />
-                        <div>
-                          <div className="text-[13px] font-bold text-white">{item.issue_title}</div>
-                          <div className="text-[11px] text-gray-400">"{item.current.description}" · {item.current.entry_date}</div>
-                        </div>
-                      </div>
-
-                      <div className="text-[12px]">
-                        {isDelete ? (
-                          <span className="px-2.5 py-1 rounded-[6px] font-bold text-red-400 bg-red-500/10 border border-red-500/20">
-                            🗑️ Delete Duplicate
-                          </span>
-                        ) : (
-                          <span className="px-2.5 py-1 rounded-[6px] font-bold text-[#00C48C] bg-[#00C48C]/10 border border-[#00C48C]/20">
-                            {item.current.entry_type} ➔ {item.suggested.entry_type || item.current.entry_type} ({item.suggested.category || item.current.category})
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="flex items-center justify-end gap-3 mt-3 pt-3 border-t border-white/10">
-                <button
-                  onClick={() => handleApplyFixes()}
-                  disabled={applying || selectedIds.size === 0}
-                  className="px-5 py-2.5 rounded-[10px] text-[13px] font-bold text-[#0B0E17] bg-[#00C48C] border-none cursor-pointer hover:opacity-90 disabled:opacity-50"
-                >
-                  {applying ? "Applying Selected Fixes..." : `⚡ Apply ${selectedIds.size} Selected Fixes`}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── TAB 2: SPEED CARD SWIPE GAME ── */}
-      {activeTab === "speed_swipe" && (
-        <div className="flex flex-col items-center justify-center p-4 min-h-[320px]">
-          {suggestions.length === 0 ? (
-            <div className="text-center py-8">
-              <span className="text-[48px] block mb-2">🏆</span>
-              <h3 className="text-[18px] font-bold text-white">All Clean! No Cards to Swipe</h3>
-              <p className="text-[13px] text-gray-400">Your DataBank cleanliness is 100%. Re-audit to check for new transactions!</p>
-            </div>
-          ) : (
-            <div className="w-full max-w-md flex flex-col items-center">
-              <div className="text-[12px] font-bold text-amber-400 mb-2 tracking-wider uppercase">
-                🃏 Card {currentIndex + 1} of {suggestions.length} · 🔥 {streak}x Clean Streak!
-              </div>
-
-              {/* Swipe Card */}
-              {suggestions[currentIndex] && (
-                <motion.div
-                  key={suggestions[currentIndex].id}
-                  initial={{ scale: 0.9, opacity: 0, y: 10 }}
-                  animate={{ scale: 1, opacity: 1, y: 0 }}
-                  exit={{ scale: 0.9, opacity: 0, y: -10 }}
-                  className="w-full p-5 rounded-[20px] border shadow-2xl flex flex-col gap-4 text-left relative overflow-hidden"
+                  onClick={() => handleApplyFixes(suggestions, true)}
+                  disabled={applying || suggestions.length === 0}
+                  className="px-4 py-2 rounded-[9px] text-[12px] font-bold cursor-pointer transition-all shadow-sm hover:opacity-90 disabled:opacity-50"
                   style={{
-                    background: "linear-gradient(145deg, #13233d 0%, #0d1b30 100%)",
-                    borderColor: "rgba(255, 215, 0, 0.3)",
+                    background: "var(--green)",
+                    color: "#0B0E17",
+                    border: "none",
                   }}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300">
-                      {suggestions[currentIndex].issue_title}
-                    </span>
-                    <span className="text-[11px] text-gray-400 font-mono">
-                      📅 {suggestions[currentIndex].current.entry_date}
-                    </span>
-                  </div>
+                  {applying ? "⏳ Cleaning..." : `⚡ 1-CLICK CLEAN ALL ${suggestions.length} FIXES`}
+                </button>
+              </div>
 
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-gray-400 block mb-0.5">Transaction Description</span>
-                    <div className="text-[15px] font-extrabold text-white">
-                      "{suggestions[currentIndex].current.description}"
+              {/* Filter Pills */}
+              {suggestions.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                      <button
+                        onClick={() => setFilterTab("all")}
+                        className={`px-2.5 py-1 rounded-[6px] font-medium border cursor-pointer ${
+                          filterTab === "all" ? "bg-[var(--text)] text-[var(--bg)]" : "bg-[var(--bg)] text-[var(--muted)]"
+                        }`}
+                        style={{ borderColor: "var(--border)" }}
+                      >
+                        All Issues ({suggestions.length})
+                      </button>
+                      {countByType.inverted > 0 && (
+                        <button
+                          onClick={() => setFilterTab("inverted_direction")}
+                          className={`px-2.5 py-1 rounded-[6px] font-medium border cursor-pointer ${
+                            filterTab === "inverted_direction" ? "bg-amber-500 text-black" : "bg-[var(--bg)] text-[var(--muted)]"
+                          }`}
+                          style={{ borderColor: "var(--border)" }}
+                        >
+                          Inverted Debits ({countByType.inverted})
+                        </button>
+                      )}
+                      {countByType.duplicate > 0 && (
+                        <button
+                          onClick={() => setFilterTab("duplicate")}
+                          className={`px-2.5 py-1 rounded-[6px] font-medium border cursor-pointer ${
+                            filterTab === "duplicate" ? "bg-red-500 text-white" : "bg-[var(--bg)] text-[var(--muted)]"
+                          }`}
+                          style={{ borderColor: "var(--border)" }}
+                        >
+                          Duplicates ({countByType.duplicate})
+                        </button>
+                      )}
+                      {countByType.uncategorized > 0 && (
+                        <button
+                          onClick={() => setFilterTab("uncategorized")}
+                          className={`px-2.5 py-1 rounded-[6px] font-medium border cursor-pointer ${
+                            filterTab === "uncategorized" ? "bg-blue-500 text-white" : "bg-[var(--bg)] text-[var(--muted)]"
+                          }`}
+                          style={{ borderColor: "var(--border)" }}
+                        >
+                          Uncategorized ({countByType.uncategorized})
+                        </button>
+                      )}
                     </div>
-                  </div>
 
-                  {/* Diff Comparison Box */}
-                  <div className="p-3 rounded-[12px] bg-black/30 border border-white/10 flex items-center justify-between text-[13px]">
-                    <div>
-                      <span className="text-[10px] text-gray-400 uppercase font-bold block">Current</span>
-                      <span className="font-bold text-red-400 line-through">
-                        {suggestions[currentIndex].current.entry_type} · {suggestions[currentIndex].current.category}
-                      </span>
-                    </div>
-                    <span className="text-[16px] text-amber-400">➔</span>
-                    <div>
-                      <span className="text-[10px] text-[#00C48C] uppercase font-bold block">AI Fix</span>
-                      <span className="font-extrabold text-[#00C48C]">
-                        {suggestions[currentIndex].suggested.entry_type || suggestions[currentIndex].current.entry_type} · {suggestions[currentIndex].suggested.category || suggestions[currentIndex].current.category}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Swipe Game Buttons */}
-                  <div className="grid grid-cols-3 gap-2 pt-2">
                     <button
-                      onClick={handleSwipeSkip}
-                      className="py-2.5 rounded-[10px] text-[12px] font-bold text-gray-300 bg-white/5 border border-white/10 hover:bg-white/10 cursor-pointer"
+                      onClick={toggleSelectAll}
+                      className="text-[11px] font-semibold text-[var(--green)] hover:underline cursor-pointer bg-transparent border-none"
                     >
-                      ❌ Skip
-                    </button>
-                    <button
-                      onClick={handleSwipeApprove}
-                      disabled={applying}
-                      className="py-2.5 rounded-[10px] text-[12px] font-bold text-[#0B0E17] bg-[#00C48C] border-none hover:opacity-90 cursor-pointer col-span-2"
-                    >
-                      {applying ? "Fixing..." : "⚡ Approve Fix (+15 XP)"}
+                      {filteredSuggestions.every((s) => selectedIds.has(s.id)) ? "Deselect All" : "Select All"}
                     </button>
                   </div>
-                </motion.div>
+
+                  {/* List preview */}
+                  <div className="max-h-[260px] overflow-y-auto space-y-2 pr-1">
+                    {filteredSuggestions.map((s) => {
+                      const selected = selectedIds.has(s.id);
+                      return (
+                        <div
+                          key={s.id}
+                          onClick={() => toggleSelect(s.id)}
+                          className={`p-2.5 rounded-[8px] text-[12px] border cursor-pointer transition-all flex items-center justify-between gap-3 ${
+                            selected ? "bg-[var(--green)]/10 border-[var(--green)]/40" : "bg-[var(--bg)] border-[var(--border)]"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={() => toggleSelect(s.id)}
+                              className="w-4 h-4 rounded accent-[var(--green)] cursor-pointer"
+                            />
+                            <div>
+                              <div className="font-semibold" style={{ color: "var(--text)" }}>
+                                {s.current.description || "Transaction"}
+                              </div>
+                              <div className="text-[11px] text-[var(--muted)] flex items-center gap-2 mt-0.5">
+                                <span>Current: {s.current.entry_type} | ₦{(s.current.amount || 0).toLocaleString()}</span>
+                                <span>→</span>
+                                <span className="font-semibold text-[var(--green)]">
+                                  Suggested: {s.suggested.action === "delete" ? "🗑️ Remove Duplicate" : `${s.suggested.entry_type} (${s.suggested.category})`}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <span className="text-[11px] font-mono opacity-60">ID: {s.id.slice(0, 8)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Apply Selected Button */}
+                  <div className="flex justify-end mt-3">
+                    <button
+                      onClick={() =>
+                        handleApplyFixes(
+                          suggestions.filter((s) => selectedIds.has(s.id))
+                        )
+                      }
+                      disabled={applying || selectedIds.size === 0}
+                      className="px-4 py-2 rounded-[8px] text-[12px] font-bold cursor-pointer transition-all border"
+                      style={{
+                        background: "var(--bg)",
+                        color: "var(--green)",
+                        borderColor: "var(--green)",
+                      }}
+                    >
+                      Apply {selectedIds.size} Selected Fixes
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           )}
-        </div>
-      )}
 
-      {/* ── TAB 3: AI MAGIC WAND PROMPT CONSOLE ── */}
-      {activeTab === "ai_prompt" && (
-        <div className="flex flex-col gap-3 p-4 rounded-[14px] bg-white/5 border border-white/10">
-          <div className="text-[13px] font-bold text-white flex items-center gap-2">
-            <span>🪄</span>
-            <span>Natural Language AI Magic Wand</span>
-          </div>
+          {/* ── TAB 2: FAST INTERACTIVE CARD REVIEW ── */}
+          {activeTab === "interactive_review" && (
+            <div className="p-4 rounded-[12px] bg-[var(--bg)] border" style={{ borderColor: "var(--border)" }}>
+              {suggestions.length === 0 ? (
+                <div className="text-center py-6 text-[13px]" style={{ color: "var(--muted)" }}>
+                  🎉 All transaction records are audited and 100% clean!
+                </div>
+              ) : currentCard ? (
+                <div className="flex flex-col items-center text-center gap-3 max-w-[480px] mx-auto">
+                  <span className="text-[11px] font-bold text-[var(--muted)] uppercase tracking-wider">
+                    Item {currentIndex + 1} of {suggestions.length}
+                  </span>
+                  <div className="text-[16px] font-bold" style={{ color: "var(--text)" }}>
+                    {currentCard.current.description || "Transaction Alert"}
+                  </div>
+                  <div className="text-[12px]" style={{ color: "var(--muted)" }}>
+                    Category: <b>{currentCard.current.category || "Uncategorized"}</b> | Amount: <b>₦{(currentCard.current.amount || 0).toLocaleString()}</b>
+                  </div>
 
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={userPrompt}
-              onChange={(e) => setUserPrompt(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendPrompt();
-                }
-              }}
-              placeholder="e.g. 'Categorize all Cowrywise transfers to Savings', 'Fix GTBank debits'..."
-              className="flex-1 px-3.5 py-2.5 rounded-[10px] text-[13px] outline-none border bg-black/40 text-white border-white/15 focus:border-[#00C48C]"
-            />
-            <button
-              onClick={() => handleSendPrompt()}
-              disabled={prompting || !userPrompt.trim()}
-              className="px-5 py-2.5 rounded-[10px] text-[13px] font-bold text-white bg-blue-600 border-none cursor-pointer hover:bg-blue-500 disabled:opacity-50"
-            >
-              {prompting ? "AI Agent Working..." : "Run AI Wand ⚡"}
-            </button>
-          </div>
+                  <div className="p-3 my-1 rounded-[10px] w-full text-left text-[12px] bg-[var(--card)] border" style={{ borderColor: "var(--border)" }}>
+                    <div className="text-[11px] font-bold text-amber-500 uppercase mb-1">Detected Issue: {currentCard.issue_type}</div>
+                    <div>Reason: {currentCard.issue_description}</div>
+                    <div className="mt-2 font-semibold text-[var(--green)]">
+                      Suggested Fix: {currentCard.suggested.action === "delete" ? "🗑️ Delete Duplicate Record" : `Update to ${currentCard.suggested.entry_type} [${currentCard.suggested.category}]`}
+                    </div>
+                  </div>
 
-          <div className="flex flex-wrap gap-2 pt-2">
-            {quickPromptChips.map((chip) => (
-              <button
-                key={chip.label}
-                onClick={() => {
-                  setUserPrompt(chip.prompt);
-                  handleSendPrompt(chip.prompt);
-                }}
-                disabled={prompting || scanning}
-                className="px-2.5 py-1.5 rounded-[8px] text-[11px] font-semibold bg-white/5 text-gray-300 border border-white/10 hover:border-[#00C48C] hover:text-white cursor-pointer"
-              >
-                {chip.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+                  <div className="flex items-center gap-3 w-full mt-2">
+                    <button
+                      onClick={handleSkipCurrent}
+                      className="flex-1 py-2 rounded-[9px] text-[12px] font-semibold border cursor-pointer hover:bg-[var(--border)]/20"
+                      style={{ background: "transparent", color: "var(--muted)", borderColor: "var(--border)" }}
+                    >
+                      Skip
+                    </button>
+                    <button
+                      onClick={handleApproveCurrent}
+                      className="flex-1 py-2 rounded-[9px] text-[12px] font-bold cursor-pointer transition-all hover:opacity-90"
+                      style={{ background: "var(--green)", color: "#0B0E17", border: "none" }}
+                    >
+                      ✓ Approve Fix
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          )}
 
-      {/* ── TAB 4: BADGES & RANKS ── */}
-      {activeTab === "badges" && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-          {badges.map((b) => (
-            <div
-              key={b.id}
-              className="p-4 rounded-[14px] border text-center flex flex-col items-center justify-between"
-              style={{
-                background: b.unlocked ? "rgba(0,196,140,0.08)" : "rgba(255,255,255,0.02)",
-                borderColor: b.unlocked ? "#00C48C" : "rgba(255,255,255,0.08)",
-                opacity: b.unlocked ? 1 : 0.5,
-              }}
-            >
-              <div className="text-[36px] mb-2">{b.icon}</div>
-              <div>
-                <div className="text-[13px] font-bold text-white">{b.title}</div>
-                <div className="text-[11px] text-gray-400 mt-1">{b.description}</div>
-              </div>
-              <div className="mt-3">
-                <span
-                  className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider"
-                  style={{
-                    background: b.unlocked ? "#00C48C" : "rgba(255,255,255,0.1)",
-                    color: b.unlocked ? "#0B0E17" : "#94A3B8",
-                  }}
+          {/* ── TAB 3: CUSTOM AI PROMPT RULES ── */}
+          {activeTab === "ai_prompt" && (
+            <div className="flex flex-col gap-3">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={userPrompt}
+                  onChange={(e) => setUserPrompt(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSendPrompt()}
+                  placeholder="e.g. 'Recategorize all Uber trips to Transport', 'Set Cowrywise as Savings'..."
+                  className="flex-1 px-3.5 py-2.5 rounded-[9px] text-[12px] border focus:outline-none"
+                  style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
+                />
+                <button
+                  onClick={() => handleSendPrompt()}
+                  disabled={prompting || !userPrompt.trim()}
+                  className="px-4 py-2.5 rounded-[9px] text-[12px] font-bold cursor-pointer border-none transition-all disabled:opacity-50"
+                  style={{ background: "var(--green)", color: "#0B0E17" }}
                 >
-                  {b.unlocked ? "Unlocked 🔓" : "Locked 🔒"}
-                </span>
+                  {prompting ? "Processing..." : "Run AI Rule"}
+                </button>
+              </div>
+
+              {/* Preset Chips */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[11px] font-semibold" style={{ color: "var(--muted)" }}>Quick Rules:</span>
+                {quickPromptChips.map((chip, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleSendPrompt(chip.prompt)}
+                    className="px-2.5 py-1 rounded-[6px] text-[11px] font-medium border cursor-pointer hover:border-[var(--green)] hover:text-[var(--green)] transition-all"
+                    style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--muted)" }}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
               </div>
             </div>
-          ))}
+          )}
         </div>
       )}
     </div>
