@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase-server";
 import { Pool } from "pg";
 import { upsertMerchantRule } from "@/lib/merchant-rules";
-import { getUserDataBankIQ } from "@/lib/databank-iq";
+import { getUserDataBankIQ } from "@/lib/databank-iq-server";
 import { getMilestoneInsight } from "@/lib/databank-iq-generator";
 
 let sharedPool: Pool | null = null;

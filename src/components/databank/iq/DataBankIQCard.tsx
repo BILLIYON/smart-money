@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { IQQuestion, IQQuestionOption } from "@/lib/databank-iq-generator";
+import type { IQQuestion, IQQuestionOption } from "@/lib/databank-iq-types";
 
 interface DataBankIQCardProps {
   question: IQQuestion;

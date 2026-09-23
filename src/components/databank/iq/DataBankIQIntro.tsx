@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { DataBankIQScoreRing } from "./DataBankIQScoreRing";
 import { IQ_LEVELS, IQLevelInfo } from "@/lib/databank-iq";
-import { DataBankIQSessionData } from "@/lib/databank-iq-generator";
+import type { DataBankIQSessionData } from "@/lib/databank-iq-types";
 
 interface DataBankIQIntroProps {
   session: DataBankIQSessionData;

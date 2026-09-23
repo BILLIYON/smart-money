@@ -1,31 +1,5 @@
-import { Pool } from "pg";
-
-let sharedPool: Pool | null = null;
-function getPool() {
-  if (!sharedPool) {
-    const dbUrl = process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money";
-    const isRemote = dbUrl.includes("supabase.com") || dbUrl.includes("pooler") || dbUrl.includes("aws-");
-    sharedPool = new Pool({
-      connectionString: dbUrl,
-      ssl: isRemote ? { rejectUnauthorized: false } : false,
-      max: 10,
-    });
-  }
-  return sharedPool;
-}
-
-export type IQLevelName = "Blurry" | "Developing" | "Clear" | "Sharp" | "Elite";
-
-export interface IQLevelInfo {
-  name: IQLevelName;
-  min: number;
-  max: number;
-  badge: string;
-  tagline: string;
-  description: string;
-  color: string;
-  bgRgba: string;
-}
+export * from "./databank-iq-types";
+import { IQLevelInfo, IQLevelName, IQCalculationResult } from "./databank-iq-types";
 
 export const IQ_LEVELS: Record<IQLevelName, IQLevelInfo> = {
   Blurry: {
@@ -89,20 +63,6 @@ export function getIQLevel(score: number): IQLevelInfo {
   return IQ_LEVELS.Elite;
 }
 
-export interface IQCalculationResult {
-  score: number;
-  level: IQLevelInfo;
-  totalTransactions: number;
-  categorisedTransactions: number;
-  uncategorisedTransactions: number;
-  intentCapturedTransactions: number;
-  totalValueMajor: number;
-  categorisedValueMajor: number;
-  intentValueMajor: number;
-  categorisedPercent: number;
-  intentPercent: number;
-}
-
 const UNCATEGORIZED_VALUES = new Set([
   "",
   "uncategorized",
@@ -111,7 +71,7 @@ const UNCATEGORIZED_VALUES = new Set([
   "other",
   "miscellaneous",
   "unknown",
-  "transfer", // raw unlabelled transfers require intent/category
+  "transfer",
 ]);
 
 /**
@@ -170,7 +130,6 @@ export function computeIQScore(
   const categorisedRatio = totalValueMinor > 0 ? categorisedValueMinor / totalValueMinor : 0.5;
   const intentRatio = totalValueMinor > 0 ? intentValueMinor / totalValueMinor : 0.1;
 
-  // Formula: 60% category completeness + 40% intent capture
   let rawScore = categorisedRatio * 60 + intentRatio * 40;
   rawScore = Math.max(10, Math.min(100, Math.round(rawScore)));
 
@@ -189,31 +148,4 @@ export function computeIQScore(
     categorisedPercent: Math.round(categorisedRatio * 100),
     intentPercent: Math.round(intentRatio * 100),
   };
-}
-
-/**
- * Fetch a user's transactions from the DB and calculate their live DataBank IQ
- */
-export async function getUserDataBankIQ(userId: string): Promise<IQCalculationResult> {
-  const pool = getPool();
-  const { rows } = await pool.query(
-    `SELECT amount, category, intent, entry_type
-     FROM public.databank_entries
-     WHERE user_id = $1
-     ORDER BY entry_date DESC
-     LIMIT 500;`,
-    [userId]
-  );
-
-  const result = computeIQScore(rows);
-
-  // Sync latest score to users table asynchronously
-  pool.query(
-    `UPDATE public.users 
-     SET databank_iq_score = $1, databank_iq_level = $2 
-     WHERE id = $3;`,
-    [result.score, result.level.name, userId]
-  ).catch((err) => console.warn("[getUserDataBankIQ] Failed to persist user score:", err));
-
-  return result;
 }

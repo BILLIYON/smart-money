@@ -8,7 +8,7 @@ import { DataBankIQCard } from "./DataBankIQCard";
 import { DataBankIQMilestoneModal } from "./DataBankIQMilestoneModal";
 import { DataBankIQSummary } from "./DataBankIQSummary";
 import { IQLevelInfo, getIQLevel } from "@/lib/databank-iq";
-import { IQQuestion, DataBankIQSessionData } from "@/lib/databank-iq-generator";
+import type { IQQuestion, DataBankIQSessionData } from "@/lib/databank-iq-types";
 import { popup } from "@/store/popupStore";
 
 interface DataBankIQScreenProps {
