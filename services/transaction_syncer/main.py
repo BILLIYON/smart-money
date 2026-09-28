@@ -148,8 +148,8 @@ async def execute_user_sync(
     parsed_entries = []
     
     for idx, msg_stub in enumerate(messages):
-        # 40ms throttle prevents Google API per-minute quota rate limit spikes
-        await asyncio.sleep(0.04)
+        # 120ms throttle prevents Google API per-minute quota rate limit spikes (250 quota units/sec ceiling)
+        await asyncio.sleep(0.12)
         msg_id = msg_stub["id"]
         detail = get_message_detail(service, msg_id)
         if not detail:
@@ -197,6 +197,16 @@ async def execute_user_sync(
     if save_to_db and parsed_entries:
         update_sync_progress(user_id, 95.0, "Saving entries to databank...")
         saved_count = save_databank_entries(user_id, parsed_entries)
+
+        # Sync with Google Sheets Ledger if user has ledger connected
+        sheet_id = (integration.get("metadata") or {}).get("sheets_ledger_id")
+        if sheet_id and integration.get("access_token"):
+            try:
+                from engine.sheets_client import get_sheets_service, append_parsed_entries_to_sheet
+                sheets_svc = get_sheets_service(integration["access_token"], integration.get("refresh_token"))
+                append_parsed_entries_to_sheet(sheets_svc, sheet_id, parsed_entries)
+            except Exception as sheet_err:
+                print(f"[Main] Non-critical error updating Google Sheet: {sheet_err}")
 
     update_sync_progress(user_id, 100.0, f"Sync complete. Extracted {len(parsed_entries)} transactions ({saved_count} new saved).", is_syncing=False)
     yield json.dumps({

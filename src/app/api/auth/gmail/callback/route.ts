@@ -4,8 +4,11 @@ import { decrypt, encrypt } from "@/lib/crypto";
 import { getAppOrigin } from "@/lib/auth-utils";
 import { Pool } from "pg";
 
+const dbUrl = process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money";
+const isRemote = dbUrl.includes("supabase.com") || dbUrl.includes("pooler") || dbUrl.includes("aws-");
 const localPool = new Pool({
-  connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+  connectionString: dbUrl,
+  ssl: isRemote ? { rejectUnauthorized: false } : false,
 });
 
 function redirectOrPopup(url: string, type: "GMAIL_CONNECTED" | "GMAIL_ERROR") {
@@ -115,7 +118,12 @@ export async function GET(req: Request) {
             encrypt(tokens.access_token),
             tokens.refresh_token ? encrypt(tokens.refresh_token) : "",
             tokenExpiry,
-            ["gmail.readonly", "gmail.labels"],
+            [
+              "https://www.googleapis.com/auth/gmail.readonly",
+              "https://www.googleapis.com/auth/gmail.labels",
+              "https://www.googleapis.com/auth/spreadsheets",
+              "https://www.googleapis.com/auth/drive.file",
+            ],
           ]
         );
       } catch (dbErr) {

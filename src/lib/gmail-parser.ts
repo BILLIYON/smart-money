@@ -43,14 +43,58 @@ const BANK_PATTERNS: Array<{ id: string; label: string; pattern: RegExp }> = [
   { id: "jobberman", label: "Jobberman", pattern: /\bjobberman\b/i },
 ];
 
+// ── Negative Keyword Blacklist for Marketing & Announcement Emails ─────────
+const EXCLUDED_MARKETING_KEYWORDS = [
+  "security alert", "login alert", "verification code", "password reset", "two-factor", "2fa", "otp",
+  "welcome to", "newsletter", "unsubscribe", "survey", "rate your experience",
+  "bonus cash", "promo code", "claim your discount", "special offer", "limited time offer",
+  "notice of branch closure", "branch closure", "important update on", "naira card",
+  "spending limit", "terms of service", "terms and conditions", "privacy policy",
+  "dangote ipo", "dangote refinery", "school fees from abroad", "subscribe to",
+  "system upgrade", "scheduled maintenance", "maintenance window", "service downtime",
+  "public holiday", "eid el", "easter", "christmas", "father's day", "mother's day",
+  "democracy day", "independence day", "annual report", "annual general meeting",
+  "financial statement", "statutory notice", "tariff", "webinar", "cashback promo",
+  "win a chance", "level up", "make a move", "business series", "chowdeck",
+  "tech conversation", "business success story", "summer body", "get rewarded on your account anniversary",
+  "not every leo message is from leo", "meet uba money explorers", "help kids spend smarter"
+];
+
 function normalizeText(text: string): string {
   return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function extractTableKeyValuePairs(html: string): Record<string, string> {
+  const kv: Record<string, string> = {};
+  if (!html) return kv;
+
+  // Match <tr><td>Key</td><td>Value</td></tr> patterns
+  const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  let match;
+  while ((match = rowRegex.exec(html)) !== null) {
+    const rowHtml = match[1];
+    const cellRegex = /<(?:td|th)[^>]*>([\s\S]*?)<\/(?:td|th)>/gi;
+    const cells: string[] = [];
+    let cellMatch;
+    while ((cellMatch = cellRegex.exec(rowHtml)) !== null) {
+      const clean = cellMatch[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      if (clean) cells.push(clean);
+    }
+    if (cells.length >= 2) {
+      const key = cells[0].replace(/:/g, "").trim().toLowerCase();
+      const val = cells[1].trim();
+      if (key && val) {
+        kv[key] = val;
+      }
+    }
+  }
+
+  return kv;
 }
 
 function extractAmount(text: string): number | null {
   const isLikelyYear = (num: number, snippet: string) => {
     if (num >= 1990 && num <= 2040 && Number.isInteger(num)) {
-      // If NOT explicitly prefixed by a currency symbol or amount label, reject year
       return !/(?:₦|NGN|\bN\b|\$|Amount|Paid|Value|Txn|Credited|Debited)/i.test(snippet);
     }
     return false;
@@ -81,19 +125,11 @@ function extractAmount(text: string): number | null {
     if (!isNaN(val) && Math.abs(val) > 0) return Math.abs(val);
   }
 
-  // Priority 3: Fallback match for formatted numbers ONLY (MUST have comma separator or decimal point e.g., 5,000.00 or 15369.00)
-  const formattedMatch = text.match(/\b([1-9]\d{0,2}(?:,\d{3})+(?:\.\d{2})?)\b/) || text.match(/\b([1-9]\d{1,6}\.\d{2})\b/);
-  if (formattedMatch?.[1]) {
-    const val = parseFloat(formattedMatch[1].replace(/,/g, ""));
-    if (!isNaN(val) && val > 0 && !isLikelyYear(val, formattedMatch[0])) return val;
-  }
-
   return null;
 }
 
 function extractBalance(text: string): number | null {
-  // Matches "available balance is ₦3,215.96", "Ledger Balance: ₦50,000", "Acct Bal: 5,000"
-  const regex = /(?:Available\s+Balance|Ledger\s+Balance|Acct\s+Bal|Account\s+Balance|Bal|Balance|New\s+Balance)(?:\s+is)?[:\s]*(?:₦|NGN|N|\$)?\s*([+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)/i;
+  const regex = /(?:Available\s+Balance|Ledger\s+Balance|Acct\s+Bal|Account\s+Balance|Bal|Balance|New\s+Balance|Book\s+Balance|Ending\s+Balance)(?:\s+is)?[:\s]*(?:₦|NGN|N|\$)?\s*([+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)/i;
   const match = text.match(regex);
   if (match?.[1]) {
     const val = parseFloat(match[1].replace(/,/g, ""));
@@ -127,12 +163,11 @@ export function cleanExtractedDescription(candidate?: string | null, bank?: stri
     .replace(/^are shown below[:\s]*/i, "")
     .replace(/^transaction notification account number\s*:.*$/i, "")
     .replace(/account number\s*:.*$/i, "")
-    .replace(/\s+Merchant\s+Order.*$/i, "")
-    .replace(/\s+Order\s+(?:No|Number).*$/i, "")
-    .replace(/\s+Txn\s+(?:No|Ref).*$/i, "")
-    .replace(/\s+Transaction\s+(?:No|Date).*$/i, "")
+    // Strip trailing Bank/Plc/Account/STAN/Session ID trailers that stick to beneficiary names
+    .replace(/(?:\s+Bank[:\s]+.*|\s+Bank$)/gi, "")
+    .replace(/(?:\s+Account(?:\s+Number)?[:\s]+.*|\s+Acct(?:\s+No)?[:\s]+.*)$/gi, "")
+    .replace(/(?:\s+Order\s+(?:No|Number).*|\s+Txn\s+(?:No|Ref).*|\s+Session\s+ID.*)$/gi, "")
     .replace(/(?:current|available|ledger|acct)?\s*balance\s*(?:is)?\s*(?:₦|ngn|n|\$)?\s*[\d,]+(?:\.\d{2})?/gi, "")
-    .replace(/\s+bank$/i, "")
     .replace(/\s+/g, " ")
     .trim();
 
@@ -150,7 +185,6 @@ export function cleanExtractedDescription(candidate?: string | null, bank?: stri
 
 function extractReason(text: string, description: string, entryType: "income" | "expense", bank?: string): string {
   const normalized = normalizeText(text);
-
   const cleanDesc = cleanExtractedDescription(description, bank) || (bank ? `${bank} Alert` : "Transaction Alert");
 
   if (/(uber|bolt|indrive|transport|flight|ride|taxi)/i.test(normalized)) return `Ride hailing & transport via ${bank || "provider"}`;
@@ -165,8 +199,26 @@ function extractReason(text: string, description: string, entryType: "income" | 
   return `Debit transaction (${cleanDesc})`;
 }
 
-export function extractDescription(text: string, from: string, bank?: string): string {
-  // 1. Explicit Merchant Name pattern (e.g. "Merchant Name: DEMERGE NIGERIA LIMITED Merchant Order Number: ...")
+export function extractDescription(text: string, from: string, bank?: string, kv?: Record<string, string>): string {
+  // Check structured KV pairs first if available
+  if (kv) {
+    for (const k of ["remarks", "narration", "description", "recipient", "name", "beneficiary", "merchant name", "merchant"]) {
+      if (kv[k]) {
+        const candidate = cleanExtractedDescription(kv[k], bank);
+        if (candidate && !/transaction|account|amount|debit|credit|notification|balance/i.test(candidate)) {
+          if (k === "merchant name" || k === "merchant") {
+            return candidate.startsWith("Payment to") ? candidate : `Payment to ${candidate.slice(0, 50)}`;
+          }
+          if (k === "recipient" || k === "name") {
+            return candidate.startsWith("Transfer to") ? candidate : `Transfer to ${candidate.slice(0, 50)}`;
+          }
+          return candidate.slice(0, 80);
+        }
+      }
+    }
+  }
+
+  // 1. Explicit Merchant Name pattern
   const merchantMatch = text.match(/(?:Merchant\s*Name|Merchant)[:\s\-=]+([^:\n\.,]{2,60})(?:\s+Merchant|\s+Order|\s+Txn|\s+Date|\s*$)/i);
   if (merchantMatch?.[1]) {
     const candidate = cleanExtractedDescription(merchantMatch[1], bank);
@@ -175,7 +227,7 @@ export function extractDescription(text: string, from: string, bank?: string): s
     }
   }
 
-  // 2. OPay transfer recipient pattern ("Name: PAUL KWAGWI DEMBO Bank: OPay Account Number: ...")
+  // 2. OPay transfer recipient pattern
   const opayMatch = text.match(/Name:\s*([^:\n\.\,]{2,50})(?:\s+Bank:|\s+Account|\s*$)/i) || text.match(/Name:\s*([^:\n\.\,]{2,40})/i);
   if (opayMatch?.[1]) {
     const candidate = cleanExtractedDescription(opayMatch[1], bank);
@@ -184,7 +236,7 @@ export function extractDescription(text: string, from: string, bank?: string): s
     }
   }
 
-  // 3. GTBank & explicit bank narration fields (Remarks, Narration, Paid To, Received From, Beneficiary, Recipient, Sender)
+  // 3. Explicit bank narration fields
   const explicitFieldMatch = text.match(
     /(?:Remarks|Narration|Paid to|Received from|Beneficiary|Recipient|Sender)[:\s\-=]+([^,\.\n]{2,80})/i
   );
@@ -195,7 +247,7 @@ export function extractDescription(text: string, from: string, bank?: string): s
     }
   }
 
-  // 4. Check for "Transfer to <Name>" or "Paid to <Name>" or "Received from <Name>" in body text
+  // 4. "Transfer to <Name>" or "Paid to <Name>" in body text
   const transferNameMatch = text.match(/(?:transfer\s+to|paid\s+to|sent\s+to|credited\s+to|received\s+from)\s+([A-Z\s]{3,40})/i);
   if (transferNameMatch?.[1]) {
     const candidate = cleanExtractedDescription(transferNameMatch[1], bank);
@@ -213,7 +265,7 @@ export function extractDescription(text: string, from: string, bank?: string): s
     return "Airtime & Data Top-up";
   }
 
-  // 6. Known Senders & Organizations (e.g. Taxtech, Taxaide, Jobberman, Uber, Bolt, Jumia, Konga)
+  // 6. Known Senders & Organizations
   if (from) {
     const cleanedFrom = from.split("<")[0].replace(/"/g, "").trim();
     if (cleanedFrom && !/no-reply|noreply|notification|alert|service|info/i.test(cleanedFrom)) {
@@ -226,7 +278,7 @@ export function extractDescription(text: string, from: string, bank?: string): s
     }
   }
 
-  // 7. Generic Description / Desc label
+  // 7. Generic Description label
   const descMatch = text.match(/(?:Desc|Description)[:\s\-=]+([^,\.\n]{2,80})/i);
   if (descMatch?.[1]) {
     const candidate = cleanExtractedDescription(descMatch[1], bank);
@@ -278,9 +330,24 @@ function detectBank(text: string, from: string, subject = ""): { id: string; lab
   return null;
 }
 
-export function inferEntryType(text: string, subject = "", from = ""): "income" | "expense" {
+export function inferEntryType(text: string, subject = "", from = "", kv?: Record<string, string>): "income" | "expense" {
   const combined = normalizeText(`${subject} ${text}`);
   const normalizedSubject = normalizeText(subject);
+
+  // GTBank explicit subject format: [Credit: NGN ...] vs [Debit: NGN ...]
+  if (/\[credit[:\s]/i.test(subject)) return "income";
+  if (/\[debit[:\s]/i.test(subject)) return "expense";
+
+  // Zenith Direct explicit subject: "Zenith Direct: Credit Alert" vs "Debit Alert"
+  if (/credit\s*alert|credit\s*notification|nip\s*credit/i.test(normalizedSubject)) return "income";
+  if (/debit\s*alert|debit\s*notification|nip\s*debit/i.test(normalizedSubject)) return "expense";
+
+  // KV Table Type check (e.g. Transaction Type: CR / DR)
+  if (kv) {
+    const txnType = (kv["transaction type"] || kv["type"] || "").trim().toLowerCase();
+    if (txnType === "cr" || txnType === "credit" || txnType === "inward") return "income";
+    if (txnType === "dr" || txnType === "debit" || txnType === "outward") return "expense";
+  }
 
   // Absolute Priority 0: Explicit Merchant / Payment Outflow Patterns
   if (
@@ -290,35 +357,27 @@ export function inferEntryType(text: string, subject = "", from = ""): "income" 
     return "expense";
   }
 
+  // Grammatical Direction Check: "transferred to", "paid to", "sent to" are ALWAYS expense
+  if (/\b(?:you\s+)?(?:transferred|paid|sent)\s+(?:(?:ngn|₦|\$)?\s*[\d,]+(?:\.\d{2})?\s+)?to\b/i.test(combined)) {
+    return "expense";
+  }
+
   // 1. Explicit Credit / Inflow Signals (User received money)
   const isSubjectCredit =
     /\b(?:credit\s*alert|credit\s*notification|credit\s*advice|account\s*credited|money\s*received|payment\s*received|payout\s*received|transfer\s*received|deposit\s*successful|inward\s*transfer|salary|nip\s*credit|fip\s*credit|cr\s*alert)\b/i.test(
       normalizedSubject
-    ) ||
-    /\[credit[:\s]/i.test(subject); // GTBank format: "Transaction Notification [Credit: N5,000.00]"
+    );
 
   const isBodyCredit =
     /\b(?:credit|cr)\s*alert\b/i.test(combined) ||
-    /\bcredit\s*notification\b/i.test(combined) ||
-    /\bcredit\s*advice\b/i.test(combined) ||
     /\b(?:your\s+)?acct(?:ount)?\s*(?:[^\n\.\,]{0,40})?\bcredited\b/i.test(combined) ||
     /\bcredited\s+(?:with|for|by|of|amount)\b/i.test(combined) ||
-    /\b(?:you\s+)?received\b/i.test(combined) ||
     /\breceived\s+from\b/i.test(combined) ||
-    /\btransfer\s+(?:received|from)\b/i.test(combined) ||
     /\binward\s+transfer\b/i.test(combined) ||
     /\binflow\s*(?:alert|notification)?\b/i.test(combined) ||
     /\bsalary\b/i.test(combined) ||
-    /\bpayroll\b/i.test(combined) ||
-    /\brefund\b/i.test(combined) ||
-    /\bcash\s*in\b/i.test(combined) ||
-    /\bdeposit\s+(?:alert|successful)\b/i.test(combined) ||
-    /\btransaction\s*type\s*[:\s]*(?:credit|cr)\b/i.test(combined) ||
-    /\bcr\s+amount\b/i.test(combined) ||
     /\bamount\s*credited\b/i.test(combined) ||
-    /\bpayout\s*received\b/i.test(combined) ||
-    /\bpayment\s*received\b/i.test(combined) ||
-    /\bcredited\s*to\s*your\b/i.test(combined);
+    /\bpayment\s*received\b/i.test(combined);
 
   // 2. Explicit Debit / Outflow Signals (User spent/sent money)
   const isSubjectDebit =
@@ -328,57 +387,23 @@ export function inferEntryType(text: string, subject = "", from = ""): "income" 
 
   const isBodyDebit =
     /\b(?:debit|dr)\s*alert\b/i.test(combined) ||
-    /\bdebit\s*notification\b/i.test(combined) ||
-    /\bdebit\s*advice\b/i.test(combined) ||
     /\b(?:your\s+)?acct(?:ount)?\s*(?:[^\n\.\,]{0,40})?\bdebited\b/i.test(combined) ||
     /\bdebited\s+(?:with|for|by|of|amount)\b/i.test(combined) ||
     /\bamount\s*debited\b/i.test(combined) ||
     /\b(?:your\s+)?payment\s+(?:of|for|to|is\s+successful)\b/i.test(combined) ||
-    /\b(?:you\s+)?transferred\s+to\b/i.test(combined) ||
-    /\b(?:you\s+)?sent\s+to\b/i.test(combined) ||
-    /\b(?:you\s+)?paid\s+to\b/i.test(combined) ||
-    /\b(?:you\s+)?spent\b/i.test(combined) ||
-    /\btransfer\s+(?:sent|outward|to)\b/i.test(combined) ||
     /\bwithdrawal\s+(?:successful|notification)\b/i.test(combined) ||
     /\batm\s+withdrawal\b/i.test(combined) ||
     /\bpos\s+(?:purchase|transaction|receipt|payment)\b/i.test(combined) ||
     /\bairtime\s+(?:purchase|recharge|top-up|topup)\b/i.test(combined) ||
-    /\b(?:bill|data|utility|dstv|gotv|electricity)\s+payment\b/i.test(combined) ||
-    /\btransaction\s*type\s*[:\s]*(?:debit|dr)\b/i.test(combined) ||
-    /\bdr\s+amount\b/i.test(combined) ||
-    /\bcard\s+(?:charge|payment|debit)\b/i.test(combined) ||
-    /\bcommission\s+charge\b/i.test(combined) ||
-    /\bsms\s+charge\b/i.test(combined) ||
-    /\bstamp\s+duty\b/i.test(combined) ||
-    /\bvat\s+charge\b/i.test(combined) ||
     /\boutward\s+transfer\b/i.test(combined);
 
-  // 3. Priority Evaluation
   if (isSubjectCredit && !isSubjectDebit) return "income";
   if (isSubjectDebit && !isSubjectCredit) return "expense";
 
-  // If body has explicit CR transaction type or credited label, it's income
   if (isBodyCredit && !isBodyDebit) return "income";
   if (isBodyDebit && !isBodyCredit) return "expense";
 
-  if (isBodyCredit && isBodyDebit) {
-    if (/\b(?:transaction\s*type\s*[:\s]*credit|cr\s*amount|amount\s*credited|credited\s*to\s*your)\b/i.test(combined)) {
-      return "income";
-    }
-    if (/\b(?:transaction\s*type\s*[:\s]*debit|dr\s*amount|amount\s*debited|debited\s*from\s*your|payment\s*successful)\b/i.test(combined)) {
-      return "expense";
-    }
-  }
-
-  // Fallbacks
   if (/\b(?:credit|cr|received|salary|deposit|inflow|inward|refund)\b/i.test(normalizedSubject)) {
-    return "income";
-  }
-  if (/\b(?:debit|dr|sent|paid|spent|transfer|withdrawal|pos|bill|recharge|outward|payment)\b/i.test(normalizedSubject)) {
-    return "expense";
-  }
-
-  if (/\b(?:credit|credited|inflow|received|deposit|salary|payroll|refund)\b/i.test(combined)) {
     return "income";
   }
 
@@ -397,18 +422,13 @@ export function inferCategory(text: string, entryType: "income" | "expense", ban
     return "Income";
   }
 
-  // Priority 1: Phone, Airtime, & Mobile Data
   if (/(mtn|airtel|glo|9mobile|data|airtime|recharge|top-up|topup)/i.test(normalized)) return "Phone & Data";
-
-  // Priority 2: Subscriptions, Transport, Dining, Utilities
   if (/(netflix|spotify|apple|amazon prime|subscription|dstv|gotv|showmax|youtube|audible|patreon)/i.test(normalized)) return "Subscriptions";
   if (/(uber|bolt|indrive|transport|flight|airline|ride|taxi|rail|bus|fuel|petrol|gas station)/i.test(normalized)) return "Transport & Fuel";
   if (/(food|restaurant|pizza|kfc|chicken republic|domino|eat|chow|sweet sensation|bukka|grill|cafe|dining|bistro)/i.test(normalized)) return "Food & Dining";
   if (/(shoprite|spar|supermarket|grocery|mall|store|market|hubmart|jumia|konga|boutique|retail)/i.test(normalized)) return "Shopping & Groceries";
   if (/(electricity|ikedc|ekedc|aedc|phed|eedc|water|waste|utility|utilities|bill|power)/i.test(normalized)) return "Utilities & Bills";
   if (/(hospital|pharmacy|drugs|health|clinic|medplus|healthplus|dental|optical|doctor|medical)/i.test(normalized)) return "Healthcare";
-  if (/(school|tuition|course|udemy|coursera|exam|waec|jamb|education|training)/i.test(normalized)) return "Education";
-  if (/(cinema|movie|event|ticket|bet9ja|sportybet|gaming|entertainment)/i.test(normalized)) return "Entertainment";
   if (/(demerge|technology|technologies|solutions|services|consulting|ventures|enterprise|ltd|limited|inc|corp|company|business)/i.test(normalized)) return "Business & Services";
   if (/(transfer|trf|sent|pos transfer|paid to|beneficiary|withdrawal)/i.test(normalized)) return "Transfer";
 
@@ -416,53 +436,56 @@ export function inferCategory(text: string, entryType: "income" | "expense", ban
 }
 
 /**
- * Accept ONLY legitimate transaction / transfer / alert emails.
- * Marketing, newsletters, job alerts, security alerts, customer support messages, and system notifications are strictly rejected.
+ * Multi-Factor Transaction Qualifier (Pillar 1).
+ * Rejects non-transaction marketing, newsletters, and branch closures.
  */
 export function isTransactionEmail(text: string, subject = "", from = ""): boolean {
   const normalizedFrom = (from || "").toLowerCase();
   const normalizedSubject = (subject || "").toLowerCase();
   const combined = `${normalizedSubject} ${text}`.toLowerCase();
 
-  // 1. Sender Blacklist (Non-financial service senders)
+  // 1. Non-financial sender blacklist
   if (
     /jobberman|linkedin|indeed|glassdoor|careers|recruitment|newsletter|no-reply@accounts\.google\.com|security-noreply@github\.com|accounts\.google\.com|no-reply@google\.com|security@|auth@|facebook|twitter|instagram|x\.com|tiktok/i.test(
       normalizedFrom
     )
   ) {
-    // Only allow Google/Apple if subject explicitly contains invoice, purchase, or receipt
     if (!/\b(?:invoice|receipt|purchase|subscription\s+charged|payment\s+receipt)\b/i.test(normalizedSubject)) {
       return false;
     }
   }
 
-  // 2. Promotional, Marketing, Customer Support, & Non-financial Subject Blacklist
+  // 2. Strict Negative Blacklist for Announcements, Branch Closures, Newsletters
+  if (EXCLUDED_MARKETING_KEYWORDS.some((kw) => normalizedSubject.includes(kw))) {
+    return false;
+  }
+
   if (
-    /\b(?:need\s*help|opay\s*support|customer\s*support|customer\s*care|here\s*to\s*assist|help\s*center|support\s*team|official\s*support|in-app\s*live\s*chat|call\s*customer\s*service|contact\s*us|how\s*to\s*contact|frequently\s*asked\s*questions|faq|helpdesk|raining|win\b|stand\s+a\s+chance|cashback|promo|promotion|special\s+offer|get\s+more|upgrade\s+your|introducing|discover|explore|newsletter|marketing|survey|reward|rewards|play4achild|get\s+to\s+know|know\s+opay|google\s*account|access\s*to\s*some\s*of\s*your\s*data|you\s*shared|data\s*access|job\s*alert|jobs\s*available|security\s*alert|login\s*alert|new\s*sign-in|device\s*activity|password\s*reset|verify\s*your\s*email|verification\s*code|\botp\b|two-factor|\b2fa\b|welcome\s*to|terms\s*of\s*service|privacy\s*policy)\b/i.test(
-      normalizedSubject
-    ) ||
-    /\b(?:need\s+help\s+with\s+your\s+opay\s+account|find\s+our\s+official\s+support\s+channels|in-app\s+live\s+chat|call\s+customer\s+service|you\s*shared\s*some\s*google\s*account\s*data|security\s*alert|new\s*device\s*signed\s+in|verification\s*code\s*is|stand\s+a\s+chance\s+to\s+win|raining\s*credit)\b/i.test(combined)
+    /click here to unsubscribe from this newsletter|notice of branch closure|important update on the gtbank naira card|subscribe to the dangote ipo|blocking your card attracts a service fee of ₦5\.00/i.test(
+      combined
+    )
   ) {
     return false;
   }
 
-  // 3. Known Financial Institution / Fintech Domain Check
-  const isFinancialDomain = /@(?:opay-nigeria\.com|opayweb\.com|opay\.com|kudabank\.com|kuda\.com|palmpay\.com|moniepoint\.com|gtbank\.com|gtco\.com|zenithbank\.com|accessbankplc\.com|accessbank\.com|ubagroup\.com|firstbanknigeria\.com|stanbic\.com|fcmb\.com|fidelitybank\.ng|unionbankng\.com|wema\.africa|providusbank\.com|sterling\.ng|polarisbanklimited\.com|grey\.co|flutterwave\.com|paystack\.com|chippercash\.com|remita\.net|quickteller\.com)/i.test(
-    normalizedFrom
-  );
+  // 3. Positive Transaction Markers
+  const hasSubjectTransactionPhrase =
+    /\b(?:debit\s*alert|credit\s*alert|debit\s*notification|credit\s*notification|transfer\s*notification|transfer\s*alert|transfer\s*successful|withdrawal\s*successful|deposit\s*successful|payment\s*successful|transaction\s*notification|transaction\s*alert|account\s*debited|account\s*credited|pos\s*purchase|atm\s*withdrawal|airtime|receipt|zenith\s*direct)\b/i.test(
+      normalizedSubject
+    ) || /\[(?:credit|debit)[:\s]/i.test(subject);
 
-  // 4. Require explicit transaction phrases (never match bare standalone word "alert")
-  const hasExplicitTransactionPhrase =
-    /\b(?:debit\s*alert|credit\s*alert|debit\s*notification|credit\s*notification|transfer\s*notification|transfer\s*alert|transfer\s*successful|withdrawal\s*successful|deposit\s*successful|payment\s*successful|transaction\s*notification|transaction\s*alert|account\s*debited|account\s*credited|transfer\s*sent|transfer\s*received|pos\s*purchase|pos\s*transaction|atm\s*withdrawal|airtime\s*(?:top-up|topup|recharge)|bill\s*payment|refund\s*notification|salary\s*credit|inflow\s*alert|outflow\s*alert|money\s*received|you\s*sent|you\s*paid|you\s*received|you\s*spent|you\s*recharged|transaction\s*advice|payment\s*advice|debit\s*advice|credit\s*advice|transfer\s*advice|transaction\s*receipt|payment\s*receipt|nip\s*transfer|nibss|card\s*purchase|web\s*purchase|web\s*payment|ussd\s*transfer|direct\s*debit|standing\s*order|bank\s*alert)\b/i.test(
-      combined
-    );
-
-  if (hasExplicitTransactionPhrase) {
+  if (hasSubjectTransactionPhrase) {
     return true;
   }
 
-  if (isFinancialDomain && /(?:amount\s*[:\s]*[₦ngn\$]|naira|ngn|₦|debited\s+with|credited\s+with|paid\s+to|transferred\s+to)/i.test(combined)) {
-    return true;
+  const hasBodyTransactionPhrase =
+    /\b(?:debit\s*alert|credit\s*alert|debit\s*notification|credit\s*notification|transfer\s*successful|payment\s*successful|account\s*debited|account\s*credited|pos\s*purchase|atm\s*withdrawal|airtime\s*(?:top-up|topup|recharge)|transaction\s*advice|payment\s*advice|nip\s*transfer|nip\s*credit|nip\s*debit)\b/i.test(
+      combined
+    );
+
+  if (hasBodyTransactionPhrase) {
+    const hasAmount = /(?:amount|amt|trans amt|txn amount|sum|paid|debited|credited|ngn|₦|\$)\s*[:=]?\s*[\d,]+(?:\.\d{2})?/i.test(combined);
+    if (hasAmount) return true;
   }
 
   return false;
@@ -478,13 +501,45 @@ export function parseFinancialEmailData(
 
   if (!isTransactionEmail(text, subject, from)) return null;
 
-  const amount = extractAmount(text);
+  // Extract structured table KV pairs if present
+  const kv = extractTableKeyValuePairs(emailBody);
+
+  // Read amount from table if available, else extract from body
+  let amount: number | null = null;
+  for (const k of ["amount", "trans amount", "txn amount", "transfer amount", "sum", "value", "paid"]) {
+    if (kv[k]) {
+      const parsed = extractAmount(kv[k]);
+      if (parsed && parsed > 0) {
+        amount = parsed;
+        break;
+      }
+    }
+  }
+
+  if (amount === null) {
+    amount = extractAmount(text);
+  }
+
   if (amount === null || amount < 10) return null;
 
-  const entryType = inferEntryType(text, subject, from);
-  const bankInfo = detectBank(text, from);
-  const account_balance = extractBalance(text) ?? undefined;
-  const description = extractDescription(text, from, bankInfo?.label);
+  const entryType = inferEntryType(text, subject, from, kv);
+  const bankInfo = detectBank(text, from, subject);
+
+  let account_balance: number | undefined;
+  for (const k of ["available balance", "book balance", "acct bal", "ledger balance", "ending balance", "balance"]) {
+    if (kv[k]) {
+      const parsed = extractAmount(kv[k]);
+      if (parsed && parsed > 0) {
+        account_balance = parsed;
+        break;
+      }
+    }
+  }
+  if (!account_balance) {
+    account_balance = extractBalance(text) ?? undefined;
+  }
+
+  const description = extractDescription(text, from, bankInfo?.label, kv);
   const transaction_time = extractTime(text);
   const reason = extractReason(text, description, entryType, bankInfo?.label);
 

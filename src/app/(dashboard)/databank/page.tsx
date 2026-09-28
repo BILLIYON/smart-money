@@ -7,6 +7,7 @@ import { AnalyticsDashboard } from "@/components/analytics/AnalyticsDashboard";
 import { DatabankTransactionsTable } from "@/components/databank/DatabankTransactionsTable";
 import { DatabankCleanerWidget } from "@/components/databank/DatabankCleanerWidget";
 import { DataBankIQScreen } from "@/components/databank/iq/DataBankIQScreen";
+import { SyncWithGoogleCard } from "@/components/databank/SyncWithGoogleCard";
 import { createClient } from "@/lib/supabase/client";
 
 import { useDatabankStore } from "@/store/databankStore";
@@ -2127,6 +2128,9 @@ export default function DataBankPage() {
               <Suspense>
                 <GmailCard onSyncComplete={() => setShowDataBankIQ(true)} />
               </Suspense>
+
+              {/* Sync with Google — Google Sheets Ledger */}
+              <SyncWithGoogleCard onSyncComplete={() => { useDatabankStore.getState().loadContext(); }} />
 
               {/* Manual Entry Form */}
               <div className="rounded-[16px] p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>

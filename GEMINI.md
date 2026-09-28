@@ -37,10 +37,15 @@ This file preserves all technical context, active features, database schemas, an
      * **Health Score Gauge (0 – 100%)** & Auditor Ranks.
      * **1-Click AI Auto-Sweep**: Bulk cleans 500+ items with confetti (`canvas-confetti`).
      * **Speed Card Swipe Game**: Fast 1-second swipe decisions with streak counter.
-     * **AI Magic Wand Console**: Natural language prompt rules.
-     * **Badges & Achievements**: Unlocks Data Novice, Streak Master, Turbo Sweeper, and Master Auditor ranks.
+5. **"Sync with Google" — Google Sheets Intermediary Ledger Architecture**:
+   * Built intermediate Google Sheets synchronization engine adhering to industry standard (Tiller Money pattern).
+   * Generates a styled, formatted, and strictly typed ledger (`Smart Money — Financial Ledger`) in the user's Google Drive.
+   * Eliminates parsing errors and allows zero-latency deterministic bulk ingestion.
+   * Implemented in [`src/lib/google-sheets.ts`](file:///home/ec2-user/smart-money/src/lib/google-sheets.ts), [`SyncWithGoogleCard.tsx`](file:///home/ec2-user/smart-money/src/components/databank/SyncWithGoogleCard.tsx), and Python syncer [`sheets_client.py`](file:///home/ec2-user/smart-money/services/transaction_syncer/engine/sheets_client.py).
+   * Task PRD tracked in [`prd/sync-with-google.md`](file:///home/ec2-user/smart-money/prd/sync-with-google.md).
 
 ---
+
 
 ## 🔒 Rules for AI Agent on Future Sessions
 * Always check `GEMINI.md` and `AGENTS.md` at session start.

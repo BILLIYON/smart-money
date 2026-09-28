@@ -159,7 +159,9 @@ class AgenticReconciler:
         """
         amount_cents = parsed_result.get("amount", 0)
         entry_type = parsed_result.get("entry_type", "expense")
-        desc = parsed_result.get("description", raw_msg.get("subject", "Transaction"))
+        raw_desc = parsed_result.get("description", raw_msg.get("subject", "Transaction"))
+        from .parser import clean_python_description
+        desc = clean_python_description(raw_desc, raw_msg.get("subject", ""), raw_msg.get("sender", "")) or raw_desc or "Bank Transaction"
         raw_date = raw_msg.get("date", "")
         internal_ms = raw_msg.get("internal_date_ms", 0)
         

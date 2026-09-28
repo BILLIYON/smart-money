@@ -38,6 +38,8 @@ export async function GET(req: Request) {
       scope: [
         "https://www.googleapis.com/auth/gmail.readonly",
         "https://www.googleapis.com/auth/gmail.labels",
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive.file",
       ],
       state,
     });

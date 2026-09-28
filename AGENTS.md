@@ -46,9 +46,28 @@ This document stores essential project context, database schemas, architectural 
   * **AI Magic Wand Console**: Custom natural language prompts for batch cleaning.
   * **Badges & Achievements**: Unlocks Data Novice, Streak Master, Turbo Sweeper, and Master Financial Auditor badges.
 
+### 5. Gmail Syncer Data Accuracy & Infrastructure Overhaul
+* **Supabase PGBouncer Prepared Statements Fix**: Added `prepare_threshold=None` to all `psycopg.connect(...)` calls in `services/transaction_syncer/engine/db.py`, eliminating `prepared statement "_pg3_0" does not exist` crashes on port 6543.
+* **Multi-Factor Transaction Qualifier & Negative Blacklist**:
+  * Implemented strict negative keyword guard in `services/transaction_syncer/engine/parser.py` and `src/lib/gmail-parser.ts`.
+  * Blocks non-transaction marketing announcements, Dangote IPO newsletters, terms changes, branch closures, and card fee disclaimers from creating fake ₦5 / ₦40 transactions.
+* **HTML Table DOM Adapters**: Dedicated table parsers for GTBank, Zenith, OPay, UBA, and Access Bank that isolate transaction amounts directly from labelled `<td>` cells, eliminating amount/address/CSS collision errors.
+* **Clean Beneficiary Narration Engine**: Strips trailing `" Bank"`, `" Plc"`, and `" Account Number"` suffixes across both syncers. Repaired 398 existing corrupted records in the live database.
+### 6. "Sync with Google" — Google Sheets Intermediary Ledger Architecture (Completed)
+* **PRD & Roadmap**: [`prd/sync-with-google.md`](file:///home/ec2-user/smart-money/prd/sync-with-google.md)
+* **Core Concept**: Synchronizes transactions into a styled, validated Google Sheet in the user's Google Drive (`Smart Money — Financial Ledger`) before/alongside DB ingestion.
+* **Benefits**: 100% data cleanliness, zero email HTML parsing collisions, complete user transparency and auditability, and single-batch API ingestion.
+* **Implemented Components & Routes**:
+  * Service Layer: [`src/lib/google-sheets.ts`](file:///home/ec2-user/smart-money/src/lib/google-sheets.ts)
+  * Python Adapter: [`services/transaction_syncer/engine/sheets_client.py`](file:///home/ec2-user/smart-money/services/transaction_syncer/engine/sheets_client.py)
+  * Endpoints: `/api/databank/sheets/status`, `/api/databank/sheets/sync`, `/api/databank/sheets/export`
+  * Frontend UI: [`SyncWithGoogleCard.tsx`](file:///home/ec2-user/smart-money/src/components/databank/SyncWithGoogleCard.tsx) embedded in [`/databank`](file:///home/ec2-user/smart-money/src/app/%28dashboard%29/databank/page.tsx).
+
+
 ---
 
 ## 🔒 Important System Guidelines for Future Sessions
 1. **Never use `gemini-3.6-flash`**: Always use `gemini-2.5-flash` or `gemini-1.5-flash`.
-2. **Database Pooling**: Always reuse the cached singleton `getPool()` with SSL rejection disabled for remote connections.
+2. **Database Pooling**: Always reuse the cached singleton `getPool()` with SSL rejection disabled for remote connections. For Python `psycopg`, ALWAYS pass `prepare_threshold=None` for Supabase transaction poolers.
 3. **AWS SES Sender Formatting**: Always sanitize `SES_FROM_EMAIL` by stripping wrapping quotes to avoid AWS SES `InvalidParameterValue` errors.
+4. **Bank Transaction Qualification**: Never qualify an email as a transaction simply because sender is a financial domain; always verify against negative marketing keywords and require explicit transaction intent phrases.

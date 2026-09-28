@@ -13,7 +13,7 @@ def get_db_url() -> str:
 
 def get_user_gmail_integration(user_id: str) -> Optional[Dict[str, Any]]:
     db_url = get_db_url()
-    with psycopg.connect(db_url, row_factory=dict_row) as conn:
+    with psycopg.connect(db_url, row_factory=dict_row, prepare_threshold=None) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -43,7 +43,7 @@ def update_user_tokens(user_id: str, access_token: str, refresh_token: Optional[
     enc_access = encrypt(access_token) if access_token else None
     enc_refresh = encrypt(refresh_token) if refresh_token else None
     
-    with psycopg.connect(db_url) as conn:
+    with psycopg.connect(db_url, prepare_threshold=None) as conn:
         with conn.cursor() as cur:
             if enc_refresh:
                 cur.execute(
@@ -67,7 +67,7 @@ def update_user_tokens(user_id: str, access_token: str, refresh_token: Optional[
 
 def update_sync_progress(user_id: str, progress: float, message: str, is_syncing: bool = True):
     db_url = get_db_url()
-    with psycopg.connect(db_url, row_factory=dict_row) as conn:
+    with psycopg.connect(db_url, row_factory=dict_row, prepare_threshold=None) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT metadata FROM user_integrations WHERE user_id = %s AND provider = 'gmail' LIMIT 1;",
@@ -102,7 +102,7 @@ def save_databank_entries(user_id: str, entries: List[Dict[str, Any]]) -> int:
     db_url = get_db_url()
     inserted_count = 0
     
-    with psycopg.connect(db_url) as conn:
+    with psycopg.connect(db_url, prepare_threshold=None) as conn:
         with conn.cursor() as cur:
             for entry in entries:
                 try:
