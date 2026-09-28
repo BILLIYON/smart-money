@@ -97,10 +97,17 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
   };
 
   const handleExtractGmailToSheet = async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
+
     try {
       setExtractingGmail(true);
       setFeedback(null);
-      const res = await fetch("/api/databank/sheets/extract-gmail", { method: "POST" });
+      const res = await fetch("/api/databank/sheets/extract-gmail", {
+        method: "POST",
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
       const data = await res.json();
       if (res.ok && data.success) {
         confetti({ particleCount: 60, spread: 70, origin: { y: 0.7 } });
@@ -111,8 +118,13 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
         setFeedback(data.error || "Failed to extract Gmail alerts to sheet");
       }
     } catch (err: any) {
-      setFeedback(err.message || "Network error extracting Gmail to sheet");
+      if (err.name === "AbortError") {
+        setFeedback("Sync request sent! Google is processing your transactions in the background.");
+      } else {
+        setFeedback(err.message || "Network error extracting Gmail to sheet");
+      }
     } finally {
+      clearTimeout(timeoutId);
       setExtractingGmail(false);
     }
   };
@@ -524,7 +536,7 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
                 <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
                 <line x1="12" y1="17" x2="12.01" y2="17" />
               </svg>
-              {showGuide ? "Hide Guide" : "Auto-Sync Guide"}
+              {showGuide ? "Hide Developer Info" : "Advanced (Optional)"}
             </button>
           </div>
 

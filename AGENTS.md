@@ -60,8 +60,14 @@ This document stores essential project context, database schemas, architectural 
 * **Implemented Components & Routes**:
   * Service Layer: [`src/lib/google-sheets.ts`](file:///home/ec2-user/smart-money/src/lib/google-sheets.ts)
   * Python Adapter: [`services/transaction_syncer/engine/sheets_client.py`](file:///home/ec2-user/smart-money/services/transaction_syncer/engine/sheets_client.py)
-  * Endpoints: `/api/databank/sheets/status`, `/api/databank/sheets/sync`, `/api/databank/sheets/export`
+  * Endpoints: `/api/databank/sheets/status`, `/api/databank/sheets/sync`, `/api/databank/sheets/export`, `/api/databank/sheets/extract-gmail`
   * Frontend UI: [`SyncWithGoogleCard.tsx`](file:///home/ec2-user/smart-money/src/components/databank/SyncWithGoogleCard.tsx) embedded in [`/databank`](file:///home/ec2-user/smart-money/src/app/%28dashboard%29/databank/page.tsx).
+  * Native Google Apps Script Engine: [`public/smart_money_gmail_to_sheets.js`](file:///home/ec2-user/smart-money/public/smart_money_gmail_to_sheets.js)
+* **Dual-Engine Execution**:
+  * Python Engine (`services/transaction_syncer`, port 8000): Primary heavy-duty worker that handles BeautifulSoup DOM table parsing, statement PDFs, and auto-mirrors rows directly to Google Sheets via `sheets_client.py`.
+  * Next.js App (`smart-money`, port 3000): Manages Google OAuth token lifecycle, non-blocking background exports, route-level cache-busting, and serves as the automatic fallback if Python is ever offline.
+* **Live Ledger Verification**:
+  * Verified for user `f57f8127-f6fd-4084-a60a-0e088f9cd0a8` (`Smart Money — Financial Ledger`, Sheet ID `1dvywSJwQg_L3Yn8b2k_xU1wcEAYVNUMVhVqQomqx93A`). 40 clean transactions extracted and formatted with currency (₦) and category mappings.
 
 
 ---

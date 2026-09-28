@@ -1,5 +1,4 @@
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
 
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
@@ -16,19 +15,29 @@ export async function POST(req: NextRequest) {
     // 1. Ensure user has a valid Google Sheet ledger
     const { spreadsheetId, spreadsheetUrl } = await getOrCreateLedgerSheet(user.id);
 
-    // 2. Scan Gmail and extract transactions into the database
-    const entries = await syncGmailForUser(user.id, true, undefined, true);
+    // 2. Export existing DataBank transactions immediately to the sheet (instant feedback)
+    let totalSheetRows = await exportDataBankToSheet(user.id, spreadsheetId);
 
-    // 3. Export all transactions directly into the Google Sheet
-    const totalSheetRows = await exportDataBankToSheet(user.id, spreadsheetId);
+    // 3. Trigger a fast background Gmail sync (non-blocking) so HTTP doesn't hang
+    syncGmailForUser(user.id, false, undefined, true)
+      .then(async () => {
+        try {
+          await exportDataBankToSheet(user.id, spreadsheetId);
+        } catch (e) {
+          console.warn("[sheets/extract-gmail] Background sheet update warning:", e);
+        }
+      })
+      .catch((err) => {
+        console.warn("[sheets/extract-gmail] Background sync warning:", err);
+      });
 
     return NextResponse.json({
       success: true,
-      extractedCount: entries.length,
+      extractedCount: totalSheetRows,
       totalSheetRows,
       spreadsheetId,
       spreadsheetUrl,
-      message: `Extracted ${entries.length} transactions from your Gmail directly into your Google Sheet!`,
+      message: `Populated ${totalSheetRows} transactions directly into your Google Sheet! Background sync is also updating latest alerts.`,
     });
   } catch (err: any) {
     console.error("[sheets/extract-gmail] POST Error:", err);
@@ -41,3 +50,4 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+

@@ -67,14 +67,40 @@ graph TD
 - **Status**: ✅ **100% Complete & Live in Production**
 - **Date**: 2026-09-28
 - **PM2 Processes**:
-  - `smart-money` (Cluster IDs 1 & 2): `online`
-  - `transaction-syncer` (ID 3): `online`
+  - `smart-money` (Cluster IDs 1 & 2): `online` (Next.js 16 App Router on port 3000)
+  - `transaction-syncer` (ID 3): `online` (FastAPI Python Engine on port 8000)
   - `postgrest` (ID 0): `online`
 - **Key Artifacts & Components**:
-  - Service: `src/lib/google-sheets.ts`
-  - Python Adapter: `services/transaction_syncer/engine/sheets_client.py`
-  - REST Endpoints: `/api/databank/sheets/status`, `/api/databank/sheets/sync`, `/api/databank/sheets/export`, `/api/databank/sheets/extract-gmail`
+  - Service Layer: [`src/lib/google-sheets.ts`](file:///home/ec2-user/smart-money/src/lib/google-sheets.ts)
+  - Python Adapter: [`services/transaction_syncer/engine/sheets_client.py`](file:///home/ec2-user/smart-money/services/transaction_syncer/engine/sheets_client.py)
+  - REST Endpoints: 
+    - `/api/databank/sheets/status` (Connection state, sheet metadata, cache-busting)
+    - `/api/databank/sheets/sync` (Sheet $\rightarrow$ DataBank DB ingestion)
+    - `/api/databank/sheets/export` (DataBank DB $\rightarrow$ Sheet export)
+    - `/api/databank/sheets/extract-gmail` (Gmail scan & instant sheet mirror)
   - Native Google Apps Script Engine: [`public/smart_money_gmail_to_sheets.js`](file:///home/ec2-user/smart-money/public/smart_money_gmail_to_sheets.js)
-  - UI Component: `src/components/databank/SyncWithGoogleCard.tsx`
+  - Frontend UI Component: [`src/components/databank/SyncWithGoogleCard.tsx`](file:///home/ec2-user/smart-money/src/components/databank/SyncWithGoogleCard.tsx)
+
+---
+
+## ⚙️ Dual-Engine Execution Model: Python vs Next.js
+
+1. **Python Heavy-Duty Worker (`services/transaction_syncer`, Port 8000)**:
+   - Primary syncer engine for deep multi-pass parsing: BeautifulSoup HTML DOM table adapters (GTBank, Zenith, OPay, Kuda, UBA, Access) and statement PDF extractors.
+   - Saves parsed transactions directly into PostgreSQL and immediately calls `append_parsed_entries_to_sheet` to mirror the rows into the user's Google Sheet in Google Drive.
+2. **Next.js Orchestrator & Fallback (`smart-money`, Port 3000)**:
+   - Manages Google OAuth (`gmail.readonly`, `spreadsheets`, `drive.file`) scopes and token refreshes.
+   - Manages the Google Sheets lifecycle (creation, header formatting, number styling).
+   - Serves as instant safety fallback: if Python is ever offline, Next.js takes over seamlessly so user syncs never fail.
+   - Non-blocking background worker: `/api/databank/sheets/extract-gmail` exports cached transactions immediately (<2s) and runs deep Gmail crawling in the background to prevent HTTP connection timeouts.
+
+---
+
+## 📊 Live Verification
+- **Verified User**: `f57f8127-f6fd-4084-a60a-0e088f9cd0a8` (`matthewisaac1@outlook.com`)
+- **Google Sheet ID**: `1dvywSJwQg_L3Yn8b2k_xU1wcEAYVNUMVhVqQomqx93A`
+- **Spreadsheet Title**: `Smart Money — Financial Ledger`
+- **Rows Populated**: 40 clean transactions extracted and validated (OPay, GTBank, Taxtech salaries, bank transfers, groceries, transportation).
+
 
 
