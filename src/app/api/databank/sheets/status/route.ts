@@ -1,7 +1,11 @@
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getOrCreateLedgerSheet, getGoogleClient } from "@/lib/google-sheets";
 import { Pool } from "pg";
+
 
 let sharedPool: Pool | null = null;
 function getPool(): Pool {
@@ -55,15 +59,25 @@ export async function GET(req: NextRequest) {
     const hasSheetsScope = rawScopes.some((s: string) => s.includes("spreadsheets") || s.includes("drive"));
     const needsReauth = !hasSheetsScope;
 
-    return NextResponse.json({
-      connected: true,
-      hasSheet: Boolean(sheetId),
-      sheetId,
-      sheetUrl,
-      lastSyncedAt: meta.sheets_last_synced_at || integration.last_synced_at || null,
-      databankCount,
-      needsReauth,
-    });
+    return NextResponse.json(
+      {
+        connected: true,
+        hasSheet: Boolean(sheetId),
+        sheetId,
+        sheetUrl,
+        lastSyncedAt: meta.sheets_last_synced_at || integration.last_synced_at || null,
+        databankCount,
+        needsReauth,
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      }
+    );
+
   } catch (err: any) {
     console.error("[sheets/status] GET Error:", err);
     return NextResponse.json({ error: err.message || "Failed to check status" }, { status: 500 });

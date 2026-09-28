@@ -73,6 +73,8 @@ graph TD
 - **Key Artifacts & Components**:
   - Service: `src/lib/google-sheets.ts`
   - Python Adapter: `services/transaction_syncer/engine/sheets_client.py`
-  - REST Endpoints: `/api/databank/sheets/status`, `/api/databank/sheets/sync`, `/api/databank/sheets/export`
+  - REST Endpoints: `/api/databank/sheets/status`, `/api/databank/sheets/sync`, `/api/databank/sheets/export`, `/api/databank/sheets/extract-gmail`
+  - Native Google Apps Script Engine: [`public/smart_money_gmail_to_sheets.js`](file:///home/ec2-user/smart-money/public/smart_money_gmail_to_sheets.js)
   - UI Component: `src/components/databank/SyncWithGoogleCard.tsx`
+
 

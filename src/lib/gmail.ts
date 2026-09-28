@@ -7,12 +7,17 @@ let sharedPool: Pool | null = null;
 
 function getPool() {
   if (!sharedPool) {
+    const dbUrl = process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money";
+    const isRemote = dbUrl.includes("supabase.com") || dbUrl.includes("pooler") || dbUrl.includes("aws-");
     sharedPool = new Pool({
-      connectionString: process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money",
+      connectionString: dbUrl,
+      ssl: isRemote ? { rejectUnauthorized: false } : false,
+      max: 10,
     });
   }
   return sharedPool;
 }
+
 
 type DataBankEntry = {
   user_id?: string;
@@ -720,7 +725,33 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallbackValue: T): Prom
       } catch (err) {
         console.warn("[syncGmailForUser] Failed to apply merchant rules:", err);
       }
+
+      // If user has an active Google Sheet ledger, mirror new transactions to Google Sheets
+      if (metadata.sheets_ledger_id) {
+        try {
+          const { appendTransactionsToSheet } = await import("@/lib/google-sheets");
+          await appendTransactionsToSheet(
+            userId,
+            metadata.sheets_ledger_id,
+            entries.map((e) => ({
+              date: e.entry_date,
+              bank: (e.metadata as any)?.bank || "Bank Alert",
+              entry_type: e.entry_type,
+              amount: e.amount / 100,
+              description: e.description,
+              category: e.category,
+              account_balance: (e.metadata as any)?.account_balance ? (e.metadata as any).account_balance / 100 : undefined,
+              reference: (e.metadata as any)?.reference || e.gmail_message_id,
+              status: "Synced from Gmail",
+              hash: (e.metadata as any)?.dedup_hash || "",
+            }))
+          );
+        } catch (sheetErr) {
+          console.warn("[syncGmailForUser] Failed to mirror to Google Sheet:", sheetErr);
+        }
+      }
     }
+
 
     await updateMeta(
       {
