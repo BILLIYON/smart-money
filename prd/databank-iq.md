@@ -1,4 +1,4 @@
-# DataBank IQ — Gamified Transaction Cleaning PRD & Task Tracker
+![alt text](image.png)# DataBank IQ — Gamified Transaction Cleaning PRD & Task Tracker
 
 ## Overview
 Transform post-sync data cleaning from an overwhelming spreadsheet task into an engaging, high-impact AI quiz. Users answer quick questions across 3 tiers (Merchant Memory, Ambiguous Transactions, and Financial Intent) that batch-resolve transactions, build automatic merchant memory rules for future syncs, and increase a real-time **DataBank IQ** score (from Blurry to Elite).
