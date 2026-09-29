@@ -78,6 +78,7 @@ graph TD
     - `/api/databank/sheets/sync` (Sheet $\rightarrow$ DataBank DB ingestion)
     - `/api/databank/sheets/export` (DataBank DB $\rightarrow$ Sheet export)
     - `/api/databank/sheets/extract-gmail` (Gmail scan & instant sheet mirror)
+    - `/api/databank/sheets/inject-script` (Auto-inject container-bound Apps Script to Sheet)
   - Native Google Apps Script Engine: [`public/smart_money_gmail_to_sheets.js`](file:///home/ec2-user/smart-money/public/smart_money_gmail_to_sheets.js)
   - Frontend UI Component: [`src/components/databank/SyncWithGoogleCard.tsx`](file:///home/ec2-user/smart-money/src/components/databank/SyncWithGoogleCard.tsx)
 
