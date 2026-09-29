@@ -103,8 +103,9 @@ export async function getOrCreateLedgerSheet(userId: string): Promise<{
   spreadsheetId: string;
   spreadsheetUrl: string;
   isNew: boolean;
+  appsScriptId?: string;
 }> {
-  const { sheets, metadata } = await getGoogleClient(userId);
+  const { sheets, oauth2Client, metadata } = await getGoogleClient(userId);
   const pool = getPool();
 
   if (metadata.sheets_ledger_id) {
@@ -274,7 +275,15 @@ export async function getOrCreateLedgerSheet(userId: string): Promise<{
 export async function injectAppsScriptToLedger(
   oauth2Client: any,
   spreadsheetId: string
-): Promise<{ success: boolean; scriptId?: string; apiDisabled?: boolean; enableUrl?: string; error?: string }> {
+): Promise<{
+  success: boolean;
+  scriptId?: string;
+  userSettingsDisabled?: boolean;
+  settingsUrl?: string;
+  apiDisabled?: boolean;
+  enableUrl?: string;
+  error?: string;
+}> {
   try {
     const script = google.script({ version: "v1", auth: oauth2Client });
     
@@ -327,14 +336,18 @@ export async function injectAppsScriptToLedger(
     return { success: true, scriptId };
   } catch (err: any) {
     const errMsg = err?.message || String(err);
-    console.warn(`[injectAppsScriptToLedger] Apps script injection notice:`, errMsg);
+    const isUserSettingsDisabled = errMsg.includes("User has not enabled the Apps Script API") || 
+                                   errMsg.includes("script.google.com/home/usersettings");
 
-    const isApiDisabled = errMsg.includes("has not been used in project") || 
+    const isApiDisabled = !isUserSettingsDisabled && (
+                          errMsg.includes("has not been used in project") || 
                           errMsg.includes("disabled") || 
-                          errMsg.includes("Access Not Configured");
+                          errMsg.includes("Access Not Configured"));
     
     return {
       success: false,
+      userSettingsDisabled: isUserSettingsDisabled,
+      settingsUrl: "https://script.google.com/home/usersettings",
       apiDisabled: isApiDisabled,
       enableUrl: "https://console.developers.google.com/apis/api/script.googleapis.com/overview?project=64971754557",
       error: errMsg,

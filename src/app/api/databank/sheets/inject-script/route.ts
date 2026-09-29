@@ -29,6 +29,15 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    if (result.userSettingsDisabled) {
+      return NextResponse.json({
+        success: false,
+        userSettingsDisabled: true,
+        settingsUrl: result.settingsUrl,
+        message: "Google requires you to toggle Google Apps Script API to ON in your account settings.",
+      });
+    }
+
     if (result.apiDisabled) {
       return NextResponse.json({
         success: false,

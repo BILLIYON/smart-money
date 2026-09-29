@@ -27,8 +27,10 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
   const [enableUrl, setEnableUrl] = useState("https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=64971754557");
   const [driveEnableUrl, setDriveEnableUrl] = useState("https://console.developers.google.com/apis/api/drive.googleapis.com/overview?project=64971754557");
   const [scriptEnableUrl, setScriptEnableUrl] = useState("https://console.developers.google.com/apis/api/script.googleapis.com/overview?project=64971754557");
+  const [settingsUrl, setSettingsUrl] = useState("https://script.google.com/home/usersettings");
   const [injectingScript, setInjectingScript] = useState(false);
   const [scriptApiDisabled, setScriptApiDisabled] = useState(false);
+  const [userSettingsDisabled, setUserSettingsDisabled] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
 
   const fetchStatus = async () => {
@@ -204,8 +206,13 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
         if (data.needsReauth) {
           setFeedback("Google permission needed to pre-load Apps Script. Opening authorization...");
           openAuthModal({ preventDefault: () => {} } as any);
+        } else if (data.userSettingsDisabled) {
+          setUserSettingsDisabled(true);
+          setScriptApiDisabled(false);
+          setFeedback("Please toggle Google Apps Script API to ON in your Google account settings.");
         } else if (data.apiDisabled) {
           setScriptApiDisabled(true);
+          setUserSettingsDisabled(false);
           setFeedback("Google Apps Script API must be enabled in Google Cloud Console.");
         } else {
           setFeedback(data.error || data.message || "Failed to inject script into sheet");
@@ -545,34 +552,6 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
               )}
             </button>
 
-            {/* Auto-load Script into Google Sheet */}
-            <button
-              onClick={handleInjectScript}
-              disabled={injectingScript}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[10px] text-[12px] font-medium transition-all disabled:opacity-50 hover:bg-black/5 active:scale-95 cursor-pointer"
-              style={{
-                background: "var(--bg)",
-                border: "1px solid var(--border)",
-                color: "var(--text)",
-              }}
-              title="Pre-load native Gmail-to-Sheet synchronization script directly into this spreadsheet"
-            >
-              {injectingScript ? (
-                <>
-                  <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Pre-loading Script...
-                </>
-              ) : (
-                <>
-                  <span className="text-[13px]">⚡</span>
-                  Auto-Load Script to Sheet
-                </>
-              )}
-            </button>
-
             <button
               onClick={openAuthModal}
               title="Refresh or reconnect Google account permissions"
@@ -626,34 +605,7 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
             </div>
           )}
 
-          {/* Google Apps Script API Disabled Banner */}
-          {scriptApiDisabled && (
-            <div
-              className="mt-2.5 p-3.5 rounded-[12px] text-[12px] space-y-2 animate-fadeIn"
-              style={{
-                background: "rgba(59, 130, 246, 0.08)",
-                border: "1px solid rgba(59, 130, 246, 0.35)",
-              }}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-[12px]" style={{ color: "#2563EB" }}>
-                  ⚡ One-Time Action: Enable Google Apps Script API
-                </span>
-                <a
-                  href={scriptEnableUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-2.5 py-1 rounded-[6px] text-[11px] font-bold text-white transition-all hover:brightness-105 active:scale-95"
-                  style={{ background: "#2563EB" }}
-                >
-                  Enable API in Google Console ↗
-                </a>
-              </div>
-              <p className="text-[11px] leading-relaxed" style={{ color: "var(--text)" }}>
-                Google requires the <strong>Google Apps Script API</strong> enabled on project <code>64971754557</code> before scripts can be auto-injected into your spreadsheets. Once enabled, click &quot;Auto-Load Script to Sheet&quot; again!
-              </p>
-            </div>
-          )}
+
 
           {/* Native Google Apps Script Guide Drawer */}
           {showGuide && (
