@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
 
     const pool = getPool();
     const { rows: intRows } = await pool.query(
-      `SELECT access_token, last_synced_at, metadata 
+      `SELECT access_token, last_synced_at, metadata, scopes 
        FROM user_integrations 
        WHERE user_id = $1 AND provider = 'gmail' 
        LIMIT 1;`,
@@ -45,9 +45,9 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const meta = (integration.metadata as any) || {};
-    const sheetId = meta.sheets_ledger_id || null;
-    const sheetUrl = meta.sheets_ledger_url || (sheetId ? `https://docs.google.com/spreadsheets/d/${sheetId}/edit` : null);
+    let meta = (integration.metadata as any) || {};
+    let sheetId = meta.sheets_ledger_id || null;
+    let sheetUrl = meta.sheets_ledger_url || (sheetId ? `https://docs.google.com/spreadsheets/d/${sheetId}/edit` : null);
 
     const { rows: countRows } = await pool.query(
       `SELECT count(*) FROM databank_entries WHERE user_id = $1;`,
@@ -56,8 +56,21 @@ export async function GET(req: NextRequest) {
     const databankCount = parseInt(countRows[0]?.count || "0", 10);
 
     const rawScopes: string[] = Array.isArray(integration.scopes) ? integration.scopes : [];
-    const hasSheetsScope = rawScopes.some((s: string) => s.includes("spreadsheets") || s.includes("drive"));
+    const hasSheetsScope = rawScopes.length === 0 || rawScopes.some((s: string) => s.includes("spreadsheets") || s.includes("drive"));
     const needsReauth = !hasSheetsScope;
+
+    // Auto-provision ledger sheet from master template if user is connected with scopes but doesn't have a sheet yet
+    if (!needsReauth && !sheetId) {
+      try {
+        const created = await getOrCreateLedgerSheet(user.id);
+        if (created.spreadsheetId) {
+          sheetId = created.spreadsheetId;
+          sheetUrl = created.spreadsheetUrl;
+        }
+      } catch (autoErr) {
+        console.warn("[sheets/status] Auto-provision ledger sheet deferred:", autoErr);
+      }
+    }
 
     return NextResponse.json(
       {

@@ -126,6 +126,14 @@ export async function GET(req: Request) {
             ],
           ]
         );
+
+        // Auto-provision Google Sheet financial ledger from master template immediately
+        try {
+          const { getOrCreateLedgerSheet } = await import("@/lib/google-sheets");
+          await getOrCreateLedgerSheet(targetUserId);
+        } catch (sheetProvisionErr) {
+          console.warn("[gmail/callback] Background sheet provisioning warning:", sheetProvisionErr);
+        }
       } catch (dbErr) {
         console.error("[gmail/callback] DB upsert failed:", dbErr);
       }
