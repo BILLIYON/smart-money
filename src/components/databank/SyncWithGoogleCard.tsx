@@ -33,6 +33,36 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
   const [scriptApiDisabled, setScriptApiDisabled] = useState(false);
   const [userSettingsDisabled, setUserSettingsDisabled] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [deploying, setDeploying] = useState(false);
+
+  const handleConnectAndDeploy = async () => {
+    try {
+      setDeploying(true);
+      setLoading(true);
+      setFeedback("✨ Google connected! Deploying Smart Money Ledger from Master Template...");
+
+      const res = await fetch("/api/databank/sheets/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ forceNew: true }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        confetti({ particleCount: 70, spread: 80, origin: { y: 0.7 } });
+        setFeedback("🎉 Smart Money Financial Ledger deployed to your Google Drive from Master Template!");
+        setNeedsReauth(false);
+        setApiDisabled(false);
+      } else {
+        setFeedback(data.error || "Failed to deploy template");
+      }
+    } catch (err: any) {
+      console.error("[handleConnectAndDeploy] Error:", err);
+      setFeedback(err.message || "Error deploying template");
+    } finally {
+      setDeploying(false);
+      await fetchStatus();
+    }
+  };
 
   const fetchStatus = async () => {
     try {
@@ -48,6 +78,10 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
           setApiDisabled(false);
         } else if (data.needsReauth) {
           setNeedsReauth(true);
+        } else if (data.connected && !data.hasSheet) {
+          // Connected with permissions but sheet not yet created: auto-deploy immediately!
+          setNeedsReauth(false);
+          handleConnectAndDeploy();
         } else {
           setNeedsReauth(false);
         }
@@ -60,7 +94,15 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
   };
 
   useEffect(() => {
-    fetchStatus();
+    // Check if redirected directly from Google OAuth with ?gmail=connected
+    if (typeof window !== "undefined" && window.location.search.includes("gmail=connected")) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("gmail");
+      window.history.replaceState({}, "", url.pathname);
+      handleConnectAndDeploy();
+    } else {
+      fetchStatus();
+    }
 
     const handleFocus = () => {
       fetchStatus();
@@ -68,7 +110,7 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
 
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === "GMAIL_CONNECTED") {
-        fetchStatus();
+        handleConnectAndDeploy();
       }
     };
 
@@ -97,7 +139,7 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
     const timer = setInterval(() => {
       if (popupWin?.closed) {
         clearInterval(timer);
-        fetchStatus();
+        handleConnectAndDeploy();
       }
     }, 1000);
   };
@@ -384,12 +426,21 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
 
       {/* Main Content Area */}
       {loading ? (
-        <div className="py-8 flex items-center justify-center text-[12px]" style={{ color: "var(--muted)" }}>
-          <svg className="animate-spin w-4 h-4 mr-2" style={{ color: "var(--green)" }} viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-          Checking Google Drive connection...
+        <div className="py-8 flex flex-col items-center justify-center gap-2 text-[12px]" style={{ color: "var(--muted)" }}>
+          <div className="flex items-center">
+            <svg className="animate-spin w-4 h-4 mr-2" style={{ color: "var(--green)" }} viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            {deploying
+              ? "✨ Deploying Smart Money Ledger from Master Template..."
+              : "Checking Google Drive connection..."}
+          </div>
+          {deploying && (
+            <span className="text-[11px] text-emerald-600 font-medium animate-pulse">
+              Pre-loading automation script &amp; formatting into your Google Drive...
+            </span>
+          )}
         </div>
       ) : !status?.connected ? (
         /* Not Connected State */
