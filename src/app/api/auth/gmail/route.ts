@@ -40,6 +40,7 @@ export async function GET(req: Request) {
         "https://www.googleapis.com/auth/gmail.labels",
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive.file",
+        "https://www.googleapis.com/auth/script.projects",
       ],
       state,
     });

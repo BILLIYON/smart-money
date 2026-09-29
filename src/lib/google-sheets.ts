@@ -1,5 +1,7 @@
 import { google, sheets_v4 } from "googleapis";
 import { Pool } from "pg";
+import fs from "fs";
+import path from "path";
 import { decrypt, encrypt } from "./crypto";
 
 let sharedPool: Pool | null = null;
@@ -231,11 +233,23 @@ export async function getOrCreateLedgerSheet(userId: string): Promise<{
     console.warn("[getOrCreateLedgerSheet] Non-critical header style error:", styleErr);
   }
 
+  // Auto-inject the container-bound Google Apps Script into the newly created sheet
+  let appsScriptId: string | undefined = undefined;
+  try {
+    const injectRes = await injectAppsScriptToLedger(oauth2Client, spreadsheetId);
+    if (injectRes.success && injectRes.scriptId) {
+      appsScriptId = injectRes.scriptId;
+    }
+  } catch (injectErr) {
+    console.warn("[getOrCreateLedgerSheet] Apps Script auto-injection non-critical error:", injectErr);
+  }
+
   // Save sheet ID to user metadata
   const updatedMeta = {
     ...metadata,
     sheets_ledger_id: spreadsheetId,
     sheets_ledger_url: spreadsheetUrl,
+    sheets_apps_script_id: appsScriptId || metadata.sheets_apps_script_id,
     sheets_connected_at: new Date().toISOString(),
   };
 
@@ -249,8 +263,83 @@ export async function getOrCreateLedgerSheet(userId: string): Promise<{
   return {
     spreadsheetId,
     spreadsheetUrl,
+    appsScriptId,
     isNew: true,
   };
+}
+
+/**
+ * Automatically injects the container-bound Google Apps Script project into the spreadsheet.
+ */
+export async function injectAppsScriptToLedger(
+  oauth2Client: any,
+  spreadsheetId: string
+): Promise<{ success: boolean; scriptId?: string; apiDisabled?: boolean; enableUrl?: string; error?: string }> {
+  try {
+    const script = google.script({ version: "v1", auth: oauth2Client });
+    
+    // 1. Create a container-bound Apps Script project attached to this spreadsheet
+    const projectRes = await script.projects.create({
+      requestBody: {
+        title: "Smart Money Gmail Syncer",
+        parentId: spreadsheetId,
+      },
+    });
+
+    const scriptId = projectRes.data.scriptId;
+    if (!scriptId) {
+      return { success: false, error: "Failed to get scriptId" };
+    }
+
+    // 2. Read the script code from public asset
+    let scriptCode = "";
+    try {
+      scriptCode = fs.readFileSync(path.resolve(process.cwd(), "public/smart_money_gmail_to_sheets.js"), "utf-8");
+    } catch {
+      scriptCode = `// Smart Money Native Sync Script`;
+    }
+
+    // 3. Upload Code.gs and appsscript manifest
+    await script.projects.updateContent({
+      scriptId,
+      requestBody: {
+        files: [
+          {
+            name: "appsscript",
+            type: "JSON",
+            source: JSON.stringify({
+              timeZone: "Africa/Lagos",
+              dependencies: {},
+              exceptionLogging: "STACKDRIVER",
+              runtimeVersion: "V8",
+            }),
+          },
+          {
+            name: "Code",
+            type: "SERVER_JS",
+            source: scriptCode,
+          },
+        ],
+      },
+    });
+
+    console.log(`[injectAppsScriptToLedger] Successfully injected Apps Script into spreadsheet ${spreadsheetId} (Script ID: ${scriptId})`);
+    return { success: true, scriptId };
+  } catch (err: any) {
+    const errMsg = err?.message || String(err);
+    console.warn(`[injectAppsScriptToLedger] Apps script injection notice:`, errMsg);
+
+    const isApiDisabled = errMsg.includes("has not been used in project") || 
+                          errMsg.includes("disabled") || 
+                          errMsg.includes("Access Not Configured");
+    
+    return {
+      success: false,
+      apiDisabled: isApiDisabled,
+      enableUrl: "https://console.developers.google.com/apis/api/script.googleapis.com/overview?project=64971754557",
+      error: errMsg,
+    };
+  }
 }
 
 /**
