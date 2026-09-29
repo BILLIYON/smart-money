@@ -98,17 +98,23 @@ export async function getGoogleClient(userId: string) {
 
 /**
  * Creates or retrieves the user's dedicated "Smart Money — Financial Ledger" Google Sheet.
+ * If GOOGLE_SHEETS_MASTER_TEMPLATE_ID is configured, clones the master template directly
+ * so that pre-configured container-bound Apps Script code and formatting are copied automatically.
  */
-export async function getOrCreateLedgerSheet(userId: string): Promise<{
+export async function getOrCreateLedgerSheet(
+  userId: string,
+  forceNew = false
+): Promise<{
   spreadsheetId: string;
   spreadsheetUrl: string;
   isNew: boolean;
   appsScriptId?: string;
+  clonedFromTemplate?: boolean;
 }> {
-  const { sheets, oauth2Client, metadata } = await getGoogleClient(userId);
+  const { sheets, drive, oauth2Client, metadata } = await getGoogleClient(userId);
   const pool = getPool();
 
-  if (metadata.sheets_ledger_id) {
+  if (!forceNew && metadata.sheets_ledger_id) {
     try {
       // Verify sheet still exists and is accessible
       const check = await sheets.spreadsheets.get({
@@ -120,6 +126,7 @@ export async function getOrCreateLedgerSheet(userId: string): Promise<{
           spreadsheetId: check.data.spreadsheetId,
           spreadsheetUrl: check.data.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${check.data.spreadsheetId}/edit`,
           isNew: false,
+          appsScriptId: metadata.sheets_apps_script_id,
         };
       }
     } catch {
@@ -127,130 +134,166 @@ export async function getOrCreateLedgerSheet(userId: string): Promise<{
     }
   }
 
-  // Create new styled Financial Ledger spreadsheet
-  const createRes = await sheets.spreadsheets.create({
-    requestBody: {
-      properties: {
-        title: "Smart Money — Financial Ledger",
-      },
-      sheets: [
-        {
-          properties: {
-            title: "Transactions",
-            gridProperties: {
-              frozenRowCount: 1,
-              columnCount: 10,
-            },
-          },
+  let spreadsheetId: string | null = null;
+  let spreadsheetUrl: string | null = null;
+  let clonedFromTemplate = false;
+
+  // 1. Master Template Clone Architecture:
+  // If GOOGLE_SHEETS_MASTER_TEMPLATE_ID is configured, clone it directly via Drive API.
+  // drive.files.copy automatically copies the attached Google Apps Script project into the user's copy
+  // WITHOUT requiring the user to enable developer settings or the Apps Script REST API!
+  const masterTemplateId = process.env.GOOGLE_SHEETS_MASTER_TEMPLATE_ID;
+
+  if (masterTemplateId) {
+    try {
+      console.log(`[getOrCreateLedgerSheet] Cloning master template ${masterTemplateId} for user ${userId}...`);
+      const copyRes = await drive.files.copy({
+        fileId: masterTemplateId,
+        requestBody: {
+          name: "Smart Money — Financial Ledger",
         },
-      ],
-    },
-  });
+        fields: "id, name, webViewLink",
+      });
 
-  const spreadsheetId = createRes.data.spreadsheetId!;
-  const spreadsheetUrl = createRes.data.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+      if (copyRes.data.id) {
+        spreadsheetId = copyRes.data.id;
+        spreadsheetUrl = copyRes.data.webViewLink || `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+        clonedFromTemplate = true;
+        console.log(`[getOrCreateLedgerSheet] Successfully cloned template into new sheet: ${spreadsheetId}`);
+      }
+    } catch (cloneErr: any) {
+      console.warn("[getOrCreateLedgerSheet] Template clone fallback triggered:", cloneErr?.message || cloneErr);
+    }
+  }
 
-  // Format headers and column widths
-  const headers = [
-    "Date",
-    "Bank",
-    "Entry Type",
-    "Amount (₦)",
-    "Description / Counterparty",
-    "Category",
-    "Available Balance (₦)",
-    "Reference / ID",
-    "Status",
-    "Idempotency Hash",
-  ];
-
-  await sheets.spreadsheets.values.update({
-    spreadsheetId,
-    range: "Transactions!A1:J1",
-    valueInputOption: "USER_ENTERED",
-    requestBody: {
-      values: [headers],
-    },
-  });
-
-  // Apply styling: Navy Header, white text, bold, frozen row
-  try {
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
+  // 2. Fallback: If no master template or clone failed, create and style a fresh spreadsheet
+  if (!spreadsheetId) {
+    const createRes = await sheets.spreadsheets.create({
       requestBody: {
-        requests: [
+        properties: {
+          title: "Smart Money — Financial Ledger",
+        },
+        sheets: [
           {
-            repeatCell: {
-              range: {
-                sheetId: 0,
-                startRowIndex: 0,
-                endRowIndex: 1,
-                startColumnIndex: 0,
-                endColumnIndex: 10,
+            properties: {
+              title: "Transactions",
+              gridProperties: {
+                frozenRowCount: 1,
+                columnCount: 10,
               },
-              cell: {
-                userEnteredFormat: {
-                  backgroundColor: { red: 0.06, green: 0.09, blue: 0.16 }, // #0f172a Dark Navy
-                  textFormat: {
-                    bold: true,
-                    foregroundColor: { red: 1.0, green: 1.0, blue: 1.0 },
-                    fontSize: 10,
-                  },
-                  horizontalAlignment: "CENTER",
-                },
-              },
-              fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)",
-            },
-          },
-          // Set column width for Description & Amount
-          {
-            updateDimensionProperties: {
-              range: {
-                sheetId: 0,
-                dimension: "COLUMNS",
-                startIndex: 4,
-                endIndex: 5,
-              },
-              properties: { pixelSize: 280 },
-              fields: "pixelSize",
-            },
-          },
-          {
-            updateDimensionProperties: {
-              range: {
-                sheetId: 0,
-                dimension: "COLUMNS",
-                startIndex: 3,
-                endIndex: 4,
-              },
-              properties: { pixelSize: 130 },
-              fields: "pixelSize",
             },
           },
         ],
       },
     });
-  } catch (styleErr) {
-    console.warn("[getOrCreateLedgerSheet] Non-critical header style error:", styleErr);
-  }
 
-  // Auto-inject the container-bound Google Apps Script into the newly created sheet
-  let appsScriptId: string | undefined = undefined;
-  try {
-    const injectRes = await injectAppsScriptToLedger(oauth2Client, spreadsheetId);
-    if (injectRes.success && injectRes.scriptId) {
-      appsScriptId = injectRes.scriptId;
+    spreadsheetId = createRes.data.spreadsheetId!;
+    spreadsheetUrl = createRes.data.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+
+    // Format headers and column widths
+    const headers = [
+      "Date",
+      "Bank",
+      "Entry Type",
+      "Amount (₦)",
+      "Description / Counterparty",
+      "Category",
+      "Available Balance (₦)",
+      "Reference / ID",
+      "Status",
+      "Idempotency Hash",
+    ];
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: "Transactions!A1:J1",
+      valueInputOption: "USER_ENTERED",
+      requestBody: {
+        values: [headers],
+      },
+    });
+
+    // Apply styling: Navy Header, white text, bold, frozen row
+    try {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            {
+              repeatCell: {
+                range: {
+                  sheetId: 0,
+                  startRowIndex: 0,
+                  endRowIndex: 1,
+                  startColumnIndex: 0,
+                  endColumnIndex: 10,
+                },
+                cell: {
+                  userEnteredFormat: {
+                    backgroundColor: { red: 0.06, green: 0.09, blue: 0.16 }, // #0f172a Dark Navy
+                    textFormat: {
+                      bold: true,
+                      foregroundColor: { red: 1.0, green: 1.0, blue: 1.0 },
+                      fontSize: 10,
+                    },
+                    horizontalAlignment: "CENTER",
+                  },
+                },
+                fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)",
+              },
+            },
+            {
+              updateDimensionProperties: {
+                range: {
+                  sheetId: 0,
+                  dimension: "COLUMNS",
+                  startIndex: 4,
+                  endIndex: 5,
+                },
+                properties: { pixelSize: 280 },
+                fields: "pixelSize",
+              },
+            },
+            {
+              updateDimensionProperties: {
+                range: {
+                  sheetId: 0,
+                  dimension: "COLUMNS",
+                  startIndex: 3,
+                  endIndex: 4,
+                },
+                properties: { pixelSize: 130 },
+                fields: "pixelSize",
+              },
+            },
+          ],
+        },
+      });
+    } catch (styleErr) {
+      console.warn("[getOrCreateLedgerSheet] Non-critical header style error:", styleErr);
     }
-  } catch (injectErr) {
-    console.warn("[getOrCreateLedgerSheet] Apps Script auto-injection non-critical error:", injectErr);
   }
 
-  // Save sheet ID to user metadata
+  // 3. Auto-inject the container-bound Google Apps Script into the newly created sheet (if not already cloned)
+  let appsScriptId: string | undefined = undefined;
+  if (!clonedFromTemplate) {
+    try {
+      const injectRes = await injectAppsScriptToLedger(oauth2Client, spreadsheetId);
+      if (injectRes.success && injectRes.scriptId) {
+        appsScriptId = injectRes.scriptId;
+      }
+    } catch (injectErr) {
+      console.warn("[getOrCreateLedgerSheet] Apps Script auto-injection non-critical error:", injectErr);
+    }
+  }
+
+  // 4. Save sheet ID to user metadata
   const updatedMeta = {
     ...metadata,
     sheets_ledger_id: spreadsheetId,
     sheets_ledger_url: spreadsheetUrl,
     sheets_apps_script_id: appsScriptId || metadata.sheets_apps_script_id,
+    sheets_cloned_from_template: clonedFromTemplate,
     sheets_connected_at: new Date().toISOString(),
   };
 
@@ -265,6 +308,7 @@ export async function getOrCreateLedgerSheet(userId: string): Promise<{
     spreadsheetId,
     spreadsheetUrl,
     appsScriptId,
+    clonedFromTemplate,
     isNew: true,
   };
 }

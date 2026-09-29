@@ -29,6 +29,7 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
   const [scriptEnableUrl, setScriptEnableUrl] = useState("https://console.developers.google.com/apis/api/script.googleapis.com/overview?project=64971754557");
   const [settingsUrl, setSettingsUrl] = useState("https://script.google.com/home/usersettings");
   const [injectingScript, setInjectingScript] = useState(false);
+  const [recloning, setRecloning] = useState(false);
   const [scriptApiDisabled, setScriptApiDisabled] = useState(false);
   const [userSettingsDisabled, setUserSettingsDisabled] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
@@ -222,6 +223,33 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
       setFeedback(err.message || "Network error injecting script into sheet");
     } finally {
       setInjectingScript(false);
+    }
+  };
+
+  const handleRecloneFromTemplate = async () => {
+    if (!window.confirm("This will deploy a fresh copy of the Smart Money Master Template into your Google Drive with the automation script and formatting pre-loaded. Proceed?")) {
+      return;
+    }
+    try {
+      setRecloning(true);
+      setFeedback(null);
+      const res = await fetch("/api/databank/sheets/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ forceNew: true }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        confetti({ particleCount: 70, spread: 80, origin: { y: 0.7 } });
+        setFeedback(data.message || "🎉 Fresh Financial Ledger deployed to your Google Drive from Master Template!");
+        fetchStatus();
+      } else {
+        setFeedback(data.error || "Failed to clone from template");
+      }
+    } catch (err: any) {
+      setFeedback(err.message || "Error cloning template");
+    } finally {
+      setRecloning(false);
     }
   };
 
@@ -635,13 +663,29 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
                 This script runs <strong>entirely inside your Google account</strong>. Every 15 minutes, Google automatically scans your Gmail for bank alerts (GTBank, Zenith, OPay, Kuda, Access, UBA, etc.) and appends clean rows directly into this Sheet.
               </p>
 
-              {/* Step by step */}
+              {/* Instant 1-Click Master Template Clone */}
+              <div className="p-3.5 rounded-[12px] flex items-center justify-between gap-3" style={{ background: "rgba(15,157,88,0.08)", border: "1px solid rgba(15,157,88,0.25)" }}>
+                <div>
+                  <div className="text-[12px] font-bold text-emerald-600">Option A: 1-Click Deploy from Master Template (Recommended)</div>
+                  <div className="text-[11px] text-[var(--muted)] mt-0.5">Clones a fresh copy of the verified Master Template directly into your Google Drive with the script pre-loaded.</div>
+                </div>
+                <button
+                  onClick={handleRecloneFromTemplate}
+                  disabled={recloning}
+                  className="shrink-0 px-3.5 py-2 rounded-[10px] text-[11px] font-bold text-white transition-all shadow-sm disabled:opacity-50 hover:brightness-105 active:scale-95 cursor-pointer"
+                  style={{ background: "#0F9D58" }}
+                >
+                  {recloning ? "Deploying..." : "⚡ Deploy Fresh Template"}
+                </button>
+              </div>
+
+              {/* Step by step manual setup for existing sheets */}
               <div className="space-y-1.5 p-3 rounded-[10px] text-[11px]" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-                <div className="font-semibold text-[11px]" style={{ color: "var(--text)" }}>Simple 3-Step Setup:</div>
+                <div className="font-semibold text-[11px]" style={{ color: "var(--text)" }}>Option B: Keep Existing Sheet &amp; Paste Script (3 Steps):</div>
                 <ol className="list-decimal list-inside space-y-1" style={{ color: "var(--muted)" }}>
                   <li>In your Google Sheet, click <strong className="text-[var(--text)]">Extensions &gt; Apps Script</strong>.</li>
                   <li>Delete any existing code in <code>Code.gs</code>, paste the script below, and click <strong className="text-[var(--text)]">Save (💾)</strong>.</li>
-                  <li>Click <strong className="text-[var(--text)]">Run</strong> once to authorize. A new menu <strong className="text-[var(--text)]">Smart Money ⚡</strong> will appear in your Sheet toolbar!</li>
+                  <li>Click <strong className="text-[var(--text)]">Run</strong> on <code>onOpen</code> to authorize. A new menu <strong className="text-[var(--text)]">Smart Money ⚡</strong> will appear in your Sheet toolbar!</li>
                 </ol>
               </div>
 

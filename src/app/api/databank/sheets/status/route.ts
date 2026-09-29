@@ -91,13 +91,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const result = await getOrCreateLedgerSheet(user.id);
+    const body = await req.json().catch(() => ({}));
+    const forceNew = Boolean(body?.forceNew);
+
+    const result = await getOrCreateLedgerSheet(user.id, forceNew);
     return NextResponse.json({
       success: true,
       sheetId: result.spreadsheetId,
       sheetUrl: result.spreadsheetUrl,
       isNew: result.isNew,
-      message: result.isNew ? "Created new Smart Money Financial Ledger sheet" : "Connected to existing ledger sheet",
+      clonedFromTemplate: result.clonedFromTemplate,
+      message: result.clonedFromTemplate
+        ? "✨ Cloned fresh Financial Ledger with pre-loaded automation script from Master Template!"
+        : result.isNew
+        ? "Created new Smart Money Financial Ledger sheet"
+        : "Connected to existing ledger sheet",
     });
   } catch (err: any) {
     console.error("[sheets/status] POST Error:", err);
