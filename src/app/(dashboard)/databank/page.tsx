@@ -561,51 +561,8 @@ function GmailCard({ onSyncComplete }: { onSyncComplete?: () => void }) {
         {/* Connect button */}
         <button
           onClick={() => {
-            const width = 600;
-            const height = 700;
-            const left = window.screenX + (window.outerWidth - width) / 2;
-            const top = window.screenY + (window.outerHeight - height) / 2;
-
-            const popupWin = window.open(
-              `/api/auth/gmail`,
-              "Connect Gmail",
-              `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes`
-            );
-
-            const handleOAuthMessage = (event: MessageEvent) => {
-              if (event.origin !== window.location.origin) return;
-              if (event.data?.type === "GMAIL_CONNECTED") {
-                loadStatus();
-                useDatabankStore.getState().loadContext().catch(() => {});
-                popup.success("Gmail Connected 🚀", "Your Gmail account was linked successfully!");
-                cleanup();
-              } else if (event.data?.type === "GMAIL_ERROR") {
-                popup.error("Connection Failed", "Could not authorize your Gmail account. Please try again.");
-                cleanup();
-              }
-            };
-
-            const handleWindowFocus = () => {
-              loadStatus();
-              useDatabankStore.getState().loadContext().catch(() => {});
-            };
-
-            const cleanup = () => {
-              window.removeEventListener("message", handleOAuthMessage);
-              window.removeEventListener("focus", handleWindowFocus);
-              if (timer) clearInterval(timer);
-            };
-
-            window.addEventListener("message", handleOAuthMessage);
-            window.addEventListener("focus", handleWindowFocus);
-
-            const timer = setInterval(() => {
-              if (popupWin?.closed) {
-                cleanup();
-                loadStatus();
-                useDatabankStore.getState().loadContext().catch(() => {});
-              }
-            }, 500);
+            const returnTarget = `/databank?gmail=connected&deploy=true#google-sheets-ledger`;
+            window.location.href = `/api/auth/gmail?return=${encodeURIComponent(returnTarget)}`;
           }}
           className="flex items-center justify-center gap-2 w-full py-[10px] rounded-[10px] text-[13px] font-semibold mb-3 transition-colors duration-150 border-none cursor-pointer"
           style={{ background: "var(--green)", color: "#fff", textDecoration: "none" }}

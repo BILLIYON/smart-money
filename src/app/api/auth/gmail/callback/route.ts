@@ -15,20 +15,35 @@ function redirectOrPopup(url: string, type: "GMAIL_CONNECTED" | "GMAIL_ERROR") {
   return new Response(
     `<!DOCTYPE html>
     <html>
-      <body>
+      <head>
+        <meta charset="utf-8">
+        <title>Smart Money Google Connect</title>
+        <meta http-equiv="refresh" content="3;url=${url}">
+      </head>
+      <body style="background: #0f172a; color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;">
+        <div style="text-align: center; max-width: 420px; padding: 24px; background: rgba(30,41,59,0.7); border-radius: 16px; border: 1px solid rgba(255,255,255,0.1);">
+          <div style="font-size: 36px; margin-bottom: 12px;">🚀</div>
+          <div style="font-size: 17px; font-weight: 600; margin-bottom: 6px;">Google Connected!</div>
+          <div style="font-size: 13px; color: #94a3b8;">Redirecting to deploy your Financial Ledger...</div>
+        </div>
         <script>
           try {
-            if (window.opener) {
-              window.opener.postMessage({ type: "${type}" }, "*");
-            }
-          } catch(e) {}
-          setTimeout(function() {
-            if (window.opener) {
-              window.close();
+            if (window.opener && !window.opener.closed) {
+              try {
+                window.opener.location.href = "${url}";
+              } catch(e) {}
+              try {
+                window.opener.postMessage({ type: "${type}", url: "${url}" }, "*");
+              } catch(e) {}
+              setTimeout(function() {
+                try { window.close(); } catch(e) {}
+              }, 400);
             } else {
               window.location.href = "${url}";
             }
-          }, 350);
+          } catch(e) {
+            window.location.href = "${url}";
+          }
         </script>
       </body>
     </html>`,
@@ -130,7 +145,7 @@ export async function GET(req: Request) {
         // Auto-provision Google Sheet financial ledger from master template immediately
         try {
           const { getOrCreateLedgerSheet } = await import("@/lib/google-sheets");
-          await getOrCreateLedgerSheet(targetUserId);
+          await getOrCreateLedgerSheet(targetUserId, true);
         } catch (sheetProvisionErr) {
           console.warn("[gmail/callback] Background sheet provisioning warning:", sheetProvisionErr);
         }
@@ -139,7 +154,23 @@ export async function GET(req: Request) {
       }
     }
 
-    return redirectOrPopup(`${baseUrl}${returnPath}?gmail=connected`, "GMAIL_CONNECTED");
+    let destinationUrl = `${baseUrl}/databank?gmail=connected&deploy=true#google-sheets-ledger`;
+    if (returnPath) {
+      try {
+        const parsedUrl = new URL(returnPath, baseUrl);
+        parsedUrl.searchParams.set("gmail", "connected");
+        parsedUrl.searchParams.set("deploy", "true");
+        if (!parsedUrl.hash) {
+          parsedUrl.hash = "google-sheets-ledger";
+        }
+        destinationUrl = parsedUrl.toString();
+      } catch {
+        const sep = returnPath.includes("?") ? "&" : "?";
+        destinationUrl = `${baseUrl}${returnPath}${sep}gmail=connected&deploy=true#google-sheets-ledger`;
+      }
+    }
+
+    return redirectOrPopup(destinationUrl, "GMAIL_CONNECTED");
   } catch (err: any) {
     console.error("[gmail/callback] Unexpected callback error:", err?.message || err);
     return redirectOrPopup(`${baseUrl}/databank?gmail=error`, "GMAIL_ERROR");

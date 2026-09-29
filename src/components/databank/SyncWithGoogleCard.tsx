@@ -48,10 +48,17 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        confetti({ particleCount: 70, spread: 80, origin: { y: 0.7 } });
-        setFeedback("🎉 Smart Money Financial Ledger deployed to your Google Drive from Master Template!");
+        confetti({ particleCount: 80, spread: 90, origin: { y: 0.6 } });
+        setFeedback("🎉 Smart Money Financial Ledger successfully deployed to your Google Drive!");
         setNeedsReauth(false);
         setApiDisabled(false);
+
+        // Auto-export existing Databank transactions directly into the fresh sheet
+        try {
+          await fetch("/api/databank/sheets/export", { method: "POST" });
+        } catch (exportErr) {
+          console.warn("[handleConnectAndDeploy] Auto-export background error:", exportErr);
+        }
       } else {
         setFeedback(data.error || "Failed to deploy template");
       }
@@ -59,14 +66,15 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
       console.error("[handleConnectAndDeploy] Error:", err);
       setFeedback(err.message || "Error deploying template");
     } finally {
+      await fetchStatus(false);
       setDeploying(false);
-      await fetchStatus();
+      setLoading(false);
     }
   };
 
-  const fetchStatus = async () => {
+  const fetchStatus = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const res = await fetch(`/api/databank/sheets/status?t=${Date.now()}`, {
         cache: "no-store",
       });
@@ -89,27 +97,41 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
     } catch (err) {
       console.error("[SyncWithGoogleCard] Failed to fetch status:", err);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
   useEffect(() => {
-    // Check if redirected directly from Google OAuth with ?gmail=connected
-    if (typeof window !== "undefined" && window.location.search.includes("gmail=connected")) {
+    // Check if redirected directly from Google OAuth with ?gmail=connected or ?deploy=true
+    const search = typeof window !== "undefined" ? window.location.search : "";
+    const isDeployRedirect = search.includes("gmail=connected") || search.includes("deploy=true");
+
+    if (isDeployRedirect) {
       const url = new URL(window.location.href);
       url.searchParams.delete("gmail");
-      window.history.replaceState({}, "", url.pathname);
+      url.searchParams.delete("deploy");
+      window.history.replaceState({}, "", url.pathname + (url.hash || "#google-sheets-ledger"));
+
+      setTimeout(() => {
+        const el = document.getElementById("google-sheets-ledger");
+        el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 250);
+
       handleConnectAndDeploy();
     } else {
       fetchStatus();
     }
 
     const handleFocus = () => {
-      fetchStatus();
+      fetchStatus(false);
     };
 
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === "GMAIL_CONNECTED") {
+        setTimeout(() => {
+          const el = document.getElementById("google-sheets-ledger");
+          el?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 250);
         handleConnectAndDeploy();
       }
     };
@@ -123,25 +145,15 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
     };
   }, []);
 
-  const openAuthModal = (e: React.MouseEvent) => {
+  const handleConnectClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    const width = 600;
-    const height = 700;
-    const left = window.screenX + (window.outerWidth - width) / 2;
-    const top = window.screenY + (window.outerHeight - height) / 2;
+    const returnTarget = `/databank?gmail=connected&deploy=true#google-sheets-ledger`;
+    window.location.href = `/api/auth/gmail?return=${encodeURIComponent(returnTarget)}`;
+  };
 
-    const popupWin = window.open(
-      "/api/auth/gmail",
-      "Connect Google Sheets",
-      `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes`
-    );
-
-    const timer = setInterval(() => {
-      if (popupWin?.closed) {
-        clearInterval(timer);
-        handleConnectAndDeploy();
-      }
-    }, 1000);
+  const openAuthModal = (e: React.MouseEvent) => {
+    // Direct redirect is prioritized for seamless user experience
+    handleConnectClick(e);
   };
 
   const handleExtractGmailToSheet = async () => {
@@ -328,6 +340,7 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
 
   return (
     <div
+      id="google-sheets-ledger"
       className="rounded-[16px] p-5 transition-all duration-200"
       style={{
         background: "var(--card)",
@@ -425,10 +438,10 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
       </div>
 
       {/* Main Content Area */}
-      {loading ? (
-        <div className="py-8 flex flex-col items-center justify-center gap-2 text-[12px]" style={{ color: "var(--muted)" }}>
-          <div className="flex items-center">
-            <svg className="animate-spin w-4 h-4 mr-2" style={{ color: "var(--green)" }} viewBox="0 0 24 24" fill="none">
+      {loading || deploying ? (
+        <div className="py-8 flex flex-col items-center justify-center gap-3 text-[13px]" style={{ color: "var(--text)" }}>
+          <div className="flex items-center gap-2 font-semibold">
+            <svg className="animate-spin w-5 h-5 text-emerald-500" viewBox="0 0 24 24" fill="none">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
@@ -437,9 +450,14 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
               : "Checking Google Drive connection..."}
           </div>
           {deploying && (
-            <span className="text-[11px] text-emerald-600 font-medium animate-pulse">
-              Pre-loading automation script &amp; formatting into your Google Drive...
-            </span>
+            <div className="flex flex-col items-center gap-1 text-center">
+              <span className="text-[12px] text-emerald-600 font-medium animate-pulse">
+                Cloning clean blueprint, pre-loading automation script &amp; formatting into your Drive...
+              </span>
+              <span className="text-[11px]" style={{ color: "var(--muted)" }}>
+                Please wait a few moments while your dedicated spreadsheet ledger is prepared.
+              </span>
+            </div>
           )}
         </div>
       ) : !status?.connected ? (

@@ -96,8 +96,17 @@ export async function getGoogleClient(userId: string) {
   };
 }
 
+function assertNotMasterTemplate(spreadsheetId: string) {
+  const masterTemplateId = process.env.GOOGLE_SHEETS_MASTER_TEMPLATE_ID;
+  if (masterTemplateId && spreadsheetId === masterTemplateId) {
+    throw new Error(
+      `CRITICAL SAFETY GUARD: Cannot write or modify the Master Template blueprint (${masterTemplateId}). A personal cloned copy must be used.`
+    );
+  }
+}
+
 /**
- * Creates or retrieves the user's dedicated "Smart Money — Financial Ledger" Google Sheet.
+ * Creates or retrieves the user's dedicated "Smart Money — Personal Financial Ledger" Google Sheet.
  * If GOOGLE_SHEETS_MASTER_TEMPLATE_ID is configured, clones the master template directly
  * so that pre-configured container-bound Apps Script code and formatting are copied automatically.
  */
@@ -113,8 +122,10 @@ export async function getOrCreateLedgerSheet(
 }> {
   const { sheets, drive, oauth2Client, metadata } = await getGoogleClient(userId);
   const pool = getPool();
+  const masterTemplateId = process.env.GOOGLE_SHEETS_MASTER_TEMPLATE_ID;
 
-  if (!forceNew && metadata.sheets_ledger_id) {
+  // Strict Protection: A user's active ledger MUST NEVER be the Master Template itself!
+  if (!forceNew && metadata.sheets_ledger_id && metadata.sheets_ledger_id !== masterTemplateId) {
     try {
       // Verify sheet still exists and is accessible
       const check = await sheets.spreadsheets.get({
@@ -142,24 +153,22 @@ export async function getOrCreateLedgerSheet(
   // If GOOGLE_SHEETS_MASTER_TEMPLATE_ID is configured, clone it directly via Drive API.
   // drive.files.copy automatically copies the attached Google Apps Script project into the user's copy
   // WITHOUT requiring the user to enable developer settings or the Apps Script REST API!
-  const masterTemplateId = process.env.GOOGLE_SHEETS_MASTER_TEMPLATE_ID;
-
   if (masterTemplateId) {
     try {
       console.log(`[getOrCreateLedgerSheet] Cloning master template ${masterTemplateId} for user ${userId}...`);
       const copyRes = await drive.files.copy({
         fileId: masterTemplateId,
         requestBody: {
-          name: "Smart Money — Financial Ledger",
+          name: "Smart Money — Personal Financial Ledger",
         },
         fields: "id, name, webViewLink",
       });
 
-      if (copyRes.data.id) {
+      if (copyRes.data.id && copyRes.data.id !== masterTemplateId) {
         spreadsheetId = copyRes.data.id;
         spreadsheetUrl = copyRes.data.webViewLink || `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
         clonedFromTemplate = true;
-        console.log(`[getOrCreateLedgerSheet] Successfully cloned template into new sheet: ${spreadsheetId}`);
+        console.log(`[getOrCreateLedgerSheet] Successfully cloned template into new independent sheet: ${spreadsheetId}`);
       }
     } catch (cloneErr: any) {
       console.warn("[getOrCreateLedgerSheet] Template clone fallback triggered:", cloneErr?.message || cloneErr);
@@ -287,11 +296,18 @@ export async function getOrCreateLedgerSheet(
     }
   }
 
+  if (!spreadsheetId || !spreadsheetUrl) {
+    throw new Error("Failed to create or clone Google Sheet financial ledger.");
+  }
+
   // 4. Save sheet ID to user metadata
+  const validSheetId: string = spreadsheetId;
+  const validSheetUrl: string = spreadsheetUrl;
+
   const updatedMeta = {
     ...metadata,
-    sheets_ledger_id: spreadsheetId,
-    sheets_ledger_url: spreadsheetUrl,
+    sheets_ledger_id: validSheetId,
+    sheets_ledger_url: validSheetUrl,
     sheets_apps_script_id: appsScriptId || metadata.sheets_apps_script_id,
     sheets_cloned_from_template: clonedFromTemplate,
     sheets_connected_at: new Date().toISOString(),
@@ -305,8 +321,8 @@ export async function getOrCreateLedgerSheet(
   );
 
   return {
-    spreadsheetId,
-    spreadsheetUrl,
+    spreadsheetId: validSheetId,
+    spreadsheetUrl: validSheetUrl,
     appsScriptId,
     clonedFromTemplate,
     isNew: true,
@@ -475,6 +491,7 @@ export async function appendTransactionsToSheet(
     hash?: string;
   }>
 ): Promise<number> {
+  assertNotMasterTemplate(spreadsheetId);
   if (!transactions.length) return 0;
   const { sheets } = await getGoogleClient(userId);
 
@@ -511,6 +528,7 @@ export async function exportDataBankToSheet(
   userId: string,
   spreadsheetId: string
 ): Promise<number> {
+  assertNotMasterTemplate(spreadsheetId);
   const pool = getPool();
   const { sheets } = await getGoogleClient(userId);
 
