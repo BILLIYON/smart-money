@@ -46,6 +46,7 @@ This file preserves all technical context, active features, database schemas, an
    * Companion native Google Apps Script: [`public/smart_money_gmail_to_sheets.js`](file:///home/ec2-user/smart-money/public/smart_money_gmail_to_sheets.js).
    * Live verified with user `f57f8127-f6fd-4084-a60a-0e088f9cd0a8`: 40 transactions automatically exported into spreadsheet `1dvywSJwQg_L3Yn8b2k_xU1wcEAYVNUMVhVqQomqx93A`.
    * Dual-engine coordination: Python handles DOM/PDF heavy parsing on port 8000; Next.js handles OAuth tokens, fast cached export, and real-time streaming fallback.
+   * Master Template Cloner Architecture: Copies pre-configured template with container-bound script directly into user's Google Drive via `drive.files.copy`, eliminating consumer friction and Apps Script 403 sandbox errors.
    * Task PRD tracked in [`prd/sync-with-google.md`](file:///home/ec2-user/smart-money/prd/sync-with-google.md).
 
 ---

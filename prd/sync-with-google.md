@@ -103,5 +103,17 @@ graph TD
 - **Spreadsheet Title**: `Smart Money — Financial Ledger`
 - **Rows Populated**: 40 clean transactions extracted and validated (OPay, GTBank, Taxtech salaries, bank transfers, groceries, transportation).
 
+---
+
+## 🚀 Phase 6: Master Template Cloner Architecture (Zero-Friction Script Delivery)
+- **Problem Solved**: Direct REST API script injection (`script.projects.create`) required consumers to enable developer settings at `https://script.google.com/home/usersettings`, which is disabled globally for personal Google accounts.
+- **Solution (`drive.files.copy`)**: When a user creates their ledger sheet, Smart Money copies a verified Master Template spreadsheet (`GOOGLE_SHEETS_MASTER_TEMPLATE_ID`) using Google Drive API.
+- **Benefits**:
+  - Container-bound Google Apps Script project (`smart_money_gmail_to_sheets.js`) is copied along with the file automatically.
+  - Zero developer consoles, zero script editors, zero account setting toggles.
+  - Standard 1-click Google authorization dialog inside Google Sheets when user runs `Smart Money ⚡ > Setup Auto-Sync (Every 15 mins)`.
+  - Master Template configured with public reader permission so any connected user can clone it.
+
+
 
 

@@ -66,9 +66,12 @@ This document stores essential project context, database schemas, architectural 
 * **Dual-Engine Execution**:
   * Python Engine (`services/transaction_syncer`, port 8000): Primary heavy-duty worker that handles BeautifulSoup DOM table parsing, statement PDFs, and auto-mirrors rows directly to Google Sheets via `sheets_client.py`.
   * Next.js App (`smart-money`, port 3000): Manages Google OAuth token lifecycle, non-blocking background exports, route-level cache-busting, and serves as the automatic fallback if Python is ever offline.
+* **Master Template Cloner Architecture (`drive.files.copy`)**:
+  * Clones the verified Master Template spreadsheet (`GOOGLE_SHEETS_MASTER_TEMPLATE_ID`) directly into the user's Google Drive via `drive.files.copy`.
+  * Copies the container-bound Google Apps Script project (`smart_money_gmail_to_sheets.js`) with zero user developer settings needed (bypasses `script.google.com/home/usersettings` 403 sandbox block).
+  * 1-Click "Deploy Fresh Template" action in `SyncWithGoogleCard.tsx` under Advanced options.
 * **Live Ledger Verification**:
   * Verified for user `f57f8127-f6fd-4084-a60a-0e088f9cd0a8` (`Smart Money — Financial Ledger`, Sheet ID `1dvywSJwQg_L3Yn8b2k_xU1wcEAYVNUMVhVqQomqx93A`). 40 clean transactions extracted and formatted with currency (₦) and category mappings.
-
 
 ---
 
