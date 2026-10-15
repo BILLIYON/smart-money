@@ -101,7 +101,7 @@ function getInitials(fullName: string | null | undefined, email: string | undefi
   return "?";
 }
 
-export function Sidebar({ user }: { user?: { email: string; fullName: string | null; isAdmin?: boolean } }) {
+export function Sidebar({ user }: { user?: { email: string; fullName: string | null; isAdmin?: boolean; isPartnerStaff?: boolean } }) {
   const pathname = usePathname();
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -153,6 +153,7 @@ export function Sidebar({ user }: { user?: { email: string; fullName: string | n
       {/* Tool nav */}
       {NAV_TOOLS.map((item) => {
         if (item.href === "/admin" && !user?.isAdmin) return null;
+        if (item.href === "/partner" && !user?.isPartnerStaff) return null;
         return <NavItem key={item.href} {...item} isActive={isActive(item.href)} />;
       })}
 

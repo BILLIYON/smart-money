@@ -21,18 +21,20 @@ export default async function DashboardLayout({
 
   let fullName: string | null = null;
   let isAdmin = false;
+  let isPartnerStaff = false;
   if (user) {
     const { data: profile } = await supabase
       .from("users")
-      .select("full_name, is_admin")
+      .select("full_name, is_admin, is_partner_staff, partner_org_id")
       .eq("id", user.id)
       .single();
     fullName = profile?.full_name ?? null;
     isAdmin = profile?.is_admin ?? false;
+    isPartnerStaff = Boolean(profile?.is_partner_staff && profile?.partner_org_id);
   }
 
   const sidebarUser = user
-    ? { email: user.email ?? "", fullName, isAdmin }
+    ? { email: user.email ?? "", fullName, isAdmin, isPartnerStaff }
     : undefined;
 
   return (
