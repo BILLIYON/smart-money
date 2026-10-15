@@ -3,7 +3,7 @@
 > **Document Status**: Active Implementation Roadmap  
 > **Source Specification**: [`walkthroughs/partner_dashboard_and_find_a_partner_spec.md`](file:///home/ec2-user/smart-money/walkthroughs/partner_dashboard_and_find_a_partner_spec.md)  
 > **Decoupled Architecture**: [`walkthroughs/partner_decoupled_architecture.md`](file:///home/ec2-user/smart-money/walkthroughs/partner_decoupled_architecture.md)  
-> **Current State**: Phase 1 (Foundation) & Phase 2 (Client Discovery & Privacy) 100% Complete. Decoupling Partner Module into standalone microservice (`services/partner_service`).
+> **Current State**: Phase 1 & 2 Complete. Monorepo architecture operational (`apps/web`, `services/partner_service`, `services/transaction_syncer`). Decoupled Partner microservice running on port 8001 under PM2. Moving into Phase 3 (Partner Overview & Clients Roster).
 
 
 ---
