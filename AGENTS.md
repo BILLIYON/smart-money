@@ -12,10 +12,11 @@ This document stores essential project context, database schemas, architectural 
 
 ## 🚀 Monorepo Architecture & Key Services
 The repository is structured as a unified monorepo with peer directories for frontend applications and backend services:
-* **Web App (`apps/web`)**: Next.js 16 (React 19, Tailwind, Framer Motion) running on PM2 cluster (`smart-money`, port 3000).
+* **Web App (`apps/web`)**: Next.js 16 (React 19, Tailwind, Framer Motion) running on PM2 cluster (`smart-money`, port 3000). Consumer PWA & public portal.
+* **Admin Portal (`apps/admin`)**: Next.js 16 decoupled backoffice management application running on PM2 (`admin-portal`, port 3002).
 * **Partner Microservice (`services/partner_service`)**: Decoupled B2B partner ledger, consent engine & approvals daemon (PM2 process `partner-service`, port 8001).
 * **Python Background Syncer (`services/transaction_syncer`)**: Python FastAPI/BeautifulSoup transaction syncer (PM2 process `transaction-syncer`, port 8000).
-* **PM2 Orchestrator (`ecosystem.config.js`)**: Root configuration managing all microservices, postgrest, and Next.js cluster.
+* **PM2 Orchestrator (`ecosystem.config.js`)**: Root configuration managing all microservices, postgrest, and Next.js apps.
 * **Database**: Dual PostgreSQL Setup
   * Remote Supabase DB: `aws-0-eu-west-1.pooler.supabase.com:6543/postgres`
   * Local DB: `postgresql://postgres@127.0.0.1:5432/smart_money`

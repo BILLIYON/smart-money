@@ -27,6 +27,20 @@ module.exports = {
       }
     },
     {
+      name: "admin-portal",
+      script: "./node_modules/next/dist/bin/next",
+      args: "start -H 0.0.0.0 -p 3002",
+      cwd: "/home/ec2-user/smart-money/apps/admin",
+      instances: 1,
+      exec_mode: "fork",
+      max_memory_restart: "400M",
+      env: {
+        NODE_ENV: "production",
+        PORT: 3002,
+        LOCAL_DB_URL: "http://127.0.0.1:3001"
+      }
+    },
+    {
       name: "transaction-syncer",
       script: "main.py",
       interpreter: "./venv/bin/python3",
@@ -51,4 +65,3 @@ module.exports = {
     }
   ]
 };
-

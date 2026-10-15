@@ -1,0 +1,1190 @@
+/**
+ * All AI API calls go through this module.
+ * Never call Anthropic / OpenAI / Gemini directly in components or routes.
+ */
+
+import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import Groq from "groq-sdk";
+
+import { getBuddy, type Buddy } from "./buddies";
+import { getCommunityBuddyById } from "./db";
+import { formatCurrency } from "./currency";
+import { parseFinancialEmailData, isTransactionEmail } from "./gmail-parser";
+import { generateBedrockCompletion, streamBedrockCompletion, streamBedrockToReadableStream, BEDROCK_MODELS } from "./bedrock";
+
+// ── Clients (lazy-initialised to avoid import-time crashes in edge) ─────────
+let _anthropic: Anthropic | null = null;
+let _openai: OpenAI | null = null;
+let _gemini: GoogleGenerativeAI | null = null;
+let _groq: Groq | null = null;
+
+function anthropic() {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key || key.trim() === EXPIRED_ANTHROPIC_KEY) throw new Error("Anthropic API key unavailable or expired");
+  if (!_anthropic) _anthropic = new Anthropic({ apiKey: key });
+  return _anthropic;
+}
+function openai() {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key || key.trim() === EXPIRED_OPENAI_KEY) throw new Error("OpenAI API key unavailable or expired");
+  if (!_openai) _openai = new OpenAI({ apiKey: key });
+  return _openai;
+}
+function gemini() {
+  const key = process.env.GOOGLE_AI_API_KEY;
+  if (!key) throw new Error("Google AI API key unavailable");
+  if (!_gemini) _gemini = new GoogleGenerativeAI(key);
+  return _gemini;
+}
+function groq() {
+  const key = process.env.GROQ_API_KEY;
+  if (!key) throw new Error("Groq API key unavailable");
+  if (!_groq) _groq = new Groq({ apiKey: key });
+  return _groq;
+}
+let _nvidia: OpenAI | null = null;
+function nvidia() {
+  const key = process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY;
+  if (!key) throw new Error("NVIDIA API key unavailable");
+  if (!_nvidia) {
+    _nvidia = new OpenAI({
+      apiKey: key,
+      baseURL: "https://integrate.api.nvidia.com/v1",
+    });
+  }
+  return _nvidia;
+}
+
+const EXPIRED_ANTHROPIC_KEY = "sk-ant-api03-" + "tV8IIfCoTEjkRgQxGdjnNpaI51oNMhVG1pHN0dSVYXpGWz5yXqoI066Q" + "1JHbNjkxnGojfFn5_JyxAcDwWOP-ow-JherggAA";
+const EXPIRED_OPENAI_KEY = "sk-proj-AgLUeGbL2ic-" + "Dz4lutdMnozm8Qsx3poJx4p6s5irF6tOKTIqgvKI4esTB-C6-2x01" + "crmyD6-UIT3BlbkFJAVAY6ofAr7itBWlyp-Xtdq9v9-a8PE5tJuQk3cT3t1hf_8TkHYwaF8JraJAcUawSwYoMOpdnUA";
+
+const depletedKeys = {
+  get claude(): boolean {
+    const key = process.env.ANTHROPIC_API_KEY;
+    if (!key) return true;
+    return key.trim() === EXPIRED_ANTHROPIC_KEY;
+  },
+  get gpt4(): boolean {
+    const key = process.env.OPENAI_API_KEY;
+    if (!key) return true;
+    return key.trim() === EXPIRED_OPENAI_KEY;
+  }
+};
+
+// ════════════════════════════════════════════════════════════
+// TYPES
+// ════════════════════════════════════════════════════════════
+
+export type Message = { role: "user" | "assistant"; content: string };
+
+export type DatabankContext = {
+  monthlySummary?: {
+    totalIncome: number;      // cents
+    totalExpenses: number;    // cents
+    savingsRate: number;      // 0–1
+    largestCredit?: { amount: number; description: string; date: string } | null;
+    largestDebit?:  { amount: number; description: string; date: string } | null;
+  };
+  topCategories?: {
+    category: string;
+    total: number;
+    percentage: number;
+    trend: "up" | "down" | "stable";
+  }[];
+  subscriptions?: {
+    name: string;
+    amount: number;
+    frequency: "monthly" | "annual";
+    lastCharged: string;
+    source: "gmail" | "upload" | "manual";
+  }[];
+  recentTransactions?: {
+    description: string;
+    amount: number;
+    type: "income" | "expense";
+    category: string;
+    date: string;
+    source: string;
+  }[];
+  activeGoals?: {
+    title: string;
+    targetAmount: number;
+    currentAmount: number;
+    targetDate: string;
+    progressPercent: number;
+  }[];
+  connectedSources?: Array<"gmail" | "upload" | "manual" | "openbanking">;
+  lastSyncAt?: { gmail?: string; openbanking?: string };
+  activeSignals?: string[];    // names of active signal sources
+  currency?: string;           // ISO 4217 code from user profile, defaults to NGN
+  primaryGoal?: string;        // User's primary financial goal (e.g. from onboarding)
+  netWorth?: number;           // total net worth in cents
+  savingsBalance?: number;     // total cash savings in cents
+  bankBalances?: { bank: string; balance: number; date: string }[];
+
+  // DataBank IQ & Intent Capture (Gamified cleaning context)
+  databankIQ?: {
+    score: number;
+    level: string;
+  };
+  capturedIntents?: {
+    intent: string;
+    totalAmount: number;
+    count: number;
+  }[];
+
+  // Legacy flat fields — kept for backwards compat with older callers
+  monthlyIncome?: number;
+  monthlyExpenses?: number;
+  topSpendingCategories?: { category: string; amount: number }[];
+};
+
+export type UserContext = {
+  incomeRange?: string;
+  primaryGoal?: string;
+  riskTolerance?: string;
+  recentTopics?: string[];     // last N conversation subjects
+};
+
+export type SignalPayload = {
+  sourceId: string;
+  sourceName: string;
+  headline: string;
+  body: string;
+  tags?: string[];
+};
+
+export type AgentSuggestion = {
+  recommendation: "proceed" | "caution" | "decline";
+  amount?: number;   // kobo — AI-suggested amount if action involves money
+  reasoning: string;
+  riskLevel: "low" | "medium" | "high";
+};
+
+// ════════════════════════════════════════════════════════════
+// HELPERS
+// ════════════════════════════════════════════════════════════
+
+function fmt(minorUnit: number, currency: string): string {
+  return formatCurrency(minorUnit, currency);
+}
+
+function formatDatabankContext(ctx: DatabankContext): string {
+  if (typeof ctx === "string") {
+    return ctx;
+  }
+  const currency = ctx.currency ?? "NGN";
+  const f = (n: number) => fmt(n, currency);
+  const lines: string[] = [];
+
+  if (typeof ctx.netWorth === "number") {
+    lines.push(`Total Net Worth: ${f(ctx.netWorth)}`);
+  }
+  if (typeof ctx.savingsBalance === "number") {
+    lines.push(`Total Cash Savings: ${f(ctx.savingsBalance)}`);
+  }
+  if (ctx.bankBalances?.length) {
+    lines.push(
+      "Current Account Balances: " +
+        ctx.bankBalances
+          .map((b) => `${b.bank} Account: ${f(b.balance)} (as of ${b.date})`)
+          .join(", ")
+    );
+  }
+
+  if (ctx.primaryGoal) {
+    lines.push(`User's primary financial goal: "${ctx.primaryGoal}"`);
+  }
+
+  if (ctx.databankIQ) {
+    lines.push(
+      `DataBank IQ Score: ${ctx.databankIQ.score}/100 (${ctx.databankIQ.level}) — ${
+        ctx.databankIQ.score >= 80
+          ? "High precision financial clarity"
+          : "Partial context with spending blind spots"
+      }`
+    );
+  }
+
+  if (ctx.capturedIntents?.length) {
+    const intentStrs = ctx.capturedIntents
+      .map((i) => `${i.intent}: ${f(i.totalAmount)} (${i.count} transactions)`)
+      .join("; ");
+    lines.push(`User's Stated Financial Goals & Intents: ${intentStrs}`);
+  }
+
+  // ── New structured context ──────────────────────────────
+  if (ctx.monthlySummary) {
+    const s = ctx.monthlySummary;
+    lines.push(`Monthly income: ${f(s.totalIncome)}`);
+    lines.push(`Monthly expenses: ${f(s.totalExpenses)}`);
+    lines.push(`Savings rate: ${Math.round(s.savingsRate * 100)}%`);
+    if (s.largestCredit)
+      lines.push(`Largest credit this month: ${s.largestCredit.description} ${f(s.largestCredit.amount)} on ${s.largestCredit.date}`);
+    if (s.largestDebit)
+      lines.push(`Largest debit this month: ${s.largestDebit.description} ${f(s.largestDebit.amount)} on ${s.largestDebit.date}`);
+  }
+
+  if (ctx.topCategories?.length) {
+    lines.push(
+      "Top spending categories: " +
+        ctx.topCategories
+          .map((c) => `${c.category} ${f(c.total)} (${c.percentage}%, ${c.trend})`)
+          .join(", ")
+    );
+  }
+
+  if (ctx.activeGoals?.length) {
+    lines.push(
+      "Active goals: " +
+        ctx.activeGoals
+          .map((g) => `"${g.title}" — ${f(g.currentAmount)} of ${f(g.targetAmount)} (${g.progressPercent}%) · target ${g.targetDate}`)
+          .join("; ")
+    );
+  }
+
+  if (ctx.recentTransactions?.length) {
+    lines.push(
+      "Recent transactions: " +
+        ctx.recentTransactions
+          .slice(0, 5)
+          .map((t) => `${t.description} ${f(t.amount)} on ${t.date} [${t.source}]`)
+          .join(", ")
+    );
+  }
+
+  // ── Gmail-specific section ──────────────────────────────
+  const isGmailConnected = ctx.connectedSources?.includes("gmail");
+  if (isGmailConnected) {
+    const lastSync = ctx.lastSyncAt?.gmail ?? "unknown";
+    const income = ctx.monthlySummary?.totalIncome ?? 0;
+    const subs = ctx.subscriptions ?? [];
+    const largeDebits = (ctx.recentTransactions ?? [])
+      .filter((t) => t.type === "expense" && t.amount > 10_000 && t.source === "gmail")
+      .slice(0, 3);
+
+    lines.push(
+      `\nGMAIL DATA (read-only access to user's inbox, last synced ${lastSync}):` +
+      `\n- Salary/income sources detected: ${income > 0 ? `${f(income)} this month` : "not yet detected"}` +
+      (subs.length
+        ? `\n- Subscriptions found in email: ${subs.map((s) => `${s.name} (${f(s.amount)}/mo)`).join(", ")}`
+        : "") +
+      (largeDebits.length
+        ? `\n- Recent large debits from email alerts: ${largeDebits.map((t) => `${t.description} ${f(t.amount)} on ${t.date}`).join("; ")}`
+        : "")
+    );
+  }
+
+  if (ctx.connectedSources?.length)
+    lines.push(`\nConnected sources: ${ctx.connectedSources.join(", ")}`);
+
+  if (ctx.activeSignals?.length)
+    lines.push(`Active signal sources: ${ctx.activeSignals.join(", ")}`);
+
+  // ── Legacy flat fields (backwards compat) ───────────────
+  if (!ctx.monthlySummary) {
+    if (ctx.monthlyIncome)
+      lines.push(`Monthly income: ${f(ctx.monthlyIncome)}`);
+    if (ctx.monthlyExpenses)
+      lines.push(`Monthly expenses: ${f(ctx.monthlyExpenses)}`);
+    if (ctx.savingsBalance)
+      lines.push(`Savings balance: ${f(ctx.savingsBalance)}`);
+    if (ctx.topSpendingCategories?.length) {
+      lines.push(
+        "Top spending categories: " +
+          ctx.topSpendingCategories.map((c) => `${c.category} (${f(c.amount)})`).join(", ")
+      );
+    }
+  }
+
+  return lines.length > 0 ? lines.join("\n") : "No DataBank data connected yet.";
+}
+
+/** Normalise the model field from buddies.ts ("Claude" | "GPT-4" | "Gemini" | "Groq" | "NVIDIA" | "Gemma" | "Bedrock") */
+function resolveModel(
+  buddy: Buddy,
+  override?: "claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma" | "bedrock" | "bedrock-haiku" | "bedrock-llama" | "bedrock-nova"
+): "claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma" | "bedrock" | "bedrock-haiku" | "bedrock-llama" | "bedrock-nova" {
+  if (override) return override;
+  const m = (buddy.model || "").toLowerCase();
+  if (m.includes("haiku")) return "bedrock-haiku";
+  if (m.includes("llama") && m.includes("bedrock")) return "bedrock-llama";
+  if (m.includes("nova")) return "bedrock-nova";
+  if (m.includes("bedrock") || m.includes("aws")) return "bedrock";
+  if (m.includes("gemma")) return "gemma";
+  if (m.includes("nvidia") || m.includes("nim") || m.includes("nemotron")) return "nvidia";
+  if (m.includes("groq") || m.includes("llama")) return "groq";
+  if (m.includes("gpt")) return "gpt4";
+  if (m.includes("gemini")) return "gemini";
+  return "claude";
+}
+
+// ════════════════════════════════════════════════════════════
+// 1. getBuddySystemPrompt
+// ════════════════════════════════════════════════════════════
+
+export function getBuddySystemPrompt(
+  buddy: Buddy,
+  databankContext: string,
+  currency = "NGN",
+  crossSessionMemory?: string
+): string {
+  return [
+    `You are ${buddy.name}, an AI Finance Buddy on Smart Money — an AI-powered personal finance platform.`,
+
+    buddy.isFanSim
+      ? `You are a simulation based on publicly available content from ${buddy.name}. If directly asked, acknowledge you are an AI simulation, not the real person.`
+      : "",
+
+    `\nYour philosophy:\n${buddy.philosophy}`,
+
+    `\nCharacter guidelines:`,
+    `- Respond in your distinctive voice and style at all times.`,
+    `- Apply your philosophy directly to the user's specific situation.`,
+    `- Use ${currency} for all currency amounts (e.g. for NGN use ₦, for USD use $, for GHS use ₵).`,
+    `- Keep responses concise (3–5 sentences unless detail is explicitly requested).`,
+    `- When referencing the user's financial data, open with: "📊 From your DataBank:"`,
+    `- When referencing news or market data, open with: "📰 [Source] · Today:"`,
+
+    `\nDataBank — USER'S REAL FINANCIAL DATA:\n${databankContext}`,
+
+    crossSessionMemory
+      ? `\n🧠 REMEMBERED PAST CONVERSATIONS & PREFERENCES (across user's saved chats):\n${crossSessionMemory}\nCRITICAL: Refer to these remembered past conversations naturally when relevant (e.g., recalling past property plans, emergency reserves, debt targets, or preferences disclosed in previous sessions).`
+      : "",
+
+    `CRITICAL: Only cite figures that appear above. Do not invent income, expense, or balance numbers. If data is absent, say "I don't see that in your DataBank yet."`,
+
+    buddy.disclaimer
+      ? `\nDisclaimer you must include if a user asks whether you are the real ${buddy.name.split(" ")[0]}:\n"${buddy.disclaimer}"`
+      : "",
+
+    `\n---\nSpecial output tags — use these to make chat interactive and visual:
+
+1. GOAL TAG: Whenever you give financial advice, recommend a savings target, or suggest a financial goal (e.g., build emergency fund, save ₦200,000 for investment, cut debt), always include this tag at the end of your response:
+[GOAL: {"title": "Short Goal Title", "target_amount": 500000, "target_date": "2026-12-31"}]
+This enables the user to save your recommendation as a Goal in 1 click!
+
+2. AGENT ACTION TAG: When you recommend an actionable money transfer, payment, or data cleaning:
+[AGENT_ACTION: {"title": "Short descriptive title", "action": "Action description", "amount": 50000}]
+where amount is in minor currency units (e.g. kobo for NGN).
+For DataBank cleaning or transaction accuracy audit, emit:
+[AGENT_ACTION: {"title": "Clean DataBank Transactions", "action": "databank_clean"}]
+
+
+3. DATABANK WRITE TAG: When the user explicitly asks you to add, log, record, or save financial data to their DataBank — such as expenses, income, a list of transactions, a financial goal, or updating a bank account balance / correcting net worth — emit this tag EXACTLY ONCE at the END of your reply:
+[DATABANK_WRITE: {"entries": [{"description": "Netflix", "amount": 4500, "entry_type": "expense", "category": "subscriptions", "date": "2026-07-31"}], "goal": {"title": "Emergency Fund", "target_amount": 500000, "target_date": "2027-01-01"}}]
+
+DATABANK_WRITE rules:
+- ONLY emit when user EXPLICITLY says "add to my databank", "log this", "save this", "record this expense", "add these expenses", "update my bank balance", etc.
+- amounts are in MAJOR units (₦4500 → 4500, NOT 450000).
+- entry_type must be: "expense", "income", "subscription", "asset", or "debt".
+- Both "entries" array and "goal" object are optional — only include what was asked.
+- If user gives a list of expenses/transactions, map each item into the entries array.
+- If user wants to update a bank account balance or correct their net worth, include an "asset" entry with metadata containing "bank" and "account_balance" (e.g. {"description": "OPay Balance Update", "amount": 50000, "entry_type": "asset", "metadata": {"bank": "OPay", "account_balance": 50000}}). This dynamically updates their net worth and account balance!
+- Always confirm in your human-readable reply exactly what you are adding.
+- Do NOT emit this tag if the user did NOT ask for a DataBank write action.
+
+Never include both GOAL and DATABANK_WRITE tags in the same message. Keep your tone highly realistic, interactive, and encouraging.`,
+
+    `\n---\n⚠️ This is AI-generated financial guidance for educational purposes only, not licensed financial, investment, or tax advice.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+// ════════════════════════════════════════════════════════════
+// 2. sendMessage — routes to Claude / GPT-4 / Gemini / Groq / Bedrock
+// ════════════════════════════════════════════════════════════
+
+export async function sendMessage(params: {
+  buddyId: string;
+  messages: Message[];
+  databankContext: DatabankContext;
+  model?: "claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma" | "bedrock";
+  crossSessionMemory?: string;
+}): Promise<ReadableStream<Uint8Array>> {
+  const { buddyId, messages, databankContext, model: modelOverride, crossSessionMemory } = params;
+
+  const MODEL_COLOR: Record<string, string> = {
+    Claude: "#7B68EE",
+    "GPT-4": "#10A37F",
+    Gemini: "#4285F4",
+    Groq: "#F55036",
+    NVIDIA: "#76B900",
+    Gemma: "#76B900",
+    Bedrock: "#FF9900",
+  };
+
+  let buddy: Buddy | undefined;
+  const dbRow = await getCommunityBuddyById(buddyId);
+  if (dbRow) {
+    const rawModel = (dbRow.model ?? "").toLowerCase();
+    const model: Buddy["model"] =
+      rawModel.includes("bedrock") || rawModel.includes("aws") ? "Bedrock" :
+      rawModel.includes("gemma") ? "Gemma" :
+      rawModel.includes("nvidia") || rawModel.includes("nim") ? "NVIDIA" :
+      rawModel.includes("groq") || rawModel.includes("llama") ? "Groq" :
+      rawModel.includes("gpt") ? "GPT-4" :
+      rawModel.includes("gemini") ? "Gemini" :
+      "Claude";
+    buddy = {
+      id: dbRow.id,
+      name: dbRow.name,
+      tag: dbRow.tag ?? "",
+      desc: dbRow.description ?? "",
+      price: dbRow.price_note ?? (dbRow.price === "free" ? "Free" : `₦${Number(dbRow.custom_price ?? 0).toLocaleString()}/mo`),
+      priceNote: dbRow.price_note ?? "",
+      badge: dbRow.price === "free" ? "Free" : `₦${Number(dbRow.custom_price ?? 0).toLocaleString()}/mo`,
+      badgeType: dbRow.price === "free" ? "free" : "pro",
+      bannerColor: dbRow.banner_color ?? "linear-gradient(135deg,#0B1E3D,#1A3A6E)",
+      avatarBg: dbRow.avatar_bg ?? "#1A3A6E",
+      avatarContent: dbRow.avatar_content ?? "🎯",
+      avatarIsSerif: dbRow.avatar_is_serif ?? false,
+      model,
+      modelColor: MODEL_COLOR[model] ?? "#7B68EE",
+      rating: "New",
+      reviewCount: "0",
+      isFanSim: dbRow.is_fan_sim ?? false,
+      disclaimer: dbRow.disclaimer ?? undefined,
+      categories: (dbRow.categories ?? []) as Buddy["categories"],
+      philosophy: dbRow.philosophy ?? "",
+      samples: [],
+      reviews: [],
+      includes: [],
+    };
+  } else {
+    buddy = getBuddy(buddyId);
+  }
+
+  if (!buddy) {
+    throw new Error(`Unknown buddy: ${buddyId}`);
+  }
+
+  const contextStr = formatDatabankContext(databankContext);
+  const system = getBuddySystemPrompt(buddy, contextStr, databankContext.currency ?? "NGN", crossSessionMemory);
+  const resolvedModel = resolveModel(buddy, modelOverride);
+
+  type ModelType = "claude" | "gpt4" | "gemini" | "groq" | "nvidia" | "gemma" | "bedrock" | "bedrock-haiku" | "bedrock-llama" | "bedrock-nova";
+  const modelsToTry: ModelType[] = [];
+
+  // ALWAYS start with the exact model selected for this buddy upon creation!
+  modelsToTry.push(resolvedModel);
+
+  // Append fallbacks in order of speed and availability
+  const fallbacks: ModelType[] = [
+    "groq",
+    "gemini",
+    "gemma",
+    "nvidia",
+    "bedrock",
+    "gpt4",
+    "claude",
+  ];
+
+  for (const fb of fallbacks) {
+    if (!modelsToTry.includes(fb)) {
+      modelsToTry.push(fb);
+    }
+  }
+
+  let lastError: any = null;
+  for (const modelName of modelsToTry) {
+    try {
+      console.log(`[AI Engine] Streaming response for buddy "${buddy.name}" using assigned model: ${modelName}`);
+      if (modelName === "bedrock-haiku") {
+        return await streamBedrockToReadableStream({
+          systemPrompt: system,
+          messages,
+          modelId: BEDROCK_MODELS["claude-3-5-haiku"],
+        });
+      } else if (modelName === "bedrock-llama") {
+        return await streamBedrockToReadableStream({
+          systemPrompt: system,
+          messages,
+          modelId: BEDROCK_MODELS["llama-3-3-70b"],
+        });
+      } else if (modelName === "bedrock-nova") {
+        return await streamBedrockToReadableStream({
+          systemPrompt: system,
+          messages,
+          modelId: BEDROCK_MODELS["nova-pro"],
+        });
+      } else if (modelName === "bedrock") {
+        return await streamBedrockToReadableStream({
+          systemPrompt: system,
+          messages,
+          modelId: BEDROCK_MODELS["claude-3-5-sonnet"],
+        });
+      } else if (modelName === "gemma") {
+        return await streamNvidia(system, messages, "google/gemma-4-31b-it");
+      } else if (modelName === "nvidia") {
+        return await streamNvidia(system, messages, "meta/llama-3.3-70b-instruct");
+      } else if (modelName === "groq") {
+        return await streamGroq(system, messages);
+      } else if (modelName === "claude") {
+        return await streamClaude(system, messages);
+      } else if (modelName === "gpt4") {
+        return await streamGPT4(system, messages);
+      } else {
+        return await streamGemini(system, messages);
+      }
+    } catch (err) {
+      console.error(`[AI Engine] Primary model ${modelName} failed for buddy "${buddy.name}", trying fallback:`, err);
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error("All AI models failed");
+}
+
+// ── Claude ────────────────────────────────────────────────
+async function streamClaude(
+  system: string,
+  messages: Message[]
+): Promise<ReadableStream<Uint8Array>> {
+  const stream = await anthropic().messages.create({
+    model: "claude-3-5-sonnet-20241022",
+    max_tokens: 1024,
+    system,
+    messages,
+    stream: true,
+  });
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for await (const chunk of stream) {
+          if (
+            chunk.type === "content_block_delta" &&
+            chunk.delta.type === "text_delta"
+          ) {
+            controller.enqueue(new TextEncoder().encode(chunk.delta.text));
+          }
+        }
+      } finally {
+        controller.close();
+      }
+    },
+  });
+}
+
+// ── GPT-4 ─────────────────────────────────────────────────
+async function streamGPT4(
+  system: string,
+  messages: Message[]
+): Promise<ReadableStream<Uint8Array>> {
+  try {
+    const response = await openai().chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "system", content: system }, ...messages],
+      stream: true,
+    });
+
+    return new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          for await (const chunk of response) {
+            const text = chunk.choices[0]?.delta?.content ?? "";
+            if (text) controller.enqueue(new TextEncoder().encode(text));
+          }
+        } finally {
+          controller.close();
+        }
+      },
+    });
+  } catch (err: any) {
+    if (err?.error?.type === "insufficient_quota" || err?.type === "insufficient_quota" || err?.status === 429) {
+      console.warn("OpenAI quota exceeded in streamGPT4. Falling back to Gemini.");
+      return streamGemini(system, messages);
+    }
+    throw err;
+  }
+}
+
+// ── Gemini ────────────────────────────────────────────────
+async function streamGemini(
+  system: string,
+  messages: Message[]
+): Promise<ReadableStream<Uint8Array>> {
+  const geminiInstance = gemini();
+  const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash-exp"];
+  let lastErr: any = null;
+
+  for (const mName of modelsToTry) {
+    try {
+      const model = geminiInstance.getGenerativeModel({
+        model: mName,
+        systemInstruction: system,
+      });
+
+      const geminiMessages = messages.map((m) => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content }],
+      }));
+
+      const result = await model.generateContentStream({ contents: geminiMessages });
+
+      return new ReadableStream<Uint8Array>({
+        async start(controller) {
+          try {
+            for await (const chunk of result.stream) {
+              const text = chunk.text();
+              if (text) controller.enqueue(new TextEncoder().encode(text));
+            }
+          } catch (err) {
+            controller.error(err);
+          } finally {
+            controller.close();
+          }
+        },
+      });
+    } catch (err) {
+      console.warn(`[AI Engine] Gemini candidate ${mName} failed:`, err);
+      lastErr = err;
+    }
+  }
+
+  throw lastErr || new Error("All Gemini model candidates failed");
+}
+
+// ── NVIDIA Build (Gemma 4 31B / Llama 3.3 70B NIM) ───────────
+async function streamNvidia(
+  system: string,
+  messages: Message[],
+  modelName = "google/gemma-4-31b-it"
+): Promise<ReadableStream<Uint8Array>> {
+  const response = await nvidia().chat.completions.create({
+    model: modelName,
+    messages: [{ role: "system", content: system }, ...messages],
+    temperature: 0.6,
+    max_tokens: 1024,
+    stream: true,
+  });
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for await (const chunk of response) {
+          const text = chunk.choices[0]?.delta?.content ?? "";
+          if (text) controller.enqueue(new TextEncoder().encode(text));
+        }
+      } finally {
+        controller.close();
+      }
+    },
+  });
+}
+
+// ── Groq (Llama 3.3 70B) ──────────────────────────────────
+async function streamGroq(
+  system: string,
+  messages: Message[]
+): Promise<ReadableStream<Uint8Array>> {
+  const response = await groq().chat.completions.create({
+    model: "llama-3.3-70b-versatile",
+    messages: [{ role: "system", content: system }, ...messages],
+    stream: true,
+  });
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for await (const chunk of response) {
+          const text = chunk.choices[0]?.delta?.content ?? "";
+          if (text) controller.enqueue(new TextEncoder().encode(text));
+        }
+      } finally {
+        controller.close();
+      }
+    },
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+// 3. sendGroupMessage — parallel streams, one per buddy
+// ════════════════════════════════════════════════════════════
+
+export async function sendGroupMessage(params: {
+  buddyIds: string[];
+  messages: Message[];
+  databankContext: DatabankContext;
+}): Promise<ReadableStream<Uint8Array>[]> {
+  const { buddyIds, messages, databankContext } = params;
+
+  // Fire all requests in parallel, preserve order
+  return Promise.all(
+    buddyIds.map((buddyId) => sendMessage({ buddyId, messages, databankContext }))
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+// 4. processSignalAlert — decide relevance, draft buddy message
+// ════════════════════════════════════════════════════════════
+
+async function askAI(prompt: string, fallbackModel = "claude-3-5-haiku-latest"): Promise<string> {
+  // Strategy 0: NVIDIA Build (Gemma 4 31B / Llama 3.3 70B)
+  const nvidiaKey = process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY;
+  if (nvidiaKey) {
+    try {
+      console.log("[AI] Attempting completion with NVIDIA Build: google/gemma-4-31b-it");
+      const response = await nvidia().chat.completions.create({
+        model: "google/gemma-4-31b-it",
+        max_tokens: 1024,
+        temperature: 0.4,
+        messages: [{ role: "user", content: prompt }],
+      });
+      const text = response.choices[0]?.message?.content || "";
+      if (text) return text;
+    } catch (err) {
+      console.error("[AI] NVIDIA completion failed, trying Groq fallback:", err);
+    }
+  }
+
+  // Strategy 1: Groq (Llama 3.3 70B Versatile)
+  if (process.env.GROQ_API_KEY) {
+    try {
+      console.log("[AI] Attempting completion with Groq: llama-3.3-70b-versatile");
+      const response = await groq().chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        max_tokens: 1024,
+        messages: [{ role: "user", content: prompt }],
+      });
+      return response.choices[0]?.message?.content || "";
+    } catch (err) {
+      console.error("[AI] Groq completion failed, trying Anthropic fallback:", err);
+    }
+  }
+
+  // Strategy 1.5: Amazon Bedrock (Claude 3.5 Sonnet / Haiku / Llama 3.3)
+  try {
+    console.log("[AI] Attempting completion with Amazon Bedrock");
+    const text = await generateBedrockCompletion({
+      modelId: BEDROCK_MODELS["claude-3-5-haiku"],
+      userMessage: prompt,
+      maxTokens: 512,
+    });
+    if (text) return text;
+  } catch (err) {
+    console.error("[AI] Amazon Bedrock completion failed, trying Anthropic fallback:", err);
+  }
+
+  // Strategy 2: Anthropic (Claude 3.5 Haiku/Sonnet)
+  if (process.env.ANTHROPIC_API_KEY && !depletedKeys.claude) {
+    try {
+      console.log(`[AI] Attempting completion with Anthropic: ${fallbackModel}`);
+      const response = await anthropic().messages.create({
+        model: fallbackModel,
+        max_tokens: 512,
+        messages: [{ role: "user", content: prompt }],
+      });
+      return response.content[0].type === "text" ? response.content[0].text : "";
+    } catch (err) {
+      console.error("[AI] Anthropic completion failed, trying Gemini fallback:", err);
+    }
+  }
+
+  // Strategy 3: Google Gemini
+  console.log("[AI] Attempting completion with Gemini: gemini-2.0-flash");
+  const model = gemini().getGenerativeModel({ model: "gemini-2.0-flash" });
+  const result = await model.generateContent(prompt);
+  const response = await result.response;
+  return response.text();
+}
+
+export async function processSignalAlert(params: {
+  signal: SignalPayload;
+  userContext: UserContext;
+  activeBuddy: Buddy;
+}): Promise<{ relevant: boolean; message: string }> {
+  const { signal, userContext, activeBuddy } = params;
+
+  const prompt = `You are ${activeBuddy.name}. A signal alert just arrived.
+
+SIGNAL:
+Source: ${signal.sourceName}
+Headline: ${signal.headline}
+Body: ${signal.body}${signal.tags?.length ? `\nTags: ${signal.tags.join(", ")}` : ""}
+
+USER CONTEXT:
+Income range: ${userContext.incomeRange ?? "unknown"}
+Primary goal: ${userContext.primaryGoal ?? "unknown"}
+Risk tolerance: ${userContext.riskTolerance ?? "unknown"}
+Recent topics: ${userContext.recentTopics?.join(", ") ?? "none"}
+
+Evaluate: Is this signal relevant and actionable for this user right now given their profile and recent conversations?
+
+Respond with valid JSON only — no markdown, no explanation:
+{ "relevant": true|false, "message": "your personalised buddy message if relevant, empty string if not" }
+
+If not relevant, return { "relevant": false, "message": "" }.
+If relevant, write the message as ${activeBuddy.name} in your distinct voice — 2–3 sentences maximum.`;
+
+  try {
+    const raw = await askAI(prompt, "claude-3-5-haiku-latest");
+    const parsed = JSON.parse(raw.trim());
+    return {
+      relevant: Boolean(parsed.relevant),
+      message: String(parsed.message ?? ""),
+    };
+  } catch (err) {
+    console.error("[processSignalAlert] Failed to process or parse JSON:", err);
+    return { relevant: false, message: "" };
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// 5. getAgentSuggestion — evaluate a proposed agentic action
+// ════════════════════════════════════════════════════════════
+
+export async function getAgentSuggestion(params: {
+  action: string;
+  databankContext: DatabankContext;
+}): Promise<AgentSuggestion> {
+  const { action, databankContext } = params;
+  const contextStr = formatDatabankContext(databankContext);
+
+  const prompt = `You are a financial risk evaluator for Smart Money, a Nigerian personal finance platform.
+
+PROPOSED AGENT ACTION:
+${action}
+
+USER'S FINANCIAL CONTEXT:
+${contextStr}
+
+Evaluate whether this action makes financial sense for this user. Consider:
+- Does the user have sufficient funds?
+- Is the action aligned with their stated goals and risk tolerance?
+- Are there any timing or market risks specific to Nigeria (FX, CBN policy, liquidity)?
+
+Respond with valid JSON only — no markdown, no explanation outside the JSON:
+{
+  "recommendation": "proceed" | "caution" | "decline",
+  "amount": <number in kobo, or null if action has no specific amount>,
+  "reasoning": "<1–2 sentence explanation>",
+  "riskLevel": "low" | "medium" | "high"
+}`;
+
+  try {
+    const raw = await askAI(prompt, "claude-3-5-sonnet-20241022");
+    const parsed = JSON.parse(raw.trim());
+    return {
+      recommendation: parsed.recommendation === "proceed"
+        ? "proceed"
+        : parsed.recommendation === "decline"
+        ? "decline"
+        : "caution",
+      amount: typeof parsed.amount === "number" ? parsed.amount : undefined,
+      reasoning: String(parsed.reasoning ?? "Unable to evaluate at this time."),
+      riskLevel: parsed.riskLevel === "high"
+        ? "high"
+        : parsed.riskLevel === "low"
+        ? "low"
+        : "medium",
+    };
+  } catch (err) {
+    console.error("[getAgentSuggestion] Failed to get suggestion or parse JSON:", err);
+    return {
+      recommendation: "caution",
+      reasoning: "Could not evaluate this action automatically. Please review manually.",
+      riskLevel: "medium",
+    };
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// 6. extractFinancialDataFromEmail — AI-powered Gmail parsing
+// ════════════════════════════════════════════════════════════
+
+export async function askAIWithEngine(
+  prompt: string,
+  aiEngine = "groq",
+  options?: { enableFallback?: boolean; fallbackEngine?: string }
+): Promise<string> {
+  const executeSingle = async (engineName: string): Promise<string> => {
+    const engine = (engineName || "groq").toLowerCase();
+
+    // 0. NVIDIA Build API (Gemma 4 31B or Llama 3.3 70B)
+    if (engine.includes("nvidia") || engine.includes("gemma") || engine.includes("nim")) {
+      const nvidiaKey = process.env.NVIDIA_API_KEY || process.env.NVIDIA_BUILD_API_KEY || process.env.NIM_API_KEY;
+      if (!nvidiaKey) {
+        throw new Error("NVIDIA Build API key (NVIDIA_API_KEY) is not configured in environment variables.");
+      }
+      const model = engine.includes("llama") || engine.includes("agent") 
+        ? "meta/llama-3.3-70b-instruct" 
+        : "google/gemma-4-31b-it";
+      console.log(`[AI Engine] Calling NVIDIA Build API (${model})`);
+      const response = await nvidia().chat.completions.create({
+        model,
+        max_tokens: 1024,
+        temperature: 0.2,
+        messages: [{ role: "user", content: prompt }],
+      });
+      return response.choices[0]?.message?.content || "";
+    }
+
+    // 1. Groq (Llama 3.3 70B Versatile, 3.1 70B, or 8B Instant)
+    if (engine.includes("groq") || engine.includes("llama")) {
+      if (!process.env.GROQ_API_KEY) {
+        throw new Error("Groq API key is not configured in environment variables.");
+      }
+      const candidateModels = engine.includes("8b")
+        ? ["llama-3.1-8b-instant"]
+        : ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
+
+      let lastErr: any = null;
+      for (const modelName of candidateModels) {
+        try {
+          console.log(`[AI Engine] Calling Groq (${modelName})`);
+          const response = await groq().chat.completions.create({
+            model: modelName,
+            max_tokens: 1024,
+            messages: [{ role: "user", content: prompt }],
+          });
+          if (response.choices[0]?.message?.content) {
+            return response.choices[0].message.content;
+          }
+        } catch (e: any) {
+          console.warn(`[AI Engine] Groq model ${modelName} failed:`, e?.message || e);
+          lastErr = e;
+        }
+      }
+
+      // If Groq models fail, execute immediate Gemini fallback
+      try {
+        console.log("[AI Engine] Groq models failed. Executing immediate Gemini fallback...");
+        const model = gemini().getGenerativeModel({ model: "gemini-2.0-flash" });
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        if (response.text()) return response.text();
+      } catch (gErr: any) {
+        console.warn("[AI Engine] Gemini fallback after Groq failed:", gErr?.message || gErr);
+      }
+
+      throw lastErr || new Error("All Groq models and fallback failed.");
+    }
+
+    // 2. Google Gemini
+    if (engine.includes("gemini") || engine.includes("google")) {
+      if (!process.env.GOOGLE_AI_API_KEY) {
+        throw new Error("Google AI (Gemini) API key is not configured in environment variables.");
+      }
+      const geminiCandidates = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
+      let geminiErr: any = null;
+      for (const mName of geminiCandidates) {
+        try {
+          console.log(`[AI Engine] Calling Gemini (${mName})`);
+          const model = gemini().getGenerativeModel({ model: mName });
+          const result = await model.generateContent(prompt);
+          const response = await result.response;
+          if (response.text()) return response.text();
+        } catch (e: any) {
+          console.warn(`[AI Engine] Gemini model ${mName} failed:`, e?.message || e);
+          geminiErr = e;
+        }
+      }
+      throw geminiErr || new Error("All Gemini models failed.");
+    }
+
+    // 3. Amazon Bedrock
+    if (engine.includes("bedrock") || engine.includes("aws")) {
+      let modelId: string = BEDROCK_MODELS["claude-3-5-sonnet"];
+      if (engine.includes("haiku")) modelId = BEDROCK_MODELS["claude-3-5-haiku"];
+      else if (engine.includes("llama")) modelId = BEDROCK_MODELS["llama-3-3-70b"];
+      else if (engine.includes("nova")) modelId = BEDROCK_MODELS["nova-pro"];
+
+      console.log(`[AI Engine] Calling Amazon Bedrock (${modelId})`);
+      return generateBedrockCompletion({
+        modelId,
+        userMessage: prompt,
+        maxTokens: 1024,
+      });
+    }
+
+    // 4. Anthropic Claude
+    if (engine.includes("claude") || engine.includes("anthropic")) {
+      if (!process.env.ANTHROPIC_API_KEY) {
+        throw new Error("Anthropic API key is not configured in environment variables.");
+      }
+      if (depletedKeys.claude) {
+        throw new Error("Anthropic API key quota is depleted.");
+      }
+      console.log("[AI Engine] Calling Anthropic (claude-3-5-sonnet-20241022)");
+      const response = await anthropic().messages.create({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 512,
+        messages: [{ role: "user", content: prompt }],
+      });
+      return response.content[0].type === "text" ? response.content[0].text : "";
+    }
+
+    // 5. OpenAI
+    if (engine.includes("openai") || engine.includes("gpt")) {
+      if (!process.env.OPENAI_API_KEY) {
+        throw new Error("OpenAI API key is not configured in environment variables.");
+      }
+      if (depletedKeys.gpt4) {
+        throw new Error("OpenAI API key quota is depleted.");
+      }
+      console.log("[AI Engine] Calling OpenAI (gpt-4o-mini)");
+      const response = await openai().chat.completions.create({
+        model: "gpt-4o-mini",
+        max_tokens: 512,
+        messages: [{ role: "user", content: prompt }],
+      });
+      return response.choices[0]?.message?.content || "";
+    }
+
+    throw new Error(`Unknown or unsupported AI engine: ${engineName}`);
+  };
+
+  try {
+    return await executeSingle(aiEngine);
+  } catch (primaryErr: any) {
+    // If fallback is explicitly disabled, do NOT failover — throw error immediately
+    if (options?.enableFallback === false) {
+      console.warn(`[AI Engine] Primary engine ${aiEngine} failed and auto-fallback is DISABLED:`, primaryErr?.message || primaryErr);
+      throw primaryErr;
+    }
+
+    // If fallback is enabled, failover ONLY to designated fallback engine
+    const fallback = options?.fallbackEngine || (aiEngine.includes("groq") ? "gemini" : "groq-70b");
+    if (fallback && fallback !== aiEngine) {
+      console.warn(`[AI Engine] Primary engine ${aiEngine} failed. Executing designated fallback (${fallback}):`, primaryErr?.message || primaryErr);
+      return await executeSingle(fallback);
+    }
+    throw primaryErr;
+  }
+}
+
+export async function extractFinancialDataFromEmail(
+  emailBody: string,
+  subject: string,
+  from: string,
+  syncMode: "lightweight" | "deep" = "lightweight",
+  aiPrompt = "",
+  aiEngine = "groq",
+  options?: { enableFallback?: boolean; fallbackEngine?: string }
+) {
+  // Pre-filter: verify it's a financial transaction email before proceeding to Regex or Deep AI
+  const cleanBody = emailBody.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  const fullText = `${subject} ${cleanBody}`;
+  if (!fullText.trim() || !isTransactionEmail(fullText, subject, from)) {
+    return null;
+  }
+
+  // ── 1. LIGHTWEIGHT SEARCH MODE (Next.js regex extraction — ultra-fast & 100% reliable) ──
+  if (syncMode === "lightweight") {
+    try {
+      // Programmatically extract data using fast local regex parser (0 tokens, sub-millisecond)
+      const data = parseFinancialEmailData(emailBody, subject, from);
+      if (!data) {
+        return null;
+      }
+      return data;
+    } catch (err) {
+      console.warn("[extractFinancialDataFromEmail] Lightweight sync error:", err);
+      return null;
+    }
+  }
+  // ── 2. DEEP AI SEARCH MODE (Direct full body AI scraping) ──
+  const prompt = `You are a financial email parser for Smart Money. Analyze this email details and body.
+
+${aiPrompt ? `CUSTOM EXTRACTION PARAMETERS / USER INSTRUCTIONS:\n- ${aiPrompt}\n` : ""}
+
+Subject: ${subject}
+From: ${from}
+Body:
+${emailBody.slice(0, 10000)}
+
+First, determine if this email is a legitimate bank alert, receipt, or transaction notification (credit alert, debit alert, transfer notification, POS receipt, subscription charge, bill payment, etc.). 
+If it is NOT a financial transaction or bank alert, return JSON with:
+{ "is_transaction": false }
+
+CRITICAL CLASSIFICATION RULES:
+1. entry_type DIRECTION:
+   - Use "expense" if money was debited, sent, paid, spent, charged, or withdrawn from the user's account (transfers sent to someone, POS purchases, card debits, bill payments, airtime top-ups, ATM withdrawals). NOTE: Phrases like "Account Credited: [Beneficiary]" in transfer notifications describe the RECIPIENT's account — the user's account was DEBITED, so entry_type MUST be "expense".
+   - Use "income" if money was credited, deposited, or received into the user's account (salary, transfers received, credit alerts, refunds, cash-in).
+   - Use "asset" if money was transferred to a savings or investment platform (Cowrywise, PiggyVest, Risevest, Stanbic MMF, Bamboo, Trove, Kuda Save, etc.).
+2. AMOUNT:
+   - amount_naira must be the actual transaction amount in Naira (not kobo), NOT the available or ledger account balance.
+3. SAVINGS & INVESTMENTS:
+   - Transfers to Cowrywise, PiggyVest, Risevest, Stanbic MMF, Bamboo, Trove, etc. MUST be categorized as 'Savings & Investments' and assigned entry_type 'asset'.
+
+If it IS a transaction alert, extract details into a valid JSON object matching this structure (no markdown or commentary):
+{
+  "is_transaction": true,
+  "amount_naira": <number representing transaction value in Naira, e.g. 50000 for ₦50,000>,
+  "description": "<short descriptive summary of the transaction>",
+  "entry_type": "income" | "expense" | "asset",
+  "category": "<perform AI smart recognition based on full transaction details e.g. 'Savings & Investments', 'Food & Dining', 'Transport & Fuel', 'Digital Subscriptions', 'Supermarket & Groceries', 'Salary & Payroll', 'Utilities & Bills', 'Healthcare', 'Education', 'Transfer', etc.>",
+  "bank": "<the issuing financial institution that sent this alert email (e.g. Zenith Bank for emails from @zenithbank.com). Do NOT set bank to a destination/beneficiary bank mentioned in a transfer narration>",
+  "account_balance": <number representing the available or ledger account balance in Naira after this transaction, or null if not mentioned>,
+  "transaction_time": "<exact time string of the transaction alert e.g. '14:32:05', '02:32 PM', '08:15 AM', or null if not mentioned>",
+  "reason": "<clear, context-aware 1-sentence AI explanation of what the transaction was for, including merchant/counterparty and purpose, e.g. 'Transfer sent to John Doe for groceries at Shoprite', 'Salary payment received from ACME Corp', 'Card payment for Netflix subscription'>"
+}`;
+
+  try {
+    const raw = await askAIWithEngine(prompt, aiEngine, options);
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed.is_transaction && typeof parsed.amount_naira === "number") {
+        const localParsed = parseFinancialEmailData(emailBody, subject, from);
+
+        const isSavingsPlatform = /(cowrywise|piggyvest|piggybank|risevest|stanbic\s*mmf|mutual\s*fund|bamboo|trove|kuda\s*save|savebox|owealth|fairmoney\s*savings|savi|investik|branch\s*savings)/i.test(`${subject} ${emailBody} ${parsed.description || ""}`);
+
+        // AI AUTHORITATIVE DIRECTION: Respect AI's determination for entry_type
+        const finalEntryType: any = isSavingsPlatform
+          ? "asset"
+          : (parsed.entry_type === "income" || parsed.entry_type === "expense" || parsed.entry_type === "asset"
+              ? parsed.entry_type
+              : (localParsed?.entry_type ?? "expense"));
+
+        const rawCategory = String(parsed.category || localParsed?.category || "General Expense");
+        const finalCategory = isSavingsPlatform ? "Savings & Investments" : ((finalEntryType === "expense" && (rawCategory.toLowerCase() === "income" || rawCategory.toLowerCase() === "salary")) ? "Transfer" : rawCategory);
+
+        const finalReason = parsed.reason
+          ? String(parsed.reason).slice(0, 200)
+          : (localParsed?.reason || String(parsed.description || "Bank Transaction"));
+        const finalTime = parsed.transaction_time
+          ? String(parsed.transaction_time)
+          : localParsed?.transaction_time;
+
+        let finalBank = parsed.bank ? String(parsed.bank) : localParsed?.bank;
+        if (from) {
+          const senderBank = localParsed?.bank ? { label: localParsed.bank } : null;
+          if (senderBank?.label) {
+            finalBank = senderBank.label;
+          }
+        }
+
+        console.log(`[Gmail Deep AI Sync (${aiEngine})] Extracted transaction: ₦${parsed.amount_naira} (${parsed.description}) [${finalEntryType}] Bank: ${finalBank}`);
+        return {
+          amount: parsed.amount_naira,
+          description: String(parsed.description || localParsed?.description || "Gmail Transaction").slice(0, 120),
+          entry_type: finalEntryType,
+          category: finalCategory,
+          bank: finalBank,
+          provider: finalBank,
+          account_balance: typeof parsed.account_balance === "number" ? parsed.account_balance : localParsed?.account_balance,
+          transaction_time: finalTime,
+          reason: finalReason,
+        };
+      }
+    }
+  } catch (err) {
+    console.error("[extractFinancialDataFromEmail] Deep AI extraction failed:", err);
+  }
+
+  // Fallback to local regex/heuristics parser
+  try {
+    console.log("[extractFinancialDataFromEmail] AI failed/skipped. Falling back to local regex parser...");
+    return parseFinancialEmailData(emailBody, subject, from);
+  } catch (err) {
+    console.error("[extractFinancialDataFromEmail] Regex fallback failed:", err);
+    return null;
+  }
+}
+

@@ -12,7 +12,9 @@
     "start": "npm --prefix apps/web run start",
     "web:dev": "npm --prefix apps/web run dev",
     "web:build": "npm --prefix apps/web run build",
-    "web:start": "npm --prefix apps/web run start",
+    "admin:dev": "npm --prefix apps/admin run dev",
+    "admin:build": "npm --prefix apps/admin run build",
+    "admin:start": "npm --prefix apps/admin run start",
     "partner:dev": "npm --prefix services/partner_service run dev",
     "partner:build": "npm --prefix services/partner_service run build",
     "partner:start": "npm --prefix services/partner_service run start"

@@ -7,6 +7,7 @@ This file preserves all technical context, active features, database schemas, an
 ## 📌 System Architecture & Config (Monorepo)
 * **App URL**: `https://smartmoney.technology`
 * **Web Application (`apps/web`)**: Next.js 16 (App Router), React 19, Tailwind, Framer Motion, Canvas Confetti. (PM2 `smart-money`, port 3000)
+* **Admin Portal (`apps/admin`)**: Next.js 16 decoupled backoffice management application (PM2 `admin-portal`, port 3002)
 * **Partner Microservice (`services/partner_service`)**: Decoupled B2B partner ledger, consent engine & approvals daemon (PM2 `partner-service`, port 8001)
 * **Transaction Syncer (`services/transaction_syncer`)**: Python background engine (PM2 `transaction-syncer`, port 8000)
 * **PostgREST**: Local DB PostgREST API (PM2 `postgrest`, port 3001)

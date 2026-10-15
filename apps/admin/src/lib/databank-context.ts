@@ -1,0 +1,330 @@
+import { type DatabankContext } from "@/lib/ai";
+import { Pool } from "pg";
+
+let sharedPool: Pool | null = null;
+function getPool() {
+  if (!sharedPool) {
+    const dbUrl = process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money";
+    const isRemote = dbUrl.includes("supabase.com") || dbUrl.includes("pooler") || dbUrl.includes("aws-");
+    sharedPool = new Pool({
+      connectionString: dbUrl,
+      ssl: isRemote ? { rejectUnauthorized: false } : false,
+      max: 10,
+    });
+  }
+  return sharedPool;
+}
+
+function monthStart(): string {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split("T")[0];
+}
+
+function priorMonthStart(): string {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth() - 1, 1).toISOString().split("T")[0];
+}
+
+function thirtyDaysAgo(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 30);
+  return d.toISOString().split("T")[0];
+}
+
+function ninetyDaysAgo(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 90);
+  return d.toISOString().split("T")[0];
+}
+
+export async function getDatabankContextForUser(
+  _clientOrUserId: any,
+  userIdParam?: string
+): Promise<DatabankContext> {
+  const userId = typeof _clientOrUserId === "string" ? _clientOrUserId : userIdParam ?? "";
+
+  const MONTH_START       = monthStart();
+  const PRIOR_MONTH_START = priorMonthStart();
+  const THIRTY_DAYS_AGO   = thirtyDaysAgo();
+  const NINETY_DAYS_AGO   = ninetyDaysAgo();
+
+  const pool = getPool();
+
+  try {
+    // Fetch user databank entries (limit 200 recent entries), goals, integrations, active signals, and currency in parallel
+    const [entriesRes, goalsRes, integrationsRes, signalsRes, userRes] = await Promise.all([
+      pool.query(
+        `SELECT entry_type, amount, description, category, intent, entry_date, source, metadata, created_at
+         FROM databank_entries
+         WHERE user_id = $1
+         ORDER BY entry_date DESC, created_at DESC
+         LIMIT 200;`,
+        [userId]
+      ),
+
+      pool.query(
+        `SELECT title, target_amount, current_amount, target_date, status
+         FROM goals
+         WHERE user_id = $1 AND status = 'active';`,
+        [userId]
+      ),
+
+      pool.query(
+        `SELECT provider, last_synced_at
+         FROM user_integrations
+         WHERE user_id = $1;`,
+        [userId]
+      ),
+
+      pool.query(
+        `SELECT uss.source_id, ss.name as source_name
+         FROM user_signal_sources uss
+         LEFT JOIN signal_sources ss ON ss.id = uss.source_id
+         WHERE uss.user_id = $1 AND uss.enabled = true;`,
+        [userId]
+      ),
+
+      pool.query(
+        `SELECT currency, primary_goal, databank_iq_score, databank_iq_level
+         FROM users
+         WHERE id = $1 LIMIT 1;`,
+        [userId]
+      ),
+    ]);
+
+    const entries      = entriesRes.rows ?? [];
+    const goals        = goalsRes.rows ?? [];
+    const integrations = integrationsRes.rows ?? [];
+    const signals      = signalsRes.rows ?? [];
+    const currency     = userRes.rows[0]?.currency ?? "NGN";
+    const primaryGoal  = userRes.rows[0]?.primary_goal ?? undefined;
+
+    // Filter time periods
+    const thisMonth  = entries.filter((e) => e.entry_date >= MONTH_START);
+    const priorMonth = entries.filter((e) => e.entry_date >= PRIOR_MONTH_START && e.entry_date < MONTH_START);
+    const recent30   = entries.filter((e) => e.entry_date >= THIRTY_DAYS_AGO);
+    const recent90   = entries.filter((e) => e.entry_date >= NINETY_DAYS_AGO);
+
+    // Monthly summary
+    const incomeEntries  = entries.filter((e) => e.entry_type === "income");
+    const expenseEntries = entries.filter((e) => e.entry_type === "expense" || e.entry_type === "subscription");
+
+    const thisMonthIncome = thisMonth
+      .filter((e) => e.entry_type === "income")
+      .reduce((s, e) => s + Math.abs(Number(e.amount)), 0);
+    const thisMonthExpenses = thisMonth
+      .filter((e) => e.entry_type === "expense" || e.entry_type === "subscription")
+      .reduce((s, e) => s + Math.abs(Number(e.amount)), 0);
+
+    const hasThisMonthData = thisMonthIncome > 0 || thisMonthExpenses > 0;
+
+    const targetIncomeEntries = hasThisMonthData
+      ? thisMonth.filter((e) => e.entry_type === "income")
+      : recent30.filter((e) => e.entry_type === "income").length > 0
+        ? recent30.filter((e) => e.entry_type === "income")
+        : incomeEntries;
+
+    const targetExpenseEntries = hasThisMonthData
+      ? thisMonth.filter((e) => e.entry_type === "expense" || e.entry_type === "subscription")
+      : recent30.filter((e) => e.entry_type === "expense" || e.entry_type === "subscription").length > 0
+        ? recent30.filter((e) => e.entry_type === "expense" || e.entry_type === "subscription")
+        : expenseEntries;
+
+    const totalIncome = hasThisMonthData
+      ? thisMonthIncome
+      : targetIncomeEntries.reduce((s, e) => s + Math.abs(Number(e.amount)), 0);
+
+    const totalExpenses = hasThisMonthData
+      ? thisMonthExpenses
+      : targetExpenseEntries.reduce((s, e) => s + Math.abs(Number(e.amount)), 0);
+
+    const savingsRate = totalIncome > 0
+      ? Math.max(0, Math.min(1, Math.round(((totalIncome - totalExpenses) / totalIncome) * 100) / 100))
+      : 0;
+
+    const largestCredit = targetIncomeEntries.reduce<typeof targetIncomeEntries[0] | null>(
+      (max, e) => (!max || Math.abs(Number(e.amount)) > Math.abs(Number(max.amount)) ? e : max), null
+    );
+    const largestDebit = targetExpenseEntries.reduce<typeof targetExpenseEntries[0] | null>(
+      (max, e) => (!max || Math.abs(Number(e.amount)) > Math.abs(Number(max.amount)) ? e : max), null
+    );
+
+    // Top categories with trend
+    function categoryTotals(list: typeof entries): Record<string, number> {
+      const map: Record<string, number> = {};
+      list
+        .filter((e) => (e.entry_type === "expense" || e.entry_type === "subscription") && e.category)
+        .forEach((e) => {
+          const cat = e.category as string;
+          map[cat] = (map[cat] ?? 0) + Math.abs(Number(e.amount));
+        });
+      return map;
+    }
+
+    const thisCats  = categoryTotals(thisMonth);
+    const priorCats = categoryTotals(priorMonth);
+    const allCats   = categoryTotals(recent90.length > 0 ? recent90 : entries);
+    const activeCats = Object.keys(thisCats).length > 0 ? thisCats : allCats;
+    const totalSpend = Object.values(activeCats).reduce((s, v) => s + v, 0);
+
+    const topCategories = Object.entries(activeCats)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 6)
+      .map(([category, total]) => {
+        const prior = priorCats[category] ?? 0;
+        const trend: "up" | "down" | "stable" =
+          prior === 0 ? "stable"
+          : total > prior * 1.05 ? "up"
+          : total < prior * 0.95 ? "down"
+          : "stable";
+        return {
+          category,
+          total,
+          percentage: totalSpend > 0 ? Math.round((total / totalSpend) * 100) : 0,
+          trend,
+        };
+      });
+
+    // Subscriptions
+    const subscriptions = entries
+      .filter((e) => e.entry_type === "subscription")
+      .map((e) => ({
+        name:        e.description || "Subscription",
+        amount:      Math.abs(Number(e.amount)),
+        frequency:   "monthly" as const,
+        lastCharged: e.entry_date,
+        source:      (e.source ?? "manual") as "gmail" | "upload" | "manual",
+      }));
+
+    // Recent transactions (last 30 days, max 30)
+    const recentTransactions = entries.slice(0, 30).map((e) => ({
+      description: e.description || "Transaction",
+      amount:      Math.abs(Number(e.amount)),
+      type:        e.entry_type === "income" ? ("income" as const) : ("expense" as const),
+      category:    e.category ?? "Uncategorized",
+      date:        e.entry_date,
+      source:      e.source ?? "manual",
+    }));
+
+    // Active goals
+    const activeGoals = goals.map((g) => ({
+      title:           g.title,
+      targetAmount:    Math.abs(Number(g.target_amount)),
+      currentAmount:   Math.abs(Number(g.current_amount)),
+      targetDate:      g.target_date || "",
+      progressPercent: Number(g.target_amount) > 0
+        ? Math.round((Number(g.current_amount) / Number(g.target_amount)) * 100)
+        : 0,
+    }));
+
+    // Connected sources
+    const sourceSet = new Set(entries.map((e) => e.source ?? "manual")) as Set<string>;
+    const connectedSources = [...sourceSet].filter((s) =>
+      ["gmail", "upload", "manual", "openbanking"].includes(s)
+    ) as Array<"gmail" | "upload" | "manual" | "openbanking">;
+
+    // Last sync timestamps
+    const lastSyncAt: { gmail?: string; openbanking?: string } = {};
+    for (const row of integrations) {
+      if (row.provider === "gmail" && row.last_synced_at)
+        lastSyncAt.gmail = row.last_synced_at;
+      if (row.provider === "openbanking" && row.last_synced_at)
+        lastSyncAt.openbanking = row.last_synced_at;
+    }
+
+    // Active signals
+    const activeSignals = signals
+      .map((s: any) => s.source_name)
+      .filter(Boolean) as string[];
+
+    // Net worth & Savings calculations
+    const totalIncomeAllTime = incomeEntries.reduce((s, e) => s + Math.abs(Number(e.amount)), 0);
+    const totalExpensesAllTime = expenseEntries.reduce((s, e) => s + Math.abs(Number(e.amount)), 0);
+    const netSavingsAllTime = totalIncomeAllTime - totalExpensesAllTime;
+
+    const totalAssets = entries.filter((e) => e.entry_type === "asset").reduce((s, e) => s + Math.abs(Number(e.amount)), 0);
+    const totalDebt = entries.filter((e) => e.entry_type === "debt").reduce((s, e) => s + Math.abs(Number(e.amount)), 0);
+
+    const bankBalancesRecord: Record<string, { balance: number; date: string }> = {};
+    const sortedEntriesForBalances = [...entries].sort((a, b) => {
+      const d = (b.entry_date ?? "").localeCompare(a.entry_date ?? "");
+      if (d !== 0) return d;
+      return (b.created_at ?? "").localeCompare(a.created_at ?? "");
+    });
+
+    for (const entry of sortedEntriesForBalances) {
+      const bankKey = (entry.metadata as any)?.bank || (entry.metadata as any)?.provider || "Other";
+      const balance = (entry.metadata as any)?.account_balance;
+      if (typeof balance === "number" && balance > 0 && !bankBalancesRecord[bankKey]) {
+        bankBalancesRecord[bankKey] = {
+          balance,
+          date: entry.entry_date ?? ""
+        };
+      }
+    }
+
+    const totalBankBalance = Object.values(bankBalancesRecord).reduce((sum, b) => sum + b.balance, 0);
+    const cashSavingsVal = totalBankBalance > 0 ? totalBankBalance : Math.max(0, netSavingsAllTime);
+
+    const netWorth = cashSavingsVal + totalAssets - totalDebt;
+    const savingsBalance = cashSavingsVal + totalAssets;
+
+    const bankBalances = Object.entries(bankBalancesRecord).map(([bank, info]) => ({
+      bank,
+      balance: info.balance,
+      date: info.date,
+    }));
+
+    // ── DataBank IQ and Intent summaries ────────────────────
+    const intentMap: Record<string, { totalAmount: number; count: number }> = {};
+    entries.forEach((e) => {
+      if (e.intent && typeof e.intent === "string" && e.intent.trim()) {
+        const key = e.intent.trim();
+        if (!intentMap[key]) intentMap[key] = { totalAmount: 0, count: 0 };
+        intentMap[key].totalAmount += Math.abs(Number(e.amount));
+        intentMap[key].count++;
+      }
+    });
+
+    const capturedIntents = Object.entries(intentMap).map(([intent, data]) => ({
+      intent,
+      totalAmount: data.totalAmount,
+      count: data.count,
+    }));
+
+    const iqScore = userRes.rows[0]?.databank_iq_score ?? 50;
+    const iqLevel = userRes.rows[0]?.databank_iq_level ?? "Developing";
+    const databankIQ = { score: iqScore, level: iqLevel };
+
+    return {
+      currency,
+      primaryGoal,
+      connectedSources,
+      lastSyncAt,
+      activeSignals,
+      netWorth,
+      savingsBalance,
+      bankBalances,
+      databankIQ,
+      capturedIntents,
+      monthlySummary: {
+        totalIncome,
+        totalExpenses,
+        savingsRate,
+        largestCredit: largestCredit
+          ? { amount: Math.abs(Number(largestCredit.amount)), description: largestCredit.description || "Credit", date: largestCredit.entry_date }
+          : null,
+        largestDebit: largestDebit
+          ? { amount: Math.abs(Number(largestDebit.amount)), description: largestDebit.description || "Debit", date: largestDebit.entry_date }
+          : null,
+      },
+      topCategories,
+      subscriptions,
+      recentTransactions,
+      activeGoals,
+    };
+  } catch (err) {
+    console.error("[getDatabankContextForUser] Query error:", err);
+    throw err;
+  }
+}

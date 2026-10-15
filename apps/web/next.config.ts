@@ -37,6 +37,18 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async rewrites() {
+    return [
+      {
+        source: "/admin/:path*",
+        destination: "http://127.0.0.1:3002/admin/:path*",
+      },
+      {
+        source: "/api/admin/:path*",
+        destination: "http://127.0.0.1:3002/api/admin/:path*",
+      },
+    ];
+  },
 };
 
 export default nextConfig;
