@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
+
 import { comingSoon } from "@/components/partner/shared";
 import { PARTNER_FIRMS, PARTNER_CATEGORY_FILTERS, type PartnerFirm } from "@/components/partner/mockData";
 
@@ -49,11 +50,44 @@ function PartnerCard({ firm }: { firm: PartnerFirm }) {
 }
 
 export default function PartnersPage() {
+  const [firms, setFirms] = useState<PartnerFirm[]>(PARTNER_FIRMS);
   const [activeFilter, setActiveFilter] = useState("All");
   const [search, setSearch] = useState("");
 
+  useEffect(() => {
+    let mounted = true;
+    async function loadFirms() {
+      try {
+        const res = await fetch("/api/partners");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (mounted && Array.isArray(data.firms) && data.firms.length > 0) {
+          setFirms(data.firms.map((f: any) => ({
+            id: f.slug || f.id,
+            name: f.name,
+            type: f.type,
+            icon: f.icon || "🏛️",
+            banner: f.banner || "linear-gradient(135deg,#0B1E3D,#1A3A6E)",
+            iconBg: f.iconBg || "#0B1E3D",
+            desc: f.desc || f.description || "",
+            tags: Array.isArray(f.tags) ? f.tags : [],
+            rating: f.rating || "4.8★",
+            clients: f.clients || "1,000+",
+            minPortfolio: f.minPortfolio || "₦0",
+          })));
+        }
+      } catch (err) {
+        console.error("Failed to load partner firms:", err);
+      }
+    }
+    loadFirms();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const filtered = useMemo(() => {
-    let list = PARTNER_FIRMS;
+    let list = firms;
     if (activeFilter !== "All") {
       list = list.filter((f) => f.type === activeFilter || f.tags.includes(activeFilter));
     }
@@ -62,7 +96,8 @@ export default function PartnersPage() {
       list = list.filter((f) => f.name.toLowerCase().includes(q) || f.type.toLowerCase().includes(q));
     }
     return list;
-  }, [activeFilter, search]);
+  }, [firms, activeFilter, search]);
+
 
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8 w-full">

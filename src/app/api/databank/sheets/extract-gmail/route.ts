@@ -18,8 +18,8 @@ export async function POST(req: NextRequest) {
     // 2. Export existing DataBank transactions immediately to the sheet (instant feedback)
     let totalSheetRows = await exportDataBankToSheet(user.id, spreadsheetId);
 
-    // 3. Trigger a fast background Gmail sync (non-blocking) so HTTP doesn't hang
-    syncGmailForUser(user.id, false, undefined, true)
+    // 3. Trigger a fast background Gmail sync (scans full 90-180 day transaction history)
+    syncGmailForUser(user.id, true, undefined, true)
       .then(async () => {
         try {
           await exportDataBankToSheet(user.id, spreadsheetId);

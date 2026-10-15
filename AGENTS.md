@@ -12,11 +12,13 @@ This document stores essential project context, database schemas, architectural 
 
 ## 🚀 Key Services & Stack Overview
 * **Web App**: Next.js 16 (React 19, Tailwind, Framer Motion) running on PM2 cluster (`smart-money`).
-* **Python Background Syncer**: `services/transaction_syncer` (PM2 process `transaction-syncer`).
+* **Python Background Syncer**: `services/transaction_syncer` (PM2 process `transaction-syncer`, port 8000).
+* **Partner Microservice**: `services/partner_service` (PM2 process `partner-service`, port 8001) — decoupled B2B partner ledger, consent engine & approvals daemon.
 * **Database**: Dual PostgreSQL Setup
   * Remote Supabase DB: `aws-0-eu-west-1.pooler.supabase.com:6543/postgres`
   * Local DB: `postgresql://postgres@127.0.0.1:5432/smart_money`
 * **Email Provider**: AWS SES (`eu-north-1`, Sender: `Smart Money <hi@smartmoney.technology>`).
+
 
 ---
 

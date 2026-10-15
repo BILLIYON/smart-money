@@ -18,11 +18,15 @@ export async function proxy(request: NextRequest) {
 
   const isPublicPath =
     PUBLIC_PATHS.has(pathname) ||
+    pathname === "/partners" ||
+    pathname.startsWith("/partners/") ||
     pathname.startsWith("/marketplace/") ||
     pathname.startsWith("/buddies/") ||
     pathname.startsWith("/chat/") ||
     pathname === "/contact" ||
     pathname === "/api/contact" ||
+    pathname === "/api/partners" ||
+    (pathname.startsWith("/api/partners/") && !pathname.endsWith("/apply")) ||
     pathname === "/api/studio" ||
     pathname === "/api/chat/preview" ||
     pathname === "/api/hidden-buddies" ||
@@ -30,6 +34,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/api/analytics/") ||
     pathname === "/api/subscriptions/price" ||
     pathname.startsWith("/api/auth/");
+
 
   const isAuthPath = AUTH_PATHS.has(pathname);
 

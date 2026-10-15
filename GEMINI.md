@@ -12,7 +12,9 @@ This file preserves all technical context, active features, database schemas, an
 * **Services Status (PM2)**:
   * `0: postgrest`
   * `1, 2: smart-money` (Cluster mode)
-  * `3: transaction-syncer` (Python background engine)
+  * `3: transaction-syncer` (Python background engine, port 8000)
+  * `4: partner-service` (Decoupled partner daemon, port 8001)
+
 
 ---
 

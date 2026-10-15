@@ -554,14 +554,44 @@ export function SyncWithGoogleCard({ onSyncComplete }: { onSyncComplete?: () => 
                 href={status.sheetUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-bold inline-flex items-center gap-1.5 ml-2 shrink-0 px-3 py-1.5 rounded-[8px] transition-all hover:brightness-105 active:scale-95 text-[11px] text-white shadow-sm"
+                className="font-bold inline-flex items-center gap-1.5 ml-2 shrink-0 px-3.5 py-2 rounded-[10px] transition-all hover:brightness-105 active:scale-95 text-[11px] text-white shadow-sm"
                 style={{
                   background: "linear-gradient(135deg, #0F9D58 0%, #0B8043 100%)",
+                  boxShadow: "0 2px 6px rgba(15,157,88,0.25)",
                 }}
               >
-                <span>Open in Sheets ↗</span>
+                <span>🚀 Open Sheet &amp; Run Native Sync ↗</span>
               </a>
             )}
+          </div>
+
+          {/* 1-Time Native Authorization Guide */}
+          <div
+            className="rounded-[12px] p-3 text-[12px] space-y-1.5"
+            style={{
+              background: "rgba(15,157,88,0.06)",
+              border: "1px dashed rgba(15,157,88,0.25)",
+            }}
+          >
+            <div className="flex items-center justify-between font-semibold" style={{ color: "#0F9D58" }}>
+              <span className="flex items-center gap-1.5 text-[12px]">
+                ⚡ 1-Time Google Sheets Setup (Takes 10s)
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(15,157,88,0.12)", color: "#0F9D58" }}>
+                Native Cloud Sync
+              </span>
+            </div>
+            <p className="text-[11px] leading-relaxed" style={{ color: "var(--muted)" }}>
+              To enable Google to run your financial sync natively in the background:
+            </p>
+            <ol className="text-[11px] space-y-1 list-decimal list-inside pl-1" style={{ color: "var(--text)" }}>
+              <li>Click <strong>Open Sheet &amp; Run Native Sync ↗</strong> above.</li>
+              <li>In the top toolbar of your spreadsheet, click <strong>Smart Money ⚡ ➔ ⚡ Sync Gmail Now</strong>.</li>
+              <li>When Google asks for 1-time permission, click <strong>Continue ➔ Allow</strong>.</li>
+            </ol>
+            <div className="text-[10px] text-emerald-600 font-medium pt-0.5">
+              ✓ Once approved once, your Google Sheet will sync bank transaction alerts independently 24/7!
+            </div>
           </div>
 
           {/* Action Buttons */}

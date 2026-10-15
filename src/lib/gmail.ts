@@ -457,8 +457,9 @@ export async function syncGmailForUser(
     );
     const integration = intRows[0];
 
-    const ninetyDaysAgo = Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
-    let lastSync = ninetyDaysAgo;
+    const lookbackDays = 180;
+    const defaultPastTimestamp = Math.floor((Date.now() - lookbackDays * 24 * 60 * 60 * 1000) / 1000);
+    let lastSync = defaultPastTimestamp;
 
     if (!force90Days && integration?.last_synced_at) {
       lastSync = Math.floor(new Date(integration.last_synced_at).getTime() / 1000);

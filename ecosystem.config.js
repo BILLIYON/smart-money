@@ -35,6 +35,19 @@ module.exports = {
       env: {
         PORT: 8000
       }
+    },
+    {
+      name: "partner-service",
+      script: "dist/server.js",
+      cwd: "/home/ec2-user/smart-money/services/partner_service",
+      instances: 1,
+      exec_mode: "fork",
+      max_memory_restart: "300M",
+      env: {
+        NODE_ENV: "production",
+        PARTNER_SERVICE_PORT: 8001
+      }
     }
   ]
 };
+

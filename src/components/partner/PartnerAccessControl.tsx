@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { popup } from "@/store/popupStore";
+
 import toast from "react-hot-toast";
 import { MY_PARTNER, MY_PARTNER_SCOPES, type MyPartnerAccessScope } from "./mockData";
 
@@ -51,23 +52,95 @@ function ScopeToggle({ scope, onChange }: { scope: MyPartnerAccessScope; onChang
  * consent grants — this demonstrates the intended UI/UX for that.
  */
 export function PartnerAccessControl() {
-  const [scopes, setScopes] = useState(MY_PARTNER_SCOPES);
-  const hasPartner = true; // mock: demo account has one connected partner
+  const [scopes, setScopes] = useState<MyPartnerAccessScope[]>(MY_PARTNER_SCOPES);
+  const [partner, setPartner] = useState<{ id: string; name: string; type: string } | null>(null);
+  const [hasPartner, setHasPartner] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  function updateScope(key: string, on: boolean) {
+  // Fetch real partner access state from backend
+  useEffect(() => {
+    let mounted = true;
+    async function loadPartnerAccess() {
+      try {
+        const res = await fetch("/api/settings/partner-access");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (mounted && data.hasPartner) {
+          setHasPartner(true);
+          setPartner(data.partner);
+          if (Array.isArray(data.scopes) && data.scopes.length > 0) {
+            setScopes(data.scopes);
+          }
+        } else if (mounted) {
+          setHasPartner(false);
+        }
+      } catch (err) {
+        console.error("Failed to load partner access:", err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+    loadPartnerAccess();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  async function updateScope(key: string, on: boolean) {
+    // Optimistic UI update
     setScopes((prev) => prev.map((s) => (s.key === key ? { ...s, on } : s)));
-    toast.success(`${on ? "Enabled" : "Disabled"} — your partner's dashboard will update on their next refresh.`);
+
+    try {
+      const res = await fetch("/api/settings/partner-access", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope: key, enabled: on }),
+      });
+      if (!res.ok) {
+        throw new Error("Failed to update scope on server");
+      }
+      toast.success(`${on ? "Enabled" : "Disabled"} — your partner's dashboard will update immediately.`);
+    } catch (err) {
+      // Revert optimistic update
+      setScopes((prev) => prev.map((s) => (s.key === key ? { ...s, on: !on } : s)));
+      toast.error("Failed to update access permission. Please try again.");
+    }
   }
 
   function handleRevokeAll() {
+    const firmName = partner?.name || "your partner firm";
     popup.danger(
       "Revoke All Partner Access",
-      `Revoke all of ${MY_PARTNER.name}'s access to your DataBank? They'll no longer be able to see any of your financial data, and any pending action approvals will be cancelled. You can reconnect anytime from Find a Partner.`,
+      `Revoke all of ${firmName}'s access to your DataBank? They'll no longer be able to see any of your financial data, and any pending action approvals will be cancelled. You can reconnect anytime from Find a Partner.`,
       async () => {
-        setScopes((prev) => prev.map((s) => ({ ...s, on: false })));
-        popup.success("Access Revoked", `${MY_PARTNER.name} no longer has access to your data.`);
+        try {
+          const res = await fetch("/api/settings/partner-access/revoke", { method: "POST" });
+          if (!res.ok) throw new Error("Revocation failed");
+          setScopes((prev) => prev.map((s) => ({ ...s, on: false })));
+          setHasPartner(false);
+          popup.success("Access Revoked", `${firmName} no longer has access to your data.`);
+        } catch (err) {
+          toast.error("Failed to revoke access. Please try again.");
+        }
       },
       "Revoke All Access"
+    );
+  }
+
+  if (loading) {
+    return (
+      <div
+        style={{
+          borderRadius: 14,
+          border: "1px solid var(--border)",
+          padding: "18px 20px",
+          marginBottom: 20,
+          color: "var(--muted)",
+          fontSize: 13,
+        }}
+      >
+        Loading partner permissions...
+      </div>
     );
   }
 
@@ -91,6 +164,8 @@ export function PartnerAccessControl() {
     );
   }
 
+  const firmName = partner?.name || "Partner Firm";
+
   return (
     <div
       style={{
@@ -102,9 +177,9 @@ export function PartnerAccessControl() {
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6, gap: 12, flexWrap: "wrap" }}>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>🤝 {MY_PARTNER.name}</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>🤝 {firmName}</div>
           <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
-            Connected since {MY_PARTNER.since} · Advisor: {MY_PARTNER.advisor}
+            Connected Firm · {partner?.type || "Advisory"}
           </div>
         </div>
         <button
@@ -118,7 +193,7 @@ export function PartnerAccessControl() {
         </button>
       </div>
       <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6, marginBottom: 4 }}>
-        Control exactly what {MY_PARTNER.name} can see. Changes apply immediately.
+        Control exactly what {firmName} can see. Changes apply immediately.
       </div>
       <div style={{ marginTop: 8 }}>
         {scopes.map((s) => (

@@ -26,8 +26,14 @@ const labelStyle: React.CSSProperties = {
   display: "block",
 };
 
-function ApplicationForm({ firmName }: { firmName: string }) {
+function ApplicationForm({ firmId, firmName }: { firmId: string; firmName: string }) {
   const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [incomeRange, setIncomeRange] = useState("");
+  const [goalsText, setGoalsText] = useState("");
 
   if (submitted) {
     return (
@@ -47,34 +53,89 @@ function ApplicationForm({ firmName }: { firmName: string }) {
     );
   }
 
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/partners/${firmId}/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fullName, phone, incomeRange, goalsText }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to submit application");
+      }
+
+      setSubmitted(true);
+    } catch (err: any) {
+      setError(err.message || "Failed to submit application. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        setSubmitted(true);
-        comingSoon("Actually routing this application to the firm");
-      }}
-    >
+    <form onSubmit={handleSubmit}>
+      {error && (
+        <div className="p-3 mb-3 text-[12px] rounded-[8px] bg-red-500/10 border border-red-500/20 text-red-400">
+          {error}
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3">
-        <div><label style={labelStyle}>Full Legal Name</label><input required style={inputStyle} placeholder="As on your ID" /></div>
-        <div><label style={labelStyle}>Phone Number</label><input required style={inputStyle} placeholder="+234..." /></div>
+        <div>
+          <label style={labelStyle}>Full Legal Name</label>
+          <input
+            required
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            style={inputStyle}
+            placeholder="As on your ID"
+          />
+        </div>
+        <div>
+          <label style={labelStyle}>Phone Number</label>
+          <input
+            required
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            style={inputStyle}
+            placeholder="+234..."
+          />
+        </div>
       </div>
       <label style={labelStyle}>Annual Income Range</label>
-      <select required defaultValue="" style={{ ...inputStyle, appearance: "auto" }}>
+      <select
+        required
+        value={incomeRange}
+        onChange={(e) => setIncomeRange(e.target.value)}
+        style={{ ...inputStyle, appearance: "auto" }}
+      >
         <option value="" disabled>Select a range</option>
-        <option>Below ₦5M</option>
-        <option>₦5M – ₦20M</option>
-        <option>₦20M – ₦50M</option>
-        <option>Above ₦50M</option>
+        <option value="Below ₦5M">Below ₦5M</option>
+        <option value="₦5M – ₦20M">₦5M – ₦20M</option>
+        <option value="₦20M – ₦50M">₦20M – ₦50M</option>
+        <option value="Above ₦50M">Above ₦50M</option>
       </select>
       <label style={labelStyle}>What are you hoping to get out of this partnership?</label>
-      <textarea required rows={3} style={{ ...inputStyle, resize: "none" }} placeholder="e.g. Portfolio diversification, tax planning, retirement strategy..." />
+      <textarea
+        required
+        rows={3}
+        value={goalsText}
+        onChange={(e) => setGoalsText(e.target.value)}
+        style={{ ...inputStyle, resize: "none" }}
+        placeholder="e.g. Portfolio diversification, tax planning, retirement strategy..."
+      />
       <button
         type="submit"
-        className="w-full py-[11px] rounded-[10px] text-[13px] font-semibold text-white border-none"
+        disabled={loading}
+        className="w-full py-[11px] rounded-[10px] text-[13px] font-semibold text-white border-none cursor-pointer transition-opacity disabled:opacity-50"
         style={{ background: "var(--green)" }}
       >
-        Submit Application →
+        {loading ? "Submitting Application..." : "Submit Application →"}
       </button>
       <div className="text-[10px] text-center mt-3" style={{ color: "var(--muted)" }}>
         Your DataBank summary is shared with {firmName} only after you submit.
@@ -174,9 +235,10 @@ export function PartnerProfile({
             <div><div className="text-[16px] font-bold" style={{ color: "var(--text)" }}>{firm.minPortfolio}</div><div className="text-[10px]" style={{ color: "var(--muted)" }}>Min. Portfolio</div></div>
           </div>
           <div className="text-[13px] font-semibold mb-3" style={{ color: "var(--text)" }}>Apply to Join</div>
-          <ApplicationForm firmName={firm.name} />
+          <ApplicationForm firmId={firm.id} firmName={firm.name} />
         </div>
       </div>
+
     </div>
   );
 }
