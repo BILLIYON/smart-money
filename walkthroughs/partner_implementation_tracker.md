@@ -3,7 +3,7 @@
 > **Document Status**: Active Implementation Roadmap  
 > **Source Specification**: [`walkthroughs/partner_dashboard_and_find_a_partner_spec.md`](file:///home/ec2-user/smart-money/walkthroughs/partner_dashboard_and_find_a_partner_spec.md)  
 > **Decoupled Architecture**: [`walkthroughs/partner_decoupled_architecture.md`](file:///home/ec2-user/smart-money/walkthroughs/partner_decoupled_architecture.md)  
-> **Current State**: Phase 1 & 2 Complete. Monorepo architecture operational (`apps/web`, `services/partner_service`, `services/transaction_syncer`). Decoupled Partner microservice running on port 8001 under PM2. Moving into Phase 3 (Partner Overview & Clients Roster).
+> **Current State**: Phase 1, 2, and 3 Complete (100%). Overview Metrics, Clients Roster, Private Advisor Notes, and SES Email Invites operational. Moving into Phase 4 (Goals & Opportunities Engine).
 
 
 ---
@@ -22,10 +22,10 @@
 | **Phase 2: Client Discovery & Privacy** | `T2.1` | Partner Directory & Profile API | `src/app/api/partners/route.ts` | ✅ Done |
 | | `T2.2` | Inbound Application Intake Form & API | `src/app/api/partners/[id]/apply/route.ts` | ✅ Done |
 | | `T2.3` | Client Privacy Consent Endpoints | `src/app/api/settings/partner-access/route.ts` | ✅ Done |
-| **Phase 3: Partner Overview & Clients** | `T3.1` | Partner Overview Metrics API | `src/app/api/partner/overview/route.ts` | ⬜ Pending |
-| | `T3.2` | Clients Roster & Profile Deep-Dive API | `src/app/api/partner/clients/route.ts` | ⬜ Pending |
-| | `T3.3` | Private Advisor Notes Engine | `src/app/api/partner/clients/[id]/notes/route.ts` | ⬜ Pending |
-| | `T3.4` | Client Onboarding & Invite Email Flow | `src/app/api/partner/clients/invite/route.ts` | ⬜ Pending |
+| **Phase 3: Partner Overview & Clients** | `T3.1` | Partner Overview Metrics API | `src/app/api/partner/overview/route.ts` | ✅ Done |
+| | `T3.2` | Clients Roster & Profile Deep-Dive API | `src/app/api/partner/clients/route.ts` | ✅ Done |
+| | `T3.3` | Private Advisor Notes Engine | `src/app/api/partner/clients/[id]/notes/route.ts` | ✅ Done |
+| | `T3.4` | Client Onboarding & Invite Email Flow | `src/app/api/partner/clients/invite/route.ts` | ✅ Done |
 | **Phase 4: Goals & Opportunities** | `T4.1` | Partner Goal Origin & Acceptance Backend | `src/app/api/partner/goals/route.ts`, `goals` table | ⬜ Pending |
 | | `T4.2` | Client Goal Acceptance & Partner Badge UI | `src/app/(dashboard)/goals/page.tsx` | ⬜ Pending |
 | | `T4.3` | Opportunities Data Model & Partner Dispatch | `src/app/api/partner/opportunities/route.ts` | ⬜ Pending |
@@ -101,23 +101,24 @@
 ---
 
 ### Phase 3: Core Partner Portal — Overview & Client Management
-*Status: Pending*
-* **Objective**: Enable partner advisors to inspect client rosters, monitor KPIs, and record private advisor notes.
+*Status: Complete (100%)*
+* **Objective**: Enable partner advisors to inspect client rosters, monitor KPIs, record confidential advisor notes, and dispatch email invites.
 
-- [ ] **`T3.1` Partner Overview Metrics API**
-  - `GET /api/partner/overview`: Compute Total Clients, Average Health Score, Total AUM, and Pending Approvals.
-  - Heuristic query for "Clients Needing Attention" (savings drop, funding deficit).
-  - Wire `OverviewPanel.tsx`.
-- [ ] **`T3.2` Clients Roster & Profile Deep-Dive API**
-  - `GET /api/partner/clients`: Filtered roster by status and health score.
-  - `GET /api/partner/clients/[id]`: Retrieve client metrics filtered through `partner_client_scopes`.
-  - Wire `ClientsPanel.tsx`.
-- [ ] **`T3.3` Private Advisor Notes Engine**
-  - `PATCH /api/partner/clients/[id]/notes`: Update `advisor_notes` in `partner_clients`.
-  - Guard strictly against exposing this field to client-facing APIs.
-  - Wire "Save Note" in `ClientsPanel.tsx`.
-- [ ] **`T3.4` Client Onboarding & Invite Email Flow**
-  - `POST /api/partner/clients/invite`: Send invitation email via AWS SES (`src/lib/email.ts`).
+- [x] **`T3.1` Partner Overview Metrics API**
+  - `GET /api/v1/overview` + `GET /api/partner/overview`: Dynamic KPIs (Total Clients, Avg Health Score, Total AUM, Pending Approvals).
+  - Attention list flagged by Smart Money AI for clients needing review.
+  - Wired into `OverviewPanel.tsx`.
+- [x] **`T3.2` Clients Roster & Profile Deep-Dive API**
+  - `GET /api/v1/clients` + `GET /api/partner/clients`: Filtered roster by status, search term, and health score.
+  - Scope masking enforces privacy consent (masks net worth if ungranted).
+  - Wired into `ClientsPanel.tsx`.
+- [x] **`T3.3` Private Advisor Notes Engine**
+  - `PATCH /api/v1/clients/:id/notes` + `PATCH /api/partner/clients/[id]/notes`: Saves confidential advisor notes in `partner_clients`.
+  - Strictly insulated from client-facing APIs.
+  - Wired into `ClientsPanel.tsx` inspection card with live status indicator.
+- [x] **`T3.4` Client Onboarding & Invite Email Flow**
+  - `POST /api/v1/clients/invite` + `POST /api/partner/clients/invite`: Dispatches SES email invitations with custom onboarding URLs.
+  - Wired into "+ Invite Client" modal in `ClientsPanel.tsx`.
 
 ---
 

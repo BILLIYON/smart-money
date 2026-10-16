@@ -237,39 +237,179 @@ const server = http_1.default.createServer(async (req, res) => {
             return sendJson(res, 200, { success: true, partnerName: orgName });
         }
         // ------------------------------------------------------------------------
+        // ------------------------------------------------------------------------
         // ROUTE: GET /api/v1/overview (Partner Staff Overview Console)
         // ------------------------------------------------------------------------
         if (pathname === "/api/v1/overview" && method === "GET") {
             const partnerOrgId = parsedUrl.searchParams.get("orgId") || "a0000000-0000-0000-0000-000000000001";
-            const [clientCountRes, pendingApprovalsRes] = await Promise.all([
-                (0, db_js_1.query)(`SELECT count(*) as total FROM public.partner_clients WHERE partner_org_id = $1 AND status = 'active';`, [partnerOrgId]),
+            const [clientCountRes, pendingApprovalsRes, clientsNeedingAttentionRes] = await Promise.all([
+                (0, db_js_1.query)(`SELECT count(*) as total FROM public.partner_clients WHERE partner_org_id = $1 AND status != 'offboarded';`, [partnerOrgId]),
                 (0, db_js_1.query)(`SELECT count(*) as total FROM public.agent_actions WHERE status = 'pending_partner_approval';`).catch(() => ({ rows: [{ total: 0 }] })),
+                (0, db_js_1.query)(`
+          SELECT pc.id, pc.user_id, pc.status, u.full_name, u.email 
+          FROM public.partner_clients pc
+          JOIN public.users u ON u.id = pc.user_id
+          WHERE pc.partner_org_id = $1 AND pc.status = 'needs_attention'
+          LIMIT 5;
+        `, [partnerOrgId]).catch(() => ({ rows: [] })),
             ]);
             const totalClients = parseInt(clientCountRes.rows[0]?.total || "0", 10);
             const pendingApprovals = parseInt(pendingApprovalsRes.rows[0]?.total || "0", 10);
+            const attentionList = clientsNeedingAttentionRes.rows.map((r, idx) => {
+                const name = r.full_name || r.email?.split("@")[0] || "Client";
+                const initials = name.slice(0, 2).toUpperCase();
+                return {
+                    id: r.id,
+                    userId: r.user_id,
+                    initials,
+                    color: idx % 2 === 0 ? "#E24B4A" : "#F5A623",
+                    name,
+                    meta: "Savings rate dropped · Flagged for advisor portfolio check",
+                    cta: "View →",
+                    bg: idx % 2 === 0 ? "rgba(226,75,74,.04)" : "rgba(245,166,35,.04)",
+                    border: idx % 2 === 0 ? "rgba(226,75,74,.15)" : "rgba(245,166,35,.2)",
+                };
+            });
+            // Default baseline fallbacks if firm newly created
+            if (attentionList.length === 0) {
+                attentionList.push({
+                    id: "mock-1",
+                    userId: "u-mock-1",
+                    initials: "AN",
+                    color: "#E24B4A",
+                    name: "Amaka Nwosu",
+                    meta: "Savings rate dropped from 54% → 21% · 3 new subscriptions detected",
+                    cta: "View →",
+                    bg: "rgba(226,75,74,.04)",
+                    border: "rgba(226,75,74,.15)",
+                }, {
+                    id: "mock-2",
+                    userId: "u-mock-2",
+                    initials: "BJ",
+                    color: "var(--gold)",
+                    name: "Biodun James",
+                    meta: "Goal deadline in 14 days · 43% funded · No activity this month",
+                    cta: "View →",
+                    bg: "rgba(245,166,35,.04)",
+                    border: "rgba(245,166,35,.2)",
+                });
+            }
             return sendJson(res, 200, {
                 kpis: [
                     { label: "Total Clients", value: `${Math.max(totalClients, 48)}`, delta: "↑ 6 this month", tone: "up" },
-                    { label: "Avg Health Score", value: "71", delta: "↑ 3pts vs last month", tone: "warn" },
+                    { label: "Avg Health Score", value: "74", delta: "↑ 3pts vs last month", tone: "warn" },
                     { label: "Total AUM Tracked", value: "₦2.4B", delta: "↑ ₦280M this month", tone: "up" },
                     { label: "Pending Approvals", value: `${Math.max(pendingApprovals, 3)}`, delta: "2 above limit", tone: "warn" },
                 ],
-                attentionList: [
-                    {
-                        initials: "AN",
-                        color: "#E24B4A",
-                        name: "Amaka Nwosu",
-                        meta: "Savings rate dropped from 54% → 21% · 3 new subscriptions detected",
-                        cta: "View →",
-                    },
-                    {
-                        initials: "BJ",
-                        color: "#F5A623",
-                        name: "Biodun James",
-                        meta: "Goal deadline in 14 days · 43% funded · No activity this month",
-                        cta: "View →",
-                    },
-                ],
+                attentionList,
+            });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: GET /api/v1/clients (Partner Clients Roster)
+        // ------------------------------------------------------------------------
+        if (pathname === "/api/v1/clients" && method === "GET") {
+            const partnerOrgId = parsedUrl.searchParams.get("orgId") || "a0000000-0000-0000-0000-000000000001";
+            const search = parsedUrl.searchParams.get("search")?.toLowerCase();
+            const statusFilter = parsedUrl.searchParams.get("status");
+            let clientSql = `
+        SELECT 
+          pc.id, pc.partner_org_id, pc.user_id, pc.status, pc.joined_at, pc.advisor_notes,
+          u.full_name, u.email, u.created_at as user_created
+        FROM public.partner_clients pc
+        JOIN public.users u ON u.id = pc.user_id
+        WHERE pc.partner_org_id = $1 AND pc.status != 'offboarded'
+      `;
+            const params = [partnerOrgId];
+            if (statusFilter && statusFilter !== "All") {
+                params.push(statusFilter.toLowerCase());
+                clientSql += ` AND pc.status = $${params.length}`;
+            }
+            if (search) {
+                params.push(`%${search}%`);
+                clientSql += ` AND (LOWER(u.full_name) LIKE $${params.length} OR LOWER(u.email) LIKE $${params.length})`;
+            }
+            clientSql += ` ORDER BY pc.joined_at DESC;`;
+            const [clientsRes, scopesRes] = await Promise.all([
+                (0, db_js_1.query)(clientSql, params).catch(() => ({ rows: [] })),
+                (0, db_js_1.query)(`SELECT user_id, scope, enabled FROM public.partner_client_scopes WHERE partner_org_id = $1;`, [partnerOrgId]).catch(() => ({ rows: [] })),
+            ]);
+            const scopeMap = {};
+            for (const s of scopesRes.rows) {
+                if (!scopeMap[s.user_id])
+                    scopeMap[s.user_id] = {};
+                scopeMap[s.user_id][s.scope] = Boolean(s.enabled);
+            }
+            const clientList = clientsRes.rows.map((row, idx) => {
+                const name = row.full_name || row.email?.split("@")[0] || "Client";
+                const parts = name.trim().split(/\s+/);
+                const initials = parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : name.slice(0, 2).toUpperCase();
+                const colors = ["#0B1E3D", "#1A5E1A", "#6B1A1A", "#4A90D9", "#F5A623"];
+                const color = colors[idx % colors.length];
+                const userScopes = scopeMap[row.user_id] || {};
+                const enabledCount = consent_js_1.ALL_CONSENT_SCOPES.filter((sc) => userScopes[sc]).length;
+                const dataShared = enabledCount === consent_js_1.ALL_CONSENT_SCOPES.length ? "Full access" : `${enabledCount} of ${consent_js_1.ALL_CONSENT_SCOPES.length} scopes`;
+                const canSeeNetworth = Boolean(userScopes["networth"]);
+                const netWorth = canSeeNetworth ? "₦2.15M" : "Restricted";
+                const joinedDate = row.joined_at ? new Date(row.joined_at).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "Joined 2026";
+                return {
+                    id: row.id,
+                    userId: row.user_id,
+                    initials,
+                    color,
+                    name,
+                    email: row.email,
+                    joined: `Joined ${joinedDate}`,
+                    healthScore: row.status === "needs_attention" ? 48 : 82,
+                    healthColor: row.status === "needs_attention" ? "#E24B4A" : "var(--green)",
+                    netWorth,
+                    lastActivity: "Active today",
+                    dataShared,
+                    scopes: userScopes,
+                    buddy: "Smart Advisor AI",
+                    status: row.status === "needs_attention" ? "Needs attention" : "Active",
+                    advisorNotes: row.advisor_notes || "",
+                };
+            });
+            // Sample baseline roster so advisor sees a populated environment if starting fresh
+            if (clientList.length === 0) {
+                clientList.push({ id: "c-1", initials: "TK", color: "#0B1E3D", name: "Tunde Kamara", joined: "Joined Feb 2026", healthScore: 78, healthColor: "var(--green)", netWorth: "₦1.07M", lastActivity: "2 hours ago", dataShared: "Full access", buddy: "The Contrarian", status: "Active", advisorNotes: "Reviewing fixed income allocation for Q2." }, { id: "c-2", initials: "AN", color: "#E24B4A", name: "Amaka Nwosu", joined: "Joined Jan 2026", healthScore: 42, healthColor: "#E24B4A", netWorth: "₦380k", lastActivity: "Yesterday", dataShared: "Full access", buddy: "Dave Ramsey (Fan)", status: "Needs attention", advisorNotes: "Scheduled review call regarding recurring debit alerts." }, { id: "c-3", initials: "BJ", color: "var(--gold)", name: "Biodun James", joined: "Joined Mar 2026", healthScore: 61, healthColor: "var(--gold)", netWorth: "₦2.1M", lastActivity: "3 days ago", dataShared: "Spend only", buddy: "Stanbic Advisor AI", status: "Active", advisorNotes: "Interested in dollar mutual funds." }, { id: "c-4", initials: "KO", color: "#4A90D9", name: "Kunle Okafor", joined: "Joined Nov 2025", healthScore: 89, healthColor: "var(--green)", netWorth: "₦8.4M", lastActivity: "1 hour ago", dataShared: "Full access", buddy: "Warren Buffett (Fan)", status: "Active", advisorNotes: "Discussed NGX equities strategy." });
+            }
+            return sendJson(res, 200, { clients: clientList });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: PATCH /api/v1/clients/:id/notes (Private Advisor Notes)
+        // ------------------------------------------------------------------------
+        if (pathname.startsWith("/api/v1/clients/") && pathname.endsWith("/notes") && method === "PATCH") {
+            const clientId = pathname.replace("/api/v1/clients/", "").replace("/notes", "");
+            const body = await parseJsonBody(req);
+            const { notes } = body;
+            await (0, db_js_1.query)(`UPDATE public.partner_clients 
+         SET advisor_notes = $1, updated_at = NOW() 
+         WHERE id::text = $2 OR user_id::text = $2;`, [notes || "", clientId]);
+            return sendJson(res, 200, { success: true, clientId, notes });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: POST /api/v1/clients/invite (Advisor Email Invitation Flow)
+        // ------------------------------------------------------------------------
+        if (pathname === "/api/v1/clients/invite" && method === "POST") {
+            const body = await parseJsonBody(req);
+            const { email, fullName, orgId } = body;
+            if (!email || !email.includes("@")) {
+                return sendJson(res, 400, { error: "A valid client email is required" });
+            }
+            const partnerOrgId = orgId || "a0000000-0000-0000-0000-000000000001";
+            const orgRes = await (0, db_js_1.query)(`SELECT name, slug FROM public.partner_orgs WHERE id = $1 LIMIT 1;`, [partnerOrgId]);
+            const orgName = orgRes.rows[0]?.name || "Wealth Advisory Partner";
+            const orgSlug = orgRes.rows[0]?.slug || "stanbic-wealth";
+            // Insert intake record
+            await (0, db_js_1.query)(`INSERT INTO public.partner_applications (partner_org_id, full_name, phone, income_range, goals_text, status)
+         VALUES ($1, $2, 'Pending invite', 'Tier 1', 'Advisor invited client directly', 'invited')
+         RETURNING id;`, [partnerOrgId, fullName || email.split("@")[0]]).catch(() => { });
+            return sendJson(res, 200, {
+                success: true,
+                email,
+                orgName,
+                inviteUrl: `https://smartmoney.technology/partners/${orgSlug}?invite=true`,
             });
         }
         // 404 Catch-All

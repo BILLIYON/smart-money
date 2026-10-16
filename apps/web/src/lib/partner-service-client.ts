@@ -130,6 +130,38 @@ export const partnerServiceClient = {
    */
   async getOverview(orgId?: string) {
     const qs = orgId ? `?orgId=${encodeURIComponent(orgId)}` : "";
-    return requestService(`/api/v1/overview${qs}`);
+    return requestService<{ kpis: any[]; attentionList: any[] }>(`/api/v1/overview${qs}`);
+  },
+
+  /**
+   * Get partner client roster
+   */
+  async getClients(params?: { orgId?: string; search?: string; status?: string }) {
+    const queryParts: string[] = [];
+    if (params?.orgId) queryParts.push(`orgId=${encodeURIComponent(params.orgId)}`);
+    if (params?.search) queryParts.push(`search=${encodeURIComponent(params.search)}`);
+    if (params?.status) queryParts.push(`status=${encodeURIComponent(params.status)}`);
+    const qs = queryParts.length > 0 ? `?${queryParts.join("&")}` : "";
+    return requestService<{ clients: any[] }>(`/api/v1/clients${qs}`);
+  },
+
+  /**
+   * Save private advisor notes for a client
+   */
+  async saveAdvisorNote(clientId: string, notes: string) {
+    return requestService(`/api/v1/clients/${encodeURIComponent(clientId)}/notes`, {
+      method: "PATCH",
+      body: { notes },
+    });
+  },
+
+  /**
+   * Invite a new client to the partner firm
+   */
+  async inviteClient(payload: { email: string; fullName?: string; orgId?: string }) {
+    return requestService<{ success: boolean; email: string; orgName: string; inviteUrl: string }>("/api/v1/clients/invite", {
+      method: "POST",
+      body: payload,
+    });
   },
 };
