@@ -1,7 +1,21 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createServiceSupabaseClient } from "@/lib/supabase-server";
-import { getApprovedCommunityBuddies, getCommunityBuddyById } from "@/lib/db";
+import { getApprovedCommunityBuddies } from "@/lib/db";
+import { Pool } from "pg";
+
+let poolInstance: Pool | null = null;
+function getPool() {
+  if (!poolInstance) {
+    const connectionString = process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money";
+    const isRemote = connectionString.includes("supabase.com") || connectionString.includes("pooler") || connectionString.includes("aws-");
+    poolInstance = new Pool({
+      connectionString,
+      ssl: isRemote ? { rejectUnauthorized: false } : false,
+      max: 10,
+    });
+  }
+  return poolInstance;
+}
 
 // In-memory store for guest/demo sessions
 let IN_MEMORY_GOALS: any[] = [];
@@ -14,16 +28,16 @@ export async function GET() {
     let dbGoals: any[] = [];
 
     if (user) {
-      const serviceSupabase = createServiceSupabaseClient();
-      const { data, error } = await serviceSupabase
-        .from("goals")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: true });
-
-      if (!error && data) {
-        dbGoals = data;
-      }
+      const pool = getPool();
+      const res = await pool.query(
+        `SELECT g.*, p.name as partner_name, p.slug as partner_slug
+         FROM public.goals g
+         LEFT JOIN public.partner_orgs p ON g.origin_partner_org_id = p.id
+         WHERE g.user_id = $1 AND (g.status IS NULL OR g.status != 'declined')
+         ORDER BY g.created_at ASC;`,
+        [user.id]
+      );
+      dbGoals = res.rows;
     } else {
       dbGoals = IN_MEMORY_GOALS;
     }
@@ -74,6 +88,12 @@ export async function GET() {
         deadline: deadlineStr,
         barColor,
         milestoneMessage: "Keep pushing toward your financial target. Consistency builds wealth.",
+        origin: g.origin || "client",
+        originPartnerOrgId: g.origin_partner_org_id || null,
+        partnerName: g.partner_name || null,
+        advisorNote: g.advisor_note || null,
+        requiresAcceptance: Boolean(g.requires_acceptance),
+        acceptedAt: g.accepted_at || null,
       };
     });
 
@@ -103,32 +123,19 @@ export async function POST(req: Request) {
       target_date: body.target_date || null,
       status: body.status || "active",
       created_at: new Date().toISOString(),
+      origin: "client",
+      requires_acceptance: false,
     };
 
     if (user) {
-      const serviceSupabase = createServiceSupabaseClient();
-      const { data, error: insertError } = await serviceSupabase
-        .from("goals")
-        .insert({
-          user_id: user.id,
-          buddy_id: newGoalRecord.buddy_id,
-          title: newGoalRecord.title,
-          target_amount: newGoalRecord.target_amount,
-          current_amount: newGoalRecord.current_amount,
-          target_date: newGoalRecord.target_date,
-          status: newGoalRecord.status,
-        })
-        .select()
-        .single();
-
-      if (insertError) {
-        console.error("[POST /api/goals/list] Insert error:", insertError);
-        // Fallback to in-memory store
-        IN_MEMORY_GOALS.push(newGoalRecord);
-        return NextResponse.json(newGoalRecord, { status: 201 });
-      }
-
-      return NextResponse.json(data, { status: 201 });
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `INSERT INTO public.goals (user_id, buddy_id, title, target_amount, current_amount, target_date, status, origin, requires_acceptance)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'client', false)
+         RETURNING *;`,
+        [user.id, newGoalRecord.buddy_id, newGoalRecord.title, newGoalRecord.target_amount, newGoalRecord.current_amount, newGoalRecord.target_date, newGoalRecord.status]
+      );
+      return NextResponse.json(rows[0], { status: 201 });
     } else {
       IN_MEMORY_GOALS.push(newGoalRecord);
       return NextResponse.json(newGoalRecord, { status: 201 });
@@ -145,8 +152,8 @@ export async function DELETE() {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (user) {
-      const serviceSupabase = createServiceSupabaseClient();
-      await serviceSupabase.from("goals").delete().eq("user_id", user.id);
+      const pool = getPool();
+      await pool.query("DELETE FROM public.goals WHERE user_id = $1;", [user.id]);
     }
 
     IN_MEMORY_GOALS = [];

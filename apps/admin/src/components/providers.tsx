@@ -23,6 +23,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <ThemeProvider
       attribute="data-theme"
       defaultTheme="light"
+      forcedTheme="light"
+      enableSystem={false}
       disableTransitionOnChange={false}
     >
       {children}

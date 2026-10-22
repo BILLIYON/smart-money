@@ -8,12 +8,8 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  PieChart,
-  Pie,
-  Cell,
-  BarChart,
-  Bar,
 } from "recharts";
+import { SectionHeader, InfoBanner, Card, KpiCard, StatusPill } from "./shared";
 
 interface RealtimeData {
   activeUsers: number;
@@ -35,8 +31,6 @@ interface ReportData {
   countries: Array<{ country: string; users: number }>;
   devices: Array<{ deviceCategory: string; users: number }>;
 }
-
-const COLORS = ["#00C48C", "#38BDF8", "#A855F7", "#F59E0B", "#EF4444", "#64748B"];
 
 export function AdminAnalyticsDashboard() {
   const [days, setDays] = useState<number>(7);
@@ -68,8 +62,8 @@ export function AdminAnalyticsDashboard() {
         setError(repJson.error);
       }
     } catch (err: any) {
-      console.error("[AdminAnalyticsDashboard] Fetch Error:", err);
-      setError(err?.message || "Failed to load live Google Analytics telemetry.");
+      console.error(err);
+      setError(err.message || "Failed to fetch analytics metrics");
     } finally {
       setLoading(false);
     }
@@ -77,251 +71,132 @@ export function AdminAnalyticsDashboard() {
 
   useEffect(() => {
     fetchAnalyticsData();
-  }, [fetchAnalyticsData]);
 
-  // Auto-refresh pulse every 10 seconds
-  useEffect(() => {
     if (!autoRefresh) return;
-    const interval = setInterval(() => {
-      fetchAnalyticsData();
-    }, 10_000);
+    const interval = setInterval(fetchAnalyticsData, 15000);
     return () => clearInterval(interval);
-  }, [autoRefresh, fetchAnalyticsData]);
+  }, [fetchAnalyticsData, autoRefresh]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24, width: "100%" }}>
-      {/* Top Controls Header */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: 16,
-          borderBottom: "1px solid #334155",
-          paddingBottom: 20,
-        }}
-      >
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: "#F8FAFC", margin: 0 }}>
-              Live Google Analytics (GA4) Telemetry
-            </h1>
-            <span
+    <div className="space-y-6">
+      {/* Header */}
+      <SectionHeader
+        title="📈"
+        emphasis="Google Analytics & Traffic"
+        sub="Real-time active visitors, pageviews, acquisition channels, and geographic distribution directly from Google Analytics."
+        action={
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Time Range Selector */}
+            <div
+              className="flex p-0.5 rounded-[8px] border"
+              style={{ background: "var(--card)", borderColor: "var(--border)" }}
+            >
+              {[7, 14, 30].map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setDays(d)}
+                  className="px-3 py-1 rounded-[6px] text-[11px] font-semibold transition"
+                  style={{
+                    background: days === d ? "rgba(0,196,140,0.15)" : "transparent",
+                    color: days === d ? "var(--green2)" : "var(--muted)",
+                  }}
+                >
+                  {d} Days
+                </button>
+              ))}
+            </div>
+
+            {/* Auto Refresh Toggle */}
+            <button
+              type="button"
+              onClick={() => setAutoRefresh(!autoRefresh)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[11px] font-semibold border transition"
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                fontSize: 11,
-                fontWeight: 600,
-                color: "#00C48C",
-                background: "rgba(0,196,140,0.1)",
-                border: "1px solid rgba(0,196,140,0.25)",
-                padding: "3px 10px",
-                borderRadius: 20,
+                background: autoRefresh ? "rgba(0,196,140,0.1)" : "var(--card)",
+                borderColor: autoRefresh ? "var(--green)" : "var(--border)",
+                color: autoRefresh ? "var(--green2)" : "var(--muted)",
               }}
             >
-              <span
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: "50%",
-                  background: "#00C48C",
-                  boxShadow: "0 0 8px #00C48C",
-                }}
-              />
-              G-WDF3C4478E
-            </span>
-          </div>
-          <p style={{ fontSize: 13, color: "#94A3B8", margin: "4px 0 0" }}>
-            Real-time active visitors, pageviews, acquisition channels, and geographic distribution directly from Google Analytics.
-          </p>
-        </div>
+              <span>{autoRefresh ? "⚡" : "⏸️"}</span>
+              {autoRefresh ? "Auto-Refresh ON" : "Paused"}
+            </button>
 
-        {/* Action Controls */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {/* Time Range Selector */}
-          <div style={{ display: "flex", background: "#0F172A", padding: 3, borderRadius: 8, border: "1px solid #334155" }}>
-            {[7, 14, 30].map((d) => (
-              <button
-                key={d}
-                type="button"
-                onClick={() => setDays(d)}
-                style={{
-                  background: days === d ? "#1E293B" : "transparent",
-                  color: days === d ? "#00C48C" : "#94A3B8",
-                  border: days === d ? "1px solid rgba(0,196,140,0.3)" : "none",
-                  borderRadius: 6,
-                  padding: "5px 12px",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                {d} Days
-              </button>
-            ))}
+            <button
+              type="button"
+              onClick={fetchAnalyticsData}
+              className="px-3.5 py-1.5 rounded-[8px] text-[11px] font-bold text-white transition hover:opacity-95"
+              style={{ background: "var(--green)" }}
+            >
+              ↻ Refresh
+            </button>
           </div>
+        }
+      />
 
-          {/* Auto Refresh Toggle */}
-          <button
-            type="button"
-            onClick={() => setAutoRefresh(!autoRefresh)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              background: autoRefresh ? "rgba(0,196,140,0.15)" : "#1E293B",
-              color: autoRefresh ? "#00C48C" : "#94A3B8",
-              border: `1px solid ${autoRefresh ? "rgba(0,196,140,0.3)" : "#334155"}`,
-              borderRadius: 8,
-              padding: "7px 14px",
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            <span style={{ fontSize: 14 }}>{autoRefresh ? "⚡" : "⏸️"}</span>
-            {autoRefresh ? "Auto-Refresh ON" : "Paused"}
-          </button>
-
-          <button
-            type="button"
-            onClick={fetchAnalyticsData}
-            style={{
-              background: "#00C48C",
-              color: "#0F172A",
-              border: "none",
-              borderRadius: 8,
-              padding: "7px 16px",
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            ↻ Refresh Now
-          </button>
-        </div>
-      </div>
-
-      {/* Error / Missing Credentials Notice */}
-      {error && (
-        <div
-          style={{
-            background: "rgba(245, 158, 11, 0.1)",
-            border: "1px solid rgba(245, 158, 11, 0.3)",
-            borderRadius: 12,
-            padding: 20,
-            color: "#FCD34D",
-          }}
-        >
-          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>
-            ⚙️ Google Analytics Data API Configuration Required
-          </div>
-          <p style={{ fontSize: 13, color: "#CBD5E1", margin: "0 0 12px 0", lineHeight: 1.5 }}>
-            To stream live real-time metrics into your Admin Dashboard without dummy data, Google Cloud Data API requires credentials set in <code>.env.local</code>:
-          </p>
-          <div
-            style={{
-              background: "#0F172A",
-              padding: 12,
-              borderRadius: 8,
-              fontFamily: "monospace",
-              fontSize: 12,
-              color: "#38BDF8",
-              marginBottom: 12,
-            }}
-          >
-            GA_PROPERTY_ID="YOUR_GA4_9_DIGIT_PROPERTY_ID"<br />
-            GOOGLE_CLIENT_EMAIL="smart-money-analytics@YOUR_PROJECT.iam.gserviceaccount.com"<br />
-            GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n..."
-          </div>
-          <p style={{ fontSize: 12, color: "#94A3B8", margin: 0 }}>
-            <em>Error details from Google Data API: {error}</em>
-          </p>
-        </div>
+      {error ? (
+        <InfoBanner tone="gold">
+          ⚙️ <strong>Google Analytics Data API Notice</strong>: {error}
+        </InfoBanner>
+      ) : (
+        <InfoBanner tone="blue">
+          📊 Tracking active telemetry for Tag <strong>G-WDF3C4478E</strong> on <code>smartmoney.technology</code>.
+        </InfoBanner>
       )}
 
       {/* Top Metric Cards Grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
-        {/* Real-time active users card */}
-        <div
-          style={{
-            background: "linear-gradient(135deg, #0F2744 0%, #132742 100%)",
-            border: "1px solid rgba(0, 196, 140, 0.3)",
-            borderRadius: 12,
-            padding: 20,
-            boxShadow: "0 4px 20px rgba(0,196,140,0.1)",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: "#00C48C" }}>Active Right Now</span>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#00C48C", boxShadow: "0 0 10px #00C48C" }} />
-          </div>
-          <div style={{ fontSize: 36, fontWeight: 800, color: "#FFFFFF", lineHeight: 1, marginBottom: 8 }}>
-            {loading ? "..." : realtime?.activeUsers ?? 1}
-          </div>
-          <div style={{ fontSize: 11, color: "#94A3B8" }}>
-            Live visitors on smartmoney.technology
-          </div>
-        </div>
-
-        {/* Total Users */}
-        <div style={{ background: "#1E293B", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
-          <div style={{ fontSize: 12, fontWeight: 500, color: "#94A3B8", marginBottom: 8 }}>Total Users</div>
-          <div style={{ fontSize: 32, fontWeight: 700, color: "#F8FAFC", lineHeight: 1, marginBottom: 8 }}>
-            {loading ? "..." : report?.totalUsers.toLocaleString() ?? "1,420"}
-          </div>
-          <div style={{ fontSize: 11, color: "#64748B" }}>Past {days} Days</div>
-        </div>
-
-        {/* Total Sessions */}
-        <div style={{ background: "#1E293B", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
-          <div style={{ fontSize: 12, fontWeight: 500, color: "#94A3B8", marginBottom: 8 }}>Sessions</div>
-          <div style={{ fontSize: 32, fontWeight: 700, color: "#38BDF8", lineHeight: 1, marginBottom: 8 }}>
-            {loading ? "..." : report?.totalSessions.toLocaleString() ?? "2,840"}
-          </div>
-          <div style={{ fontSize: 11, color: "#64748B" }}>User engagement sessions</div>
-        </div>
-
-        {/* Total Pageviews */}
-        <div style={{ background: "#1E293B", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
-          <div style={{ fontSize: 12, fontWeight: 500, color: "#94A3B8", marginBottom: 8 }}>Pageviews</div>
-          <div style={{ fontSize: 32, fontWeight: 700, color: "#C084FC", lineHeight: 1, marginBottom: 8 }}>
-            {loading ? "..." : report?.totalPageviews.toLocaleString() ?? "8,950"}
-          </div>
-          <div style={{ fontSize: 11, color: "#64748B" }}>Total URL views</div>
-        </div>
-
-        {/* Bounce Rate */}
-        <div style={{ background: "#1E293B", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
-          <div style={{ fontSize: 12, fontWeight: 500, color: "#94A3B8", marginBottom: 8 }}>Bounce Rate</div>
-          <div style={{ fontSize: 32, fontWeight: 700, color: "#F59E0B", lineHeight: 1, marginBottom: 8 }}>
-            {loading ? "..." : `${report?.bounceRate ?? 24.5}%`}
-          </div>
-          <div style={{ fontSize: 11, color: "#64748B" }}>Single-page sessions</div>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <KpiCard
+          label="Active Right Now"
+          value={loading ? "..." : realtime?.activeUsers ?? 1}
+          subtitle="Live on site"
+          tone="up"
+        />
+        <KpiCard
+          label="Total Users"
+          value={loading ? "..." : report?.totalUsers.toLocaleString() ?? "1,420"}
+          subtitle={`Past ${days} Days`}
+          tone="up"
+        />
+        <KpiCard
+          label="Sessions"
+          value={loading ? "..." : report?.totalSessions.toLocaleString() ?? "2,840"}
+          subtitle="User visits"
+          tone="up"
+        />
+        <KpiCard
+          label="Pageviews"
+          value={loading ? "..." : report?.totalPageviews.toLocaleString() ?? "8,950"}
+          subtitle="Total URL hits"
+          tone="up"
+        />
+        <KpiCard
+          label="Bounce Rate"
+          value={loading ? "..." : `${report?.bounceRate ?? 24.5}%`}
+          subtitle="Single-page visits"
+          tone="warn"
+        />
       </div>
 
       {/* Main Traffic Trend Chart */}
-      <div style={{ background: "#1E293B", border: "1px solid #334155", borderRadius: 14, padding: 24 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+      <Card>
+        <div className="flex justify-between items-center mb-5 pb-3" style={{ borderBottom: "1px solid var(--border)" }}>
           <div>
-            <h2 style={{ fontSize: 16, fontWeight: 700, color: "#F8FAFC", margin: 0 }}>
+            <h2 className="text-[15px] font-bold" style={{ color: "var(--text)" }}>
               Traffic Growth Trends ({days} Days)
             </h2>
-            <p style={{ fontSize: 12, color: "#94A3B8", margin: "4px 0 0" }}>
+            <p className="text-[11px]" style={{ color: "var(--muted)" }}>
               Daily Users vs Sessions vs Pageviews
             </p>
           </div>
-          <div style={{ display: "flex", gap: 16, fontSize: 12 }}>
-            <span style={{ color: "#00C48C" }}>● Pageviews</span>
+          <div className="flex gap-4 text-[11px] font-semibold">
+            <span style={{ color: "var(--green2)" }}>● Pageviews</span>
             <span style={{ color: "#38BDF8" }}>● Sessions</span>
             <span style={{ color: "#A855F7" }}>● Users</span>
           </div>
         </div>
 
-        <div style={{ width: "100%", height: 300 }}>
+        <div className="w-full h-[280px]">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart
               data={
@@ -349,26 +224,32 @@ export function AdminAnalyticsDashboard() {
                   <stop offset="95%" stopColor="#38BDF8" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <XAxis dataKey="date" stroke="#64748B" fontSize={11} tickLine={false} />
-              <YAxis stroke="#64748B" fontSize={11} tickLine={false} />
+              <XAxis dataKey="date" stroke="var(--muted)" fontSize={11} tickLine={false} />
+              <YAxis stroke="var(--muted)" fontSize={11} tickLine={false} />
               <Tooltip
-                contentStyle={{ background: "#0F172A", borderColor: "#334155", borderRadius: 8, color: "#FFF" }}
+                contentStyle={{
+                  background: "var(--card)",
+                  borderColor: "var(--border)",
+                  borderRadius: 10,
+                  color: "var(--text)",
+                  boxShadow: "0 4px 12px var(--shadow)",
+                }}
               />
               <Area type="monotone" dataKey="pageviews" stroke="#00C48C" fillOpacity={1} fill="url(#colorPv)" strokeWidth={2} />
               <Area type="monotone" dataKey="sessions" stroke="#38BDF8" fillOpacity={1} fill="url(#colorSess)" strokeWidth={2} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </Card>
 
       {/* Grid: Top Pages & Acquisition Sources */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Top Visited Pages */}
-        <div style={{ background: "#1E293B", border: "1px solid #334155", borderRadius: 14, padding: 20 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 700, color: "#F8FAFC", margin: "0 0 16px 0" }}>
+        <Card>
+          <h3 className="text-[14px] font-bold mb-3" style={{ color: "var(--text)" }}>
             📄 Top Visited Pages & Marketplace URLs
           </h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="space-y-2">
             {(
               report?.topPages.length
                 ? report.topPages
@@ -379,78 +260,77 @@ export function AdminAnalyticsDashboard() {
                     { pagePath: "/marketplace/kiyosaki", pageTitle: "Kiyosaki Cashflow AI", pageviews: 840, users: 380 },
                     { pagePath: "/goals", pageTitle: "Financial Goals", pageviews: 650, users: 290 },
                   ]
-            ).map((p, idx) => (
+            ).map((page, i) => (
               <div
-                key={p.pagePath + idx}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "10px 14px",
-                  background: "#0F172A",
-                  borderRadius: 8,
-                  border: "1px solid rgba(255,255,255,0.05)",
-                }}
+                key={page.pagePath || i}
+                className="flex items-center justify-between p-2.5 rounded-[8px] transition-colors"
+                style={{ background: "var(--bg)", border: "1px solid var(--border)" }}
               >
-                <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 10 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "#38BDF8" }}>{p.pagePath}</div>
-                  <div style={{ fontSize: 11, color: "#64748B", textOverflow: "ellipsis", overflow: "hidden" }}>
-                    {p.pageTitle}
+                <div className="min-w-0 pr-3">
+                  <div className="text-[12px] font-semibold truncate" style={{ color: "var(--text)" }}>
+                    {page.pagePath}
+                  </div>
+                  <div className="text-[10px] truncate" style={{ color: "var(--muted)" }}>
+                    {page.pageTitle}
                   </div>
                 </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: "#00C48C" }}>
-                    {p.pageviews.toLocaleString()}
+
+                <div className="text-right flex-shrink-0">
+                  <div className="text-[12px] font-bold" style={{ color: "var(--text)" }}>
+                    {page.pageviews.toLocaleString()} views
                   </div>
-                  <div style={{ fontSize: 10, color: "#64748B" }}>views</div>
+                  <div className="text-[10px]" style={{ color: "var(--green2)" }}>
+                    {page.users.toLocaleString()} users
+                  </div>
                 </div>
               </div>
             ))}
           </div>
-        </div>
+        </Card>
 
-        {/* Traffic Sources & Acquisition */}
-        <div style={{ background: "#1E293B", border: "1px solid #334155", borderRadius: 14, padding: 20 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 700, color: "#F8FAFC", margin: "0 0 16px 0" }}>
-            🔗 Traffic Sources & Referral Channels
+        {/* Acquisition Sources */}
+        <Card>
+          <h3 className="text-[14px] font-bold mb-3" style={{ color: "var(--text)" }}>
+            🌐 Acquisition Channels & Traffic Referrals
           </h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="space-y-2">
             {(
               report?.trafficSources.length
                 ? report.trafficSources
                 : [
-                    { source: "google", medium: "organic", sessions: 1450, users: 620 },
-                    { source: "(direct)", medium: "(none)", sessions: 920, users: 480 },
-                    { source: "twitter.com", medium: "referral", sessions: 410, users: 210 },
-                    { source: "linkedin.com", medium: "referral", sessions: 280, users: 150 },
+                    { source: "google", medium: "organic", sessions: 1420, users: 890 },
+                    { source: "direct", medium: "(none)", sessions: 980, users: 540 },
+                    { source: "twitter.com", medium: "referral", sessions: 480, users: 310 },
+                    { source: "linkedin.com", medium: "social", sessions: 290, users: 190 },
+                    { source: "substack.com", medium: "newsletter", sessions: 180, users: 120 },
                   ]
-            ).map((s, idx) => (
+            ).map((src, i) => (
               <div
-                key={s.source + idx}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "10px 14px",
-                  background: "#0F172A",
-                  borderRadius: 8,
-                  border: "1px solid rgba(255,255,255,0.05)",
-                }}
+                key={i}
+                className="flex items-center justify-between p-2.5 rounded-[8px] transition-colors"
+                style={{ background: "var(--bg)", border: "1px solid var(--border)" }}
               >
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "#F8FAFC" }}>{s.source}</div>
-                  <div style={{ fontSize: 11, color: "#94A3B8" }}>{s.medium}</div>
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: "#38BDF8" }}>
-                    {s.sessions.toLocaleString()}
+                  <div className="text-[12px] font-semibold" style={{ color: "var(--text)" }}>
+                    {src.source}
                   </div>
-                  <div style={{ fontSize: 10, color: "#64748B" }}>sessions</div>
+                  <div className="text-[10px]" style={{ color: "var(--muted)" }}>
+                    Medium: {src.medium}
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <div className="text-[12px] font-bold" style={{ color: "var(--text)" }}>
+                    {src.sessions.toLocaleString()} sessions
+                  </div>
+                  <div className="text-[10px]" style={{ color: "var(--muted)" }}>
+                    {src.users.toLocaleString()} visitors
+                  </div>
                 </div>
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       </div>
     </div>
   );

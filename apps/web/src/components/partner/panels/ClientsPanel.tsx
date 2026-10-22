@@ -2,14 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { SectionHeader, Avatar, StatusPill, Card } from "../shared";
-import { CLIENTS, type ClientRow } from "../mockData";
+import type { ClientRow } from "@/types/partner";
 
-export interface ExtendedClientRow extends ClientRow {
-  id?: string;
-  userId?: string;
-  email?: string;
-  advisorNotes?: string;
-}
+export interface ExtendedClientRow extends ClientRow {}
 
 function HealthBar({ score, color }: { score: number; color: string }) {
   return (
@@ -23,7 +18,7 @@ function HealthBar({ score, color }: { score: number; color: string }) {
 }
 
 export function ClientsPanel() {
-  const [clients, setClients] = useState<ExtendedClientRow[]>(CLIENTS);
+  const [clients, setClients] = useState<ExtendedClientRow[]>([]);
   const [selected, setSelected] = useState<ExtendedClientRow | null>(null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -49,12 +44,12 @@ export function ClientsPanel() {
         const res = await fetch(`/api/partner/clients${queryParams}`);
         if (res.ok) {
           const data = await res.json();
-          if (isMounted && data.clients && data.clients.length > 0) {
-            setClients(data.clients);
+          if (isMounted) {
+            setClients(Array.isArray(data.clients) ? data.clients : []);
           }
         }
       } catch (err) {
-        console.warn("[ClientsPanel] Error loading clients, using baseline:", err);
+        console.warn("[ClientsPanel] Error loading clients:", err);
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -184,53 +179,77 @@ export function ClientsPanel() {
       />
 
       {/* Main Roster Table */}
-      <div className="rounded-[16px] overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-        <table className="w-full border-collapse">
-          <thead>
-            <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
-              {["Client", "Health Score", "Net Worth", "Last Activity", "Data Shared", "Buddy", "Status", ""].map((h) => (
-                <th key={h} className="text-[10px] font-bold uppercase tracking-[.5px] px-[14px] py-[10px] text-left whitespace-nowrap" style={{ color: "var(--muted)" }}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {clients.map((c) => (
-              <tr key={c.name} style={{ borderBottom: "1px solid var(--border)" }}>
-                <td className="px-[14px] py-3">
-                  <div className="flex items-center gap-[10px]">
-                    <Avatar initials={c.initials} color={c.color} />
-                    <div>
-                      <div className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>{c.name}</div>
-                      <div className="text-[11px]" style={{ color: "var(--muted)" }}>{c.joined}</div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-[14px] py-3"><HealthBar score={c.healthScore} color={c.healthColor} /></td>
-                <td className="px-[14px] py-3 text-[13px] font-semibold" style={{ color: "var(--text)" }}>{c.netWorth}</td>
-                <td className="px-[14px] py-3 text-[12px]" style={{ color: "var(--muted)" }}>{c.lastActivity}</td>
-                <td className="px-[14px] py-3">
-                  <StatusPill label={c.dataShared} tone={c.dataShared === "Full access" ? "active" : "pending"} />
-                </td>
-                <td className="px-[14px] py-3 text-[12px]" style={{ color: "var(--text)" }}>{c.buddy}</td>
-                <td className="px-[14px] py-3">
-                  <StatusPill label={c.status} tone={c.status === "Active" ? "active" : "pending"} />
-                </td>
-                <td className="px-[14px] py-3">
-                  <button
-                    onClick={() => setSelected(selected?.name === c.name ? null : c)}
-                    className="px-[10px] py-[6px] rounded-[8px] text-[11px] font-semibold border cursor-pointer hover:bg-white/10"
-                    style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)" }}
-                  >
-                    {selected?.name === c.name ? "Close" : "View"}
-                  </button>
-                </td>
+      {loading ? (
+        <div className="rounded-[16px] p-12 text-center border" style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--muted)" }}>
+          <div className="text-[14px] animate-pulse">Loading live client roster...</div>
+        </div>
+      ) : clients.length === 0 ? (
+        <div className="rounded-[16px] p-12 text-center border" style={{ background: "var(--card)", borderColor: "var(--border)" }}>
+          <div className="text-[36px] mb-3">👥</div>
+          <div className="text-[16px] font-semibold mb-1" style={{ color: "var(--text)" }}>No Clients Connected Yet</div>
+          <div className="text-[12px] max-w-[420px] mx-auto mb-5 leading-relaxed" style={{ color: "var(--muted)" }}>
+            Invite clients via secure email link, or have them connect with your firm directly from Find a Partner.
+          </div>
+          <button
+            onClick={() => {
+              setShowInviteModal(true);
+              setInviteResult(null);
+            }}
+            className="px-5 py-[10px] rounded-[10px] text-[13px] font-semibold text-white border-none cursor-pointer hover:opacity-90 transition-all"
+            style={{ background: "var(--green)" }}
+          >
+            + Invite Your First Client
+          </button>
+        </div>
+      ) : (
+        <div className="rounded-[16px] overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+          <table className="w-full border-collapse">
+            <thead>
+              <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
+                {["Client", "Health Score", "Net Worth", "Last Activity", "Data Shared", "Buddy", "Status", ""].map((h) => (
+                  <th key={h} className="text-[10px] font-bold uppercase tracking-[.5px] px-[14px] py-[10px] text-left whitespace-nowrap" style={{ color: "var(--muted)" }}>
+                    {h}
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {clients.map((c) => (
+                <tr key={c.id || c.name} style={{ borderBottom: "1px solid var(--border)" }}>
+                  <td className="px-[14px] py-3">
+                    <div className="flex items-center gap-[10px]">
+                      <Avatar initials={c.initials} color={c.color} />
+                      <div>
+                        <div className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>{c.name}</div>
+                        <div className="text-[11px]" style={{ color: "var(--muted)" }}>{c.joined}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-[14px] py-3"><HealthBar score={c.healthScore} color={c.healthColor} /></td>
+                  <td className="px-[14px] py-3 text-[13px] font-semibold" style={{ color: "var(--text)" }}>{c.netWorth}</td>
+                  <td className="px-[14px] py-3 text-[12px]" style={{ color: "var(--muted)" }}>{c.lastActivity}</td>
+                  <td className="px-[14px] py-3">
+                    <StatusPill label={c.dataShared} tone={c.dataShared === "Full access" ? "active" : "pending"} />
+                  </td>
+                  <td className="px-[14px] py-3 text-[12px]" style={{ color: "var(--text)" }}>{c.buddy}</td>
+                  <td className="px-[14px] py-3">
+                    <StatusPill label={c.status} tone={c.status === "Active" ? "active" : "pending"} />
+                  </td>
+                  <td className="px-[14px] py-3">
+                    <button
+                      onClick={() => setSelected(selected?.name === c.name ? null : c)}
+                      className="px-[10px] py-[6px] rounded-[8px] text-[11px] font-semibold border cursor-pointer hover:bg-white/10"
+                      style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)" }}
+                    >
+                      {selected?.name === c.name ? "Close" : "View"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Selected Client Deep Dive Inspector */}
       {selected && (

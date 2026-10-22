@@ -164,4 +164,274 @@ export const partnerServiceClient = {
       body: payload,
     });
   },
+
+  /**
+   * Get partner-suggested goals
+   */
+  async getPartnerGoals(orgId?: string) {
+    const qs = orgId ? `?orgId=${encodeURIComponent(orgId)}` : "";
+    return requestService<{ goals: any[] }>(`/api/v1/goals${qs}`);
+  },
+
+  /**
+   * Create a partner-suggested goal
+   */
+  async createPartnerGoal(payload: {
+    partnerOrgId: string;
+    userId?: string;
+    title: string;
+    targetAmount: number;
+    targetDate?: string;
+    advisorNote?: string;
+  }) {
+    return requestService<{ success: boolean; goal: any }>("/api/v1/goals", {
+      method: "POST",
+      body: payload,
+    });
+  },
+
+  /**
+   * Accept a proposed partner goal
+   */
+  async acceptGoal(goalId: string) {
+    return requestService<{ success: boolean; goalId: string; status: string }>(`/api/v1/goals/${encodeURIComponent(goalId)}/accept`, {
+      method: "PATCH",
+    });
+  },
+
+  /**
+   * Decline a proposed partner goal
+   */
+  async declineGoal(goalId: string) {
+    return requestService<{ success: boolean; goalId: string; status: string }>(`/api/v1/goals/${encodeURIComponent(goalId)}/decline`, {
+      method: "PATCH",
+    });
+  },
+
+  /**
+   * Get opportunities feed for client or partner
+   */
+  async getOpportunities(params?: { orgId?: string; userId?: string }) {
+    const queryParts: string[] = [];
+    if (params?.orgId) queryParts.push(`orgId=${encodeURIComponent(params.orgId)}`);
+    if (params?.userId) queryParts.push(`userId=${encodeURIComponent(params.userId)}`);
+    const qs = queryParts.length > 0 ? `?${queryParts.join("&")}` : "";
+    return requestService<{ opportunities: any[] }>(`/api/v1/opportunities${qs}`);
+  },
+
+  /**
+   * Create and dispatch a new opportunity
+   */
+  async createOpportunity(payload: {
+    partnerOrgId: string;
+    title: string;
+    category?: string;
+    reasoning: string;
+    valueEstimate?: string;
+    windowLabel?: string;
+    targetUserId?: string;
+  }) {
+    return requestService<{ success: boolean; opportunity: any }>("/api/v1/opportunities", {
+      method: "POST",
+      body: payload,
+    });
+  },
+
+  /**
+   * Update opportunity status (acted, dismissed, active)
+   */
+  async updateOpportunityStatus(id: string, status: "acted" | "dismissed" | "active") {
+    return requestService<{ success: boolean; opportunity: any }>(`/api/v1/opportunities/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: { status },
+    });
+  },
+
+  /**
+   * Get pending approvals queue for partner firm
+   */
+  async getApprovals(orgId?: string) {
+    const qs = orgId ? `?orgId=${encodeURIComponent(orgId)}` : "";
+    return requestService<{ approvals: any[] }>(`/api/v1/approvals${qs}`);
+  },
+
+  /**
+   * Decide on a pending partner approval (approve or decline)
+   */
+  async decideApproval(actionId: string, decision: "approve" | "decline", note?: string, advisorId?: string) {
+    return requestService<{ success: boolean; decision: string; actionId: string; status: string; message: string }>(
+      `/api/v1/approvals/${encodeURIComponent(actionId)}`,
+      {
+        method: "PATCH",
+        body: { decision, note, advisorId },
+      }
+    );
+  },
+
+  /**
+   * Get partner staff roster
+   */
+  async getStaff(orgId?: string) {
+    const qs = orgId ? `?orgId=${encodeURIComponent(orgId)}` : "";
+    return requestService<{ staff: any[] }>(`/api/v1/staff${qs}`);
+  },
+
+  /**
+   * Invite staff colleague
+   */
+  async inviteStaff(payload: { partnerOrgId: string; name: string; email: string; role?: string }) {
+    return requestService<{ success: boolean; staff: any; inviteToken: string; inviteUrl: string; message: string }>(
+      "/api/v1/staff/invite",
+      {
+        method: "POST",
+        body: payload,
+      }
+    );
+  },
+
+  /**
+   * Resend staff invite
+   */
+  async resendStaffInvite(staffId: string) {
+    return requestService<{ success: boolean; inviteToken: string; inviteUrl: string; message: string }>(
+      "/api/v1/staff/resend",
+      {
+        method: "POST",
+        body: { staffId },
+      }
+    );
+  },
+
+  /**
+   * Get affiliated buddies and escalation rules
+   */
+  async getBuddies(orgId?: string) {
+    const qs = orgId ? `?orgId=${encodeURIComponent(orgId)}` : "";
+    return requestService<{ buddies: any[]; escalationRules: any[] }>(`/api/v1/buddies${qs}`);
+  },
+
+  /**
+   * Toggle partner escalation rule
+   */
+  async toggleEscalationRule(ruleId: string, isEnabled: boolean) {
+    return requestService<{ success: boolean; ruleId: string; isEnabled: boolean }>(
+      `/api/v1/buddies/escalation/${encodeURIComponent(ruleId)}`,
+      {
+        method: "PATCH",
+        body: { isEnabled },
+      }
+    );
+  },
+
+  /**
+   * Run institutional AI research prompt
+   */
+  async runResearch(payload: { prompt: string; model?: string; partnerOrgId?: string }) {
+    return requestService<{ success: boolean; briefing: any }>("/api/v1/research", {
+      method: "POST",
+      body: payload,
+    });
+  },
+
+  /**
+   * Get active API key metadata
+   */
+  async getApiKey(orgId?: string) {
+    const qs = orgId ? `?orgId=${encodeURIComponent(orgId)}` : "";
+    return requestService<{ apiKey: any | null }>(`/api/v1/keys${qs}`);
+  },
+
+  /**
+   * Generate new production API key
+   */
+  async generateApiKey(partnerOrgId: string, name?: string) {
+    return requestService<{ success: boolean; apiKey: string; keyRecord: any; message: string }>("/api/v1/keys", {
+      method: "POST",
+      body: { partnerOrgId, name },
+    });
+  },
+
+  /**
+   * Get active webhook configuration
+   */
+  async getWebhook(orgId?: string) {
+    const qs = orgId ? `?orgId=${encodeURIComponent(orgId)}` : "";
+    return requestService<{ webhook: any | null }>(`/api/v1/webhooks${qs}`);
+  },
+
+  /**
+   * Configure webhook endpoint
+   */
+  async configureWebhook(payload: { partnerOrgId: string; url: string; events?: string[] }) {
+    return requestService<{ success: boolean; webhook: any; message: string }>("/api/v1/webhooks", {
+      method: "POST",
+      body: payload,
+    });
+  },
+
+  /**
+   * Get partner feature toggles
+   */
+  async getFeatures(orgId?: string) {
+    const qs = orgId ? `?orgId=${encodeURIComponent(orgId)}` : "";
+    return requestService<{ features: any[] }>(`/api/v1/features${qs}`);
+  },
+
+  /**
+   * Toggle a partner feature
+   */
+  async toggleFeature(key: string, isEnabled: boolean, partnerOrgId?: string) {
+    return requestService<{ success: boolean; feature: any; message: string }>(
+      `/api/v1/features/${encodeURIComponent(key)}`,
+      {
+        method: "PATCH",
+        body: { isEnabled, partnerOrgId },
+      }
+    );
+  },
+
+  /**
+   * Get custom analytics rules and category toggles
+   */
+  async getAnalyticsRules(orgId?: string) {
+    const qs = orgId ? `?orgId=${encodeURIComponent(orgId)}` : "";
+    return requestService<{ rules: any[]; categories: any[] }>(`/api/v1/analytics-rules${qs}`);
+  },
+
+  /**
+   * Create a new custom analytics rule
+   */
+  async createAnalyticsRule(payload: { partnerOrgId: string; ruleName: string; formula: string; icon?: string }) {
+    return requestService<{ success: boolean; rule: any; message: string }>("/api/v1/analytics-rules", {
+      method: "POST",
+      body: payload,
+    });
+  },
+
+  /**
+   * Toggle custom analytics rule active state
+   */
+  async toggleAnalyticsRule(ruleId: string, isEnabled: boolean) {
+    return requestService<{ success: boolean; rule: any }>(
+      `/api/v1/analytics-rules/${encodeURIComponent(ruleId)}`,
+      {
+        method: "PATCH",
+        body: { isEnabled },
+      }
+    );
+  },
+
+  /**
+   * Toggle category inclusion/exclusion
+   */
+  async toggleAnalyticsCategory(categoryId: string, isIncluded: boolean) {
+    return requestService<{ success: boolean; category: any }>(
+      `/api/v1/analytics-categories/${encodeURIComponent(categoryId)}`,
+      {
+        method: "PATCH",
+        body: { isIncluded },
+      }
+    );
+  },
 };
+

@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { PARTNER_FIRMS, PARTNER_FIRM_DETAILS, type PartnerFirm } from "@/components/partner/mockData";
+import type { PartnerFirm, PartnerReview } from "@/types/partner";
 import { PartnerProfile } from "@/components/partner/PartnerProfile";
+import { partnerServiceClient } from "@/lib/partner-service-client";
 import { Pool } from "pg";
 
-export const dynamicParams = true;
+export const dynamic = "force-dynamic";
 
 function getPool() {
   const connectionString = process.env.DATABASE_URL || "postgresql://postgres@127.0.0.1:5432/smart_money";
@@ -16,7 +17,40 @@ function getPool() {
 }
 
 async function getFirmData(id: string) {
-  // 1. Try querying Postgres first
+  // 1. Try microservice first
+  try {
+    const data: any = await partnerServiceClient.getFirmDetails(id);
+    const firmData = data?.firm || data?.partner;
+    if (firmData) {
+      const firm: PartnerFirm = {
+        id: firmData.slug || firmData.id,
+        name: firmData.name,
+        type: firmData.type,
+        icon: firmData.icon || "🏛️",
+        banner: firmData.banner || firmData.banner_style || "linear-gradient(135deg,#0B1E3D,#1A3A6E)",
+        iconBg: firmData.iconBg || firmData.icon_bg || "#0B1E3D",
+        desc: firmData.desc || firmData.description || "",
+        tags: Array.isArray(firmData.tags) ? firmData.tags : [],
+        rating: firmData.rating || "4.8★",
+        clients: firmData.clients || firmData.client_count_text || "1,000+",
+        minPortfolio: firmData.minPortfolio || firmData.min_portfolio_text || "₦0",
+      };
+      return {
+        firm,
+        fullDescription: firmData.fullDescription || firmData.full_description || firmData.desc || firmData.description || "",
+        includes: Array.isArray(firmData.includes) && firmData.includes.length > 0 
+          ? firmData.includes 
+          : ["Institutional wealth advisory", "Direct dedicated advisor access", "Quarterly portfolio rebalancing"],
+        reviews: (Array.isArray(firmData.reviews) && firmData.reviews.length > 0
+          ? firmData.reviews
+          : [{ name: "Verified Client", stars: "★★★★★", text: "Exceptional advisory quality and seamless integration." }]) as PartnerReview[],
+      };
+    }
+  } catch (serviceErr) {
+    // Fall back to direct database query
+  }
+
+  // 2. Direct PostgreSQL query
   try {
     const pool = getPool();
     const { rows } = await pool.query(
@@ -26,7 +60,7 @@ async function getFirmData(id: string) {
         min_portfolio_text AS "minPortfolio", full_description AS "fullDescription",
         includes, reviews
        FROM public.partner_orgs
-       WHERE slug = $1 OR id::text = $1
+       WHERE (slug = $1 OR id::text = $1) AND is_public = true
        LIMIT 1;`,
       [id]
     );
@@ -50,31 +84,19 @@ async function getFirmData(id: string) {
       return {
         firm,
         fullDescription: row.fullDescription || row.desc || "",
-        includes: Array.isArray(row.includes) && row.includes.length > 0 ? row.includes : ["Institutional wealth advisory", "Direct dedicated advisor access"],
-        reviews: Array.isArray(row.reviews) && row.reviews.length > 0 ? row.reviews : [{ name: "Verified Client", stars: "★★★★★", text: "Outstanding partnership and execution." }],
+        includes: Array.isArray(row.includes) && row.includes.length > 0 
+          ? row.includes 
+          : ["Institutional wealth advisory", "Direct dedicated advisor access", "Quarterly portfolio rebalancing"],
+        reviews: (Array.isArray(row.reviews) && row.reviews.length > 0 
+          ? row.reviews 
+          : [{ name: "Verified Client", stars: "★★★★★", text: "Exceptional advisory quality and seamless integration." }]) as PartnerReview[],
       };
     }
   } catch (err) {
     console.error("[getFirmData DB Query Error]", err);
   }
 
-  // 2. Fallback to mock data if not in DB
-  const mockFirm = PARTNER_FIRMS.find((f) => f.id === id);
-  const mockDetails = PARTNER_FIRM_DETAILS[id];
-  if (mockFirm && mockDetails) {
-    return {
-      firm: mockFirm,
-      fullDescription: mockDetails.fullDescription,
-      includes: mockDetails.includes,
-      reviews: mockDetails.reviews,
-    };
-  }
-
   return null;
-}
-
-export async function generateStaticParams() {
-  return PARTNER_FIRMS.map((f) => ({ id: f.id }));
 }
 
 export async function generateMetadata({

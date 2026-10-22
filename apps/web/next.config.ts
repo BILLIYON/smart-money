@@ -40,6 +40,10 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
+        source: "/_admin_assets/:path*",
+        destination: "http://127.0.0.1:3002/:path*",
+      },
+      {
         source: "/admin/:path*",
         destination: "http://127.0.0.1:3002/admin/:path*",
       },

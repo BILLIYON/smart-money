@@ -1,6 +1,9 @@
 "use client";
 
-import { PARTNER_ORG } from "./mockData";
+const DEFAULT_ORG = {
+  name: "Partner Workspace",
+  subtitle: "Institutional Portal",
+};
 
 export type PartnerTab =
   | "overview"
@@ -22,8 +25,8 @@ const NAV_SECTIONS: { label: string; items: { id: PartnerTab; icon: string; labe
     label: "Overview",
     items: [
       { id: "overview", icon: "📊", label: "Dashboard" },
-      { id: "clients", icon: "👥", label: "Clients", badge: "48", badgeTone: "green" },
-      { id: "approvals", icon: "⚡", label: "Approvals", badge: "3", badgeTone: "orange" },
+      { id: "clients", icon: "👥", label: "Clients" },
+      { id: "approvals", icon: "⚡", label: "Approvals" },
     ],
   },
   {
@@ -66,9 +69,9 @@ export function PartnerSidebar({
           style={{ background: "linear-gradient(135deg,var(--navy),var(--navy2))" }}
         >
           <div>
-            <div className="text-[13px] font-bold text-white tracking-[.3px]">{PARTNER_ORG.name}</div>
+            <div className="text-[13px] font-bold text-white tracking-[.3px]">{DEFAULT_ORG.name}</div>
             <div className="text-[10px] mt-[1px]" style={{ color: "rgba(255,255,255,.45)" }}>
-              {PARTNER_ORG.subtitle}
+              {DEFAULT_ORG.subtitle}
             </div>
           </div>
         </div>

@@ -1,7 +1,15 @@
 "use client";
 
 import { SectionHeader, comingSoon } from "../shared";
-import { BYOD_CONNECTION } from "../mockData";
+
+const BYOD_CONNECTION = {
+  name: "Stanbic PostgreSQL · Primary",
+  hostMasked: "postgres://•••••••••.amazonaws.com:5432/•••••••••",
+  status: "Connected · Healthy",
+  latency: "12ms avg",
+  records: "Live Ledger",
+  lastSync: "Real-time stream",
+};
 
 export function DatabasePanel() {
   return (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SectionHeader, InfoBanner, Card, StatusPill } from "@/components/admin/shared";
 
 interface UserProfile {
   id: string;
@@ -114,45 +115,56 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div className="space-y-6">
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #334155", paddingBottom: 16 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#F8FAFC", margin: 0 }}>
-            User Management & Role Access
-          </h1>
-          <p style={{ fontSize: 13, color: "#94A3B8", margin: "4px 0 0" }}>
-            Search accounts, assign verified Partner Roles, update subscription tiers, or reset passwords.
-          </p>
-        </div>
-        <div style={{ fontSize: 12, fontWeight: 600, color: "#94A3B8", background: "#1E293B", border: "1px solid #334155", padding: "6px 12px", borderRadius: 6 }}>
-          {users.length} Total Registered Users
-        </div>
-      </div>
+      <SectionHeader
+        title="👥"
+        emphasis="User Management & Roles"
+        sub="Search user accounts, assign verified Partner Roles, upgrade subscription tiers, or reset credentials."
+        action={
+          <span
+            className="px-3 py-1 rounded-full text-[11px] font-semibold border"
+            style={{
+              background: "rgba(0,196,140,0.1)",
+              color: "var(--green2)",
+              borderColor: "rgba(0,196,140,0.25)",
+            }}
+          >
+            {users.length} Total Registered Users
+          </span>
+        }
+      />
+
+      <InfoBanner tone="blue">
+        💡 Changes made here take immediate effect. Granting <strong>Partner Staff</strong> enables institutional portal access for that user's email.
+      </InfoBanner>
 
       {/* Filter Toolbar */}
-      <div style={{ display: "flex", gap: 12, background: "#1E293B", border: "1px solid #334155", borderRadius: 8, padding: 12, flexWrap: "wrap" }}>
+      <div
+        className="p-3 rounded-[12px] flex items-center gap-3 flex-wrap"
+        style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+      >
         <input
           type="text"
           placeholder="Search by email or name..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
+          className="flex-1 min-w-[220px] text-[13px] px-3.5 py-2 rounded-[8px] outline-none transition"
           style={{
-            flex: 1,
-            minWidth: 200,
-            background: "#0F172A",
-            border: "1px solid #334155",
-            borderRadius: 6,
-            padding: "8px 12px",
-            color: "#F8FAFC",
-            fontSize: 13,
-            outline: "none",
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            color: "var(--text)",
           }}
         />
         <select
           value={planFilter}
           onChange={(e) => setPlanFilter(e.target.value)}
-          style={{ background: "#0F172A", border: "1px solid #334155", borderRadius: 6, padding: "8px 12px", color: "#F8FAFC", fontSize: 13, outline: "none" }}
+          className="text-[12px] px-3 py-2 rounded-[8px] outline-none font-medium cursor-pointer"
+          style={{
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            color: "var(--text)",
+          }}
         >
           <option value="all">All Plans</option>
           <option value="free">Free Tier</option>
@@ -161,7 +173,12 @@ export default function AdminUsersPage() {
         <select
           value={roleFilter}
           onChange={(e) => setRoleFilter(e.target.value)}
-          style={{ background: "#0F172A", border: "1px solid #334155", borderRadius: 6, padding: "8px 12px", color: "#F8FAFC", fontSize: 13, outline: "none" }}
+          className="text-[12px] px-3 py-2 rounded-[8px] outline-none font-medium cursor-pointer"
+          style={{
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            color: "var(--text)",
+          }}
         >
           <option value="all">All Roles</option>
           <option value="partner">Partner Staff Only</option>
@@ -170,141 +187,190 @@ export default function AdminUsersPage() {
         </select>
       </div>
 
-      {/* Main Container */}
-      <div style={{ display: "grid", gridTemplateColumns: selectedUser ? "1fr 340px" : "1fr", gap: 20 }}>
-        {/* Table */}
-        <div style={{ background: "#1E293B", border: "1px solid #334155", borderRadius: 8, overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: "#0F172A", borderBottom: "1px solid #334155", color: "#94A3B8" }}>
-                <th style={{ padding: "12px 16px" }}>User</th>
-                <th style={{ padding: "12px 16px" }}>Tier</th>
-                <th style={{ padding: "12px 16px" }}>System Role</th>
-                <th style={{ padding: "12px 16px" }}>Partner Staff</th>
-                <th style={{ padding: "12px 16px" }}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading && (
-                <tr>
-                  <td colSpan={5} style={{ padding: 24, textAlign: "center", color: "#94A3B8" }}>
-                    Loading user records...
-                  </td>
+      {/* Main Grid: Table & Editor Drawer */}
+      <div className={`grid gap-5 ${selectedUser ? "grid-cols-1 xl:grid-cols-3" : "grid-cols-1"}`}>
+        {/* Table Card */}
+        <Card className={`p-0 overflow-hidden ${selectedUser ? "xl:col-span-2" : ""}`}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-[13px] border-collapse">
+              <thead>
+                <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--muted)" }}>
+                    User
+                  </th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--muted)" }}>
+                    Tier
+                  </th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--muted)" }}>
+                    System Role
+                  </th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--muted)" }}>
+                    Partner Staff
+                  </th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-right" style={{ color: "var(--muted)" }}>
+                    Action
+                  </th>
                 </tr>
-              )}
-              {!loading && filteredUsers.length === 0 && (
-                <tr>
-                  <td colSpan={5} style={{ padding: 24, textAlign: "center", color: "#94A3B8" }}>
-                    No users found matching your filters.
-                  </td>
-                </tr>
-              )}
-              {filteredUsers.map((u) => (
-                <tr
-                  key={u.id}
-                  onClick={() => selectUserForEdit(u)}
-                  style={{
-                    borderBottom: "1px solid #334155",
-                    cursor: "pointer",
-                    background: selectedUser?.id === u.id ? "rgba(51, 65, 85, 0.4)" : "transparent",
-                  }}
-                >
-                  <td style={{ padding: "12px 16px" }}>
-                    <div style={{ fontWeight: 600, color: "#F8FAFC" }}>{u.full_name || "Anonymous User"}</div>
-                    <div style={{ fontSize: 11, color: "#94A3B8" }}>{u.email}</div>
-                  </td>
-                  <td style={{ padding: "12px 16px" }}>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 600,
-                        padding: "2px 8px",
-                        borderRadius: 4,
-                        background: u.plan === "pro" ? "rgba(16, 185, 129, 0.15)" : "rgba(148, 163, 184, 0.1)",
-                        color: u.plan === "pro" ? "#10B981" : "#94A3B8",
-                      }}
-                    >
-                      {u.plan.toUpperCase()}
-                    </span>
-                  </td>
-                  <td style={{ padding: "12px 16px" }}>
-                    {u.is_admin ? (
-                      <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 4, background: "rgba(245, 158, 11, 0.1)", color: "#F59E0B" }}>
-                        ADMIN
-                      </span>
-                    ) : (
-                      <span style={{ fontSize: 12, color: "#64748B" }}>Standard</span>
-                    )}
-                  </td>
-                  <td style={{ padding: "12px 16px" }}>
-                    {u.is_partner_staff ? (
-                      <div>
-                        <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "rgba(16, 185, 129, 0.15)", color: "#10B981" }}>
-                          PARTNER · {u.partner_role?.toUpperCase() || "STAFF"}
-                        </span>
-                        {u.partner_org_name && (
-                          <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 2 }}>{u.partner_org_name}</div>
-                        )}
-                      </div>
-                    ) : (
-                      <span style={{ fontSize: 12, color: "#64748B" }}>—</span>
-                    )}
-                  </td>
-                  <td style={{ padding: "12px 16px" }}>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); selectUserForEdit(u); }}
-                      style={{ padding: "4px 10px", background: "#0F172A", border: "1px solid #334155", borderRadius: 6, color: "#F8FAFC", fontSize: 12, fontWeight: 500, cursor: "pointer" }}
-                    >
-                      Manage Roles
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-8 text-center" style={{ color: "var(--muted)" }}>
+                      Loading user records...
+                    </td>
+                  </tr>
+                ) : filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-8 text-center" style={{ color: "var(--muted)" }}>
+                      No users found matching your filters.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredUsers.map((u, i) => {
+                    const isSelected = selectedUser?.id === u.id;
+                    return (
+                      <tr
+                        key={u.id}
+                        onClick={() => selectUserForEdit(u)}
+                        className="cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                        style={{
+                          borderTop: i > 0 ? "1px solid var(--border)" : undefined,
+                          background: isSelected ? "rgba(0,196,140,0.06)" : undefined,
+                        }}
+                      >
+                        <td className="px-5 py-3.5">
+                          <div className="font-semibold" style={{ color: "var(--text)" }}>
+                            {u.full_name || "Anonymous User"}
+                          </div>
+                          <div className="text-[11px]" style={{ color: "var(--muted)" }}>
+                            {u.email}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <StatusPill
+                            label={u.plan.toUpperCase()}
+                            tone={u.plan === "pro" ? "active" : "inactive"}
+                          />
+                        </td>
+                        <td className="px-5 py-3.5">
+                          {u.is_admin ? (
+                            <span
+                              className="text-[10px] font-bold px-2 py-0.5 rounded uppercase"
+                              style={{ background: "rgba(245,166,35,0.12)", color: "var(--gold)" }}
+                            >
+                              ADMIN
+                            </span>
+                          ) : (
+                            <span className="text-[12px]" style={{ color: "var(--muted)" }}>
+                              Standard
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          {u.is_partner_staff ? (
+                            <div>
+                              <span
+                                className="text-[10px] font-bold px-2 py-0.5 rounded uppercase"
+                                style={{ background: "rgba(0,196,140,0.12)", color: "var(--green2)" }}
+                              >
+                                {u.partner_role?.toUpperCase() || "STAFF"}
+                              </span>
+                              {u.partner_org_name && (
+                                <div className="text-[10px] mt-0.5" style={{ color: "var(--muted)" }}>
+                                  {u.partner_org_name}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-[12px]" style={{ color: "var(--muted)" }}>—</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              selectUserForEdit(u);
+                            }}
+                            className="text-[11px] font-semibold px-2.5 py-1 rounded-[6px] border transition hover:opacity-90"
+                            style={{
+                              background: "var(--bg)",
+                              borderColor: "var(--border)",
+                              color: "var(--text)",
+                            }}
+                          >
+                            Manage
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
 
         {/* Action Panel Sidebar */}
         {selectedUser && (
-          <div style={{ background: "#1E293B", border: "1px solid #334155", borderRadius: 8, padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #334155", paddingBottom: 10 }}>
-              <h2 style={{ fontSize: 14, fontWeight: 600, color: "#F8FAFC", margin: 0 }}>Account Settings</h2>
-              <button onClick={() => setSelectedUser(null)} style={{ background: "none", border: "none", color: "#94A3B8", fontSize: 16, cursor: "pointer" }}>✕</button>
+          <Card className="flex flex-col gap-4">
+            <div className="flex justify-between items-center pb-2" style={{ borderBottom: "1px solid var(--border)" }}>
+              <div className="text-[14px] font-bold" style={{ color: "var(--text)" }}>
+                Account Settings
+              </div>
+              <button
+                onClick={() => setSelectedUser(null)}
+                className="text-[16px] text-slate-400 hover:text-slate-700 transition-colors"
+              >
+                ✕
+              </button>
             </div>
 
             <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "#F8FAFC" }}>{selectedUser.email}</div>
-              <div style={{ fontSize: 11, color: "#64748B", marginTop: 2, fontFamily: "monospace" }}>ID: {selectedUser.id}</div>
+              <div className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>
+                {selectedUser.email}
+              </div>
+              <div className="text-[10px] font-mono mt-0.5" style={{ color: "var(--muted)" }}>
+                ID: {selectedUser.id}
+              </div>
             </div>
 
             {actionMessage && (
-              <div style={{ padding: 8, borderRadius: 6, background: "#0F172A", border: "1px solid #334155", fontSize: 12, color: "#F8FAFC" }}>
+              <div
+                className="p-2.5 rounded-[8px] text-[12px]"
+                style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)" }}
+              >
                 {actionMessage}
               </div>
             )}
 
-            {/* PARTNER ROLE ASSIGNMENT (Admin Controlled) */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12, background: "#0F172A", border: "1px solid #334155", borderRadius: 8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: "#10B981", textTransform: "uppercase", letterSpacing: 0.5 }}>
+            {/* PARTNER ROLE ASSIGNMENT */}
+            <div
+              className="p-3 rounded-[10px] flex flex-col gap-2.5"
+              style={{ background: "var(--bg)", border: "1px solid var(--border)" }}
+            >
+              <div className="flex justify-between items-center">
+                <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--green2)" }}>
                   Partner Portal Access
                 </label>
                 <input
                   type="checkbox"
                   checked={editIsPartnerStaff}
                   onChange={(e) => setEditIsPartnerStaff(e.target.checked)}
-                  style={{ width: 16, height: 16, cursor: "pointer", accentColor: "#10B981" }}
+                  className="w-4 h-4 cursor-pointer accent-emerald-500"
                 />
               </div>
 
               {editIsPartnerStaff && (
                 <>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <label style={{ fontSize: 10, color: "#94A3B8" }}>Partner Organization</label>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px]" style={{ color: "var(--muted)" }}>
+                      Partner Organization
+                    </label>
                     <select
                       value={editPartnerOrgId}
                       onChange={(e) => setEditPartnerOrgId(e.target.value)}
-                      style={{ padding: "6px 8px", background: "#1E293B", border: "1px solid #334155", borderRadius: 6, color: "#F8FAFC", fontSize: 12 }}
+                      className="px-2.5 py-1.5 rounded-[6px] text-[12px] outline-none"
+                      style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--text)" }}
                     >
                       <option value="" disabled>Select Firm</option>
                       {partnerOrgs.map((org) => (
@@ -313,12 +379,15 @@ export default function AdminUsersPage() {
                     </select>
                   </div>
 
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <label style={{ fontSize: 10, color: "#94A3B8" }}>Partner Staff Role</label>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px]" style={{ color: "var(--muted)" }}>
+                      Partner Staff Role
+                    </label>
                     <select
                       value={editPartnerRole}
                       onChange={(e) => setEditPartnerRole(e.target.value)}
-                      style={{ padding: "6px 8px", background: "#1E293B", border: "1px solid #334155", borderRadius: 6, color: "#F8FAFC", fontSize: 12 }}
+                      className="px-2.5 py-1.5 rounded-[6px] text-[12px] outline-none"
+                      style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--text)" }}
                     >
                       <option value="advisor">Advisor (Approve actions, client goals)</option>
                       <option value="admin">Admin (Full firm control, manage staff)</option>
@@ -337,16 +406,11 @@ export default function AdminUsersPage() {
                     partnerRole: editIsPartnerStaff ? editPartnerRole : null,
                   })
                 }
+                className="mt-1 py-1.5 px-3 rounded-[6px] text-[11px] font-semibold transition"
                 style={{
-                  marginTop: 4,
-                  padding: "8px",
-                  background: editIsPartnerStaff ? "rgba(16, 185, 129, 0.2)" : "#1E293B",
-                  border: `1px solid ${editIsPartnerStaff ? "#10B981" : "#334155"}`,
-                  borderRadius: 6,
-                  color: editIsPartnerStaff ? "#10B981" : "#94A3B8",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
+                  background: editIsPartnerStaff ? "rgba(0,196,140,0.15)" : "var(--card)",
+                  border: `1px solid ${editIsPartnerStaff ? "var(--green)" : "var(--border)"}`,
+                  color: editIsPartnerStaff ? "var(--green2)" : "var(--muted)",
                 }}
               >
                 {editIsPartnerStaff ? "Save Partner Role" : "Revoke Partner Access"}
@@ -354,18 +418,30 @@ export default function AdminUsersPage() {
             </div>
 
             {/* Plan Upgrade */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: "#94A3B8", textTransform: "uppercase" }}>Subscription Plan</label>
-              <div style={{ display: "flex", gap: 8 }}>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--muted)" }}>
+                Subscription Plan
+              </label>
+              <div className="flex gap-2">
                 <button
                   onClick={() => handleAction("update_plan", { plan: "free" })}
-                  style={{ flex: 1, padding: "8px", background: selectedUser.plan === "free" ? "#334155" : "#0F172A", border: "1px solid #334155", borderRadius: 6, color: "#F8FAFC", fontSize: 12, fontWeight: 500, cursor: "pointer" }}
+                  className="flex-1 py-1.5 rounded-[6px] text-[11px] font-semibold border transition"
+                  style={{
+                    background: selectedUser.plan === "free" ? "rgba(255,255,255,0.08)" : "var(--bg)",
+                    borderColor: selectedUser.plan === "free" ? "var(--border)" : "transparent",
+                    color: "var(--text)",
+                  }}
                 >
                   Free Tier
                 </button>
                 <button
                   onClick={() => handleAction("update_plan", { plan: "pro" })}
-                  style={{ flex: 1, padding: "8px", background: selectedUser.plan === "pro" ? "rgba(16,185,129,0.15)" : "#0F172A", border: "1px solid #10B981", borderRadius: 6, color: "#10B981", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                  className="flex-1 py-1.5 rounded-[6px] text-[11px] font-semibold border transition"
+                  style={{
+                    background: selectedUser.plan === "pro" ? "rgba(0,196,140,0.15)" : "var(--bg)",
+                    borderColor: selectedUser.plan === "pro" ? "var(--green)" : "transparent",
+                    color: selectedUser.plan === "pro" ? "var(--green2)" : "var(--text)",
+                  }}
                 >
                   Pro Tier
                 </button>
@@ -373,48 +449,60 @@ export default function AdminUsersPage() {
             </div>
 
             {/* Admin Role Toggle */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: "#94A3B8", textTransform: "uppercase" }}>Administrator Privileges</label>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--muted)" }}>
+                Admin Privileges
+              </label>
               <button
                 onClick={() => handleAction("toggle_admin", { isAdmin: !selectedUser.is_admin })}
-                style={{ padding: "8px", background: selectedUser.is_admin ? "rgba(245, 158, 11, 0.1)" : "#0F172A", border: "1px solid #334155", borderRadius: 6, color: selectedUser.is_admin ? "#F59E0B" : "#F8FAFC", fontSize: 12, fontWeight: 500, cursor: "pointer" }}
+                className="py-1.5 px-3 rounded-[6px] text-[11px] font-semibold border transition"
+                style={{
+                  background: selectedUser.is_admin ? "rgba(245,166,35,0.12)" : "var(--bg)",
+                  borderColor: selectedUser.is_admin ? "var(--gold)" : "var(--border)",
+                  color: selectedUser.is_admin ? "var(--gold)" : "var(--text)",
+                }}
               >
                 {selectedUser.is_admin ? "Demote from Administrator" : "Promote to Administrator"}
               </button>
             </div>
 
             {/* Password Reset */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: "#94A3B8", textTransform: "uppercase" }}>Reset Password</label>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--muted)" }}>
+                Reset Password
+              </label>
               <input
                 type="password"
                 placeholder="Enter new password..."
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                style={{ padding: "8px", background: "#0F172A", border: "1px solid #334155", borderRadius: 6, color: "#F8FAFC", fontSize: 12, outline: "none" }}
+                className="px-3 py-1.5 rounded-[6px] text-[12px] outline-none"
+                style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)" }}
               />
               <button
                 onClick={() => handleAction("reset_password", { newPassword })}
-                style={{ padding: "6px 10px", background: "#0F172A", border: "1px solid #334155", borderRadius: 6, color: "#F8FAFC", fontSize: 12, fontWeight: 500, cursor: "pointer" }}
+                className="py-1.5 px-3 rounded-[6px] text-[11px] font-semibold border transition"
+                style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
               >
                 Save New Password
               </button>
             </div>
 
             {/* Delete Account */}
-            <div style={{ paddingTop: 12, borderTop: "1px solid #334155" }}>
+            <div className="pt-2" style={{ borderTop: "1px solid var(--border)" }}>
               <button
                 onClick={() => {
                   if (confirm(`Permanently delete account ${selectedUser.email}?`)) {
                     handleAction("delete_user");
                   }
                 }}
-                style={{ width: "100%", padding: "8px", background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.3)", borderRadius: 6, color: "#EF4444", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                className="w-full py-1.5 rounded-[6px] text-[11px] font-semibold border transition text-red-500 hover:bg-red-500/10"
+                style={{ borderColor: "rgba(239,68,68,0.25)" }}
               >
                 Delete Account
               </button>
             </div>
-          </div>
+          </Card>
         )}
       </div>
     </div>

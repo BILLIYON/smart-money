@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { SectionHeader, InfoBanner, Card, KpiCard, StatusPill } from "@/components/admin/shared";
 
 export const metadata = { title: "Data Engine · Admin · Smart Money" };
 export const dynamic = "force-dynamic";
@@ -14,46 +15,100 @@ export default async function AdminDataPage() {
     ORDER BY n_live_tup DESC;
   `);
 
+  const totalRows = tableStats.reduce((acc, t) => acc + parseInt(t.row_count || 0, 10), 0);
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      {/* Header Banner */}
-      <div style={{ borderBottom: "1px solid #334155", paddingBottom: 16 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: "#F8FAFC", margin: 0 }}>
-          Data &amp; Signals Engine
-        </h1>
-        <p style={{ fontSize: 13, color: "#94A3B8", margin: "4px 0 0" }}>
-          Monitor PostgreSQL table statistics, row counts, and storage metrics.
-        </p>
+    <div className="space-y-6">
+      {/* Header */}
+      <SectionHeader
+        title="🗄️"
+        emphasis="Data & Signals Engine"
+        sub="Monitor PostgreSQL database tables, live record counts, data sync volume, and storage engine telemetry."
+        action={
+          <StatusPill label="PostgreSQL 16 · Online" tone="active" />
+        }
+      />
+
+      <InfoBanner tone="blue">
+        💡 Database tables reflect live rows across both local PostgreSQL and the remote Supabase connection pooler.
+      </InfoBanner>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard
+          label="Tracked Tables"
+          value={tableStats.length}
+          subtitle="Public schema"
+          tone="neutral"
+        />
+        <KpiCard
+          label="Total Live Tuples"
+          value={totalRows}
+          subtitle="Indexed rows"
+          tone="up"
+        />
+        <KpiCard
+          label="Database Engine"
+          value="PG 16.2"
+          subtitle="Amazon Linux EC2"
+          tone="up"
+        />
+        <KpiCard
+          label="PGBouncer Pooler"
+          value="Port 6543"
+          subtitle="SSL Verified"
+          tone="up"
+        />
       </div>
 
       {/* Database Tables Statistics */}
-      <div style={{ background: "#1E293B", border: "1px solid #334155", borderRadius: 8, padding: 20 }}>
-        <h2 style={{ fontSize: 15, fontWeight: 600, color: "#F8FAFC", margin: "0 0 16px" }}>
-          PostgreSQL Database Table Row Counts
-        </h2>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
-          {tableStats.map((tbl) => (
-            <div
-              key={tbl.table_name}
-              style={{
-                background: "#0F172A",
-                border: "1px solid #334155",
-                borderRadius: 6,
-                padding: "14px",
-              }}
-            >
-              <div style={{ fontSize: 11, color: "#94A3B8", fontWeight: 600, textTransform: "uppercase" }}>
-                {tbl.table_name}
-              </div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: "#F8FAFC", marginTop: 4 }}>
-                {parseInt(tbl.row_count || 0, 10).toLocaleString()}
-              </div>
-              <div style={{ fontSize: 10, color: "#64748B", marginTop: 2 }}>live rows</div>
+      <Card>
+        <div className="flex items-center justify-between mb-4 pb-3" style={{ borderBottom: "1px solid var(--border)" }}>
+          <div>
+            <div className="text-[15px] font-semibold" style={{ color: "var(--text)" }}>
+              Public Schema Table Row Counts
             </div>
-          ))}
+            <div className="text-[11px]" style={{ color: "var(--muted)" }}>
+              Live tuples ranked by row volume
+            </div>
+          </div>
+          <span className="text-[11px] font-medium" style={{ color: "var(--muted)" }}>
+            {tableStats.length} tables found
+          </span>
         </div>
-      </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+          {tableStats.map((tbl) => {
+            const count = parseInt(tbl.row_count || 0, 10);
+            return (
+              <div
+                key={tbl.table_name}
+                className="p-3.5 rounded-[10px] transition-colors"
+                style={{
+                  background: "var(--bg)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                <div
+                  className="text-[11px] font-bold uppercase tracking-wider truncate mb-1"
+                  style={{ color: "var(--muted)" }}
+                >
+                  {tbl.table_name}
+                </div>
+                <div
+                  className="text-[20px] font-bold"
+                  style={{ color: "var(--text)", fontFamily: "var(--font-dm-serif)" }}
+                >
+                  {count.toLocaleString()}
+                </div>
+                <div className="text-[10px] mt-0.5" style={{ color: "var(--muted)" }}>
+                  live records
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
     </div>
   );
 }

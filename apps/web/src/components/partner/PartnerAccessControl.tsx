@@ -4,7 +4,15 @@ import { useState, useEffect } from "react";
 import { popup } from "@/store/popupStore";
 
 import toast from "react-hot-toast";
-import { MY_PARTNER, MY_PARTNER_SCOPES, type MyPartnerAccessScope } from "./mockData";
+import type { MyPartnerAccessScope } from "@/types/partner";
+
+const DEFAULT_SCOPES: MyPartnerAccessScope[] = [
+  { key: "transactions", label: "Transaction History", desc: "Allow partner to see categorized transaction alerts from your connected accounts", on: false },
+  { key: "networth", label: "Net Worth & Account Balances", desc: "Share your aggregated net worth and current balances for portfolio context", on: false },
+  { key: "goals", label: "Goals & Milestones", desc: "Let your partner view your active goals, savings targets and progress", on: false },
+  { key: "chat", label: "Buddy Conversations", desc: "Allow partner advisors to review conversations with your AI buddies for context", on: false },
+  { key: "actions", label: "Agentic Actions Approval", desc: "Send actions above your partner limit to their approval queue before execution", on: false },
+];
 
 function ScopeToggle({ scope, onChange }: { scope: MyPartnerAccessScope; onChange: (on: boolean) => void }) {
   return (
@@ -47,12 +55,11 @@ function ScopeToggle({ scope, onChange }: { scope: MyPartnerAccessScope; onChang
 }
 
 /**
- * Frontend-only. Represents a client's control over what a connected
- * partner firm can see. No backend exists yet for partner orgs or
- * consent grants — this demonstrates the intended UI/UX for that.
+ * Client Privacy & Data Access Controls
+ * Synchronized with the PostgreSQL / partner-service consent ledger.
  */
 export function PartnerAccessControl() {
-  const [scopes, setScopes] = useState<MyPartnerAccessScope[]>(MY_PARTNER_SCOPES);
+  const [scopes, setScopes] = useState<MyPartnerAccessScope[]>(DEFAULT_SCOPES);
   const [partner, setPartner] = useState<{ id: string; name: string; type: string } | null>(null);
   const [hasPartner, setHasPartner] = useState(false);
   const [loading, setLoading] = useState(true);

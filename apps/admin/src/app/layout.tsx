@@ -1,10 +1,16 @@
 import type { Metadata } from "next";
-import { Sora } from "next/font/google";
+import { Sora, DM_Serif_Display } from "next/font/google";
 import { Providers } from "@/components/providers";
 import "./globals.css";
 
 const sora = Sora({
   variable: "--font-sora",
+  subsets: ["latin"],
+});
+
+const dmSerifDisplay = DM_Serif_Display({
+  variable: "--font-dm-serif",
+  weight: "400",
   subsets: ["latin"],
 });
 
@@ -23,10 +29,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${sora.variable} h-full antialiased`}>
+    <html lang="en" suppressHydrationWarning className={`${sora.variable} ${dmSerifDisplay.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col font-sans" style={{ background: "var(--bg)", color: "var(--text)" }}>
         <Providers>{children}</Providers>
       </body>
     </html>
   );
 }
+

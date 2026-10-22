@@ -50,6 +50,10 @@ This file preserves all technical context, active features, database schemas, an
    * Dual-engine coordination: Python handles DOM/PDF heavy parsing on port 8000; Next.js handles OAuth tokens, fast cached export, and real-time streaming fallback.
    * Master Template Cloner Architecture: Copies pre-configured template with container-bound script directly into user's Google Drive via `drive.files.copy`, eliminating consumer friction and Apps Script 403 sandbox errors.
    * Task PRD tracked in [`prd/sync-with-google.md`](file:///home/ec2-user/smart-money/prd/sync-with-google.md).
+6. **Partner Wealth & Institutional Portal System (100% Completed)**:
+   * Decoupled Monorepo architecture across `apps/web` (port 3000), `apps/admin` (port 3002), and `services/partner_service` (port 8001).
+   * Completed all 9 phases (Phase 0 through Phase 8) tracked in [`walkthroughs/partner_implementation_tracker.md`](file:///home/ec2-user/smart-money/walkthroughs/partner_implementation_tracker.md).
+   * Dual DB migrations `001` through `006` applied to both local and Supabase databases.
 
 ---
 

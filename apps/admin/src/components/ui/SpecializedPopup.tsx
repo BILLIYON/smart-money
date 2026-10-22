@@ -51,20 +51,20 @@ export function SpecializedPopup() {
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
                 transition={{ type: "spring", bounce: 0.3, duration: 0.4 }}
-                className="fixed left-[50%] top-[50%] z-[101] w-[90vw] max-w-[440px] translate-x-[-50%] translate-y-[-50%] rounded-2xl border border-white/10 bg-[#0f141c]/95 p-6 shadow-2xl shadow-black/70 backdrop-blur-xl focus:outline-none"
+                className="fixed left-[50%] top-[50%] z-[101] w-[90vw] max-w-[440px] translate-x-[-50%] translate-y-[-50%] rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-900/10 focus:outline-none"
               >
                 <div className="flex items-start gap-4">
                   {options.type && (
-                    <div className="flex-shrink-0 mt-1 p-2 rounded-xl bg-white/5 border border-white/10">
+                    <div className="flex-shrink-0 mt-1 p-2 rounded-xl bg-slate-100 border border-slate-200">
                       {icons[options.type]}
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <Dialog.Title className="text-lg font-semibold text-white tracking-tight leading-snug">
+                    <Dialog.Title className="text-lg font-semibold text-[#0B1E3D] tracking-tight leading-snug">
                       {options.title}
                     </Dialog.Title>
                     {options.description && (
-                      <Dialog.Description className="mt-2 text-xs sm:text-sm leading-relaxed text-gray-300 whitespace-pre-line">
+                      <Dialog.Description className="mt-2 text-xs sm:text-sm leading-relaxed text-[#5A6A87] whitespace-pre-line">
                         {options.description}
                       </Dialog.Description>
                     )}
@@ -76,7 +76,7 @@ export function SpecializedPopup() {
                     <button
                       onClick={cancel}
                       disabled={isLoading}
-                      className="px-4 py-2 rounded-xl text-xs sm:text-sm font-medium text-gray-300 hover:text-white hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-white/20 disabled:opacity-50"
+                      className="px-4 py-2 rounded-xl text-xs sm:text-sm font-medium text-[#5A6A87] hover:text-[#0B1E3D] hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-300 disabled:opacity-50"
                     >
                       {options.cancelText || "Cancel"}
                     </button>

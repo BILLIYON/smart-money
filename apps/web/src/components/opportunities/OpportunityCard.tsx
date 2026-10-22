@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { comingSoon } from "@/components/partner/shared";
-import type { Opportunity } from "./mockData";
+import type { Opportunity } from "@/types/opportunities";
 
 const STATUS_STYLES: Record<Opportunity["status"], { bg: string; color: string; label: string }> = {
   active: { bg: "rgba(245,166,35,.12)", color: "#C47F00", label: "⏳ Active" },
@@ -11,7 +11,13 @@ const STATUS_STYLES: Record<Opportunity["status"], { bg: string; color: string; 
   missed: { bg: "rgba(226,75,74,.1)", color: "#E24B4A", label: "✗ Missed" },
 };
 
-export function OpportunityCard({ opp }: { opp: Opportunity }) {
+export function OpportunityCard({
+  opp,
+  onUpdateStatus,
+}: {
+  opp: Opportunity;
+  onUpdateStatus?: (id: string, status: "acted" | "dismissed") => void;
+}) {
   const router = useRouter();
   const status = STATUS_STYLES[opp.status];
   const isActive = opp.status === "active";
@@ -74,28 +80,28 @@ export function OpportunityCard({ opp }: { opp: Opportunity }) {
         <div className="flex gap-2 flex-wrap mt-3">
           <button
             onClick={() => router.push("/chat")}
-            className="px-3 py-[7px] rounded-[8px] text-[12px] font-semibold text-white border-none"
+            className="px-3 py-[7px] rounded-[8px] text-[12px] font-semibold text-white border-none cursor-pointer"
             style={{ background: "var(--green)" }}
           >
             Discuss with Buddy
           </button>
           <button
-            onClick={() => comingSoon("Acting on an opportunity")}
-            className="px-3 py-[7px] rounded-[8px] text-[12px] font-semibold border"
-            style={{ background: "rgba(245,166,35,.08)", color: "#C47F00", borderColor: "rgba(245,166,35,.4)" }}
+            onClick={() => onUpdateStatus?.(opp.id, "acted")}
+            className="px-3 py-[7px] rounded-[8px] text-[12px] font-semibold border cursor-pointer hover:bg-emerald-500/10"
+            style={{ background: "rgba(0,196,140,.1)", color: "var(--green2)", borderColor: "rgba(0,196,140,.3)" }}
           >
             ⚡ Act on This
           </button>
           <button
             onClick={() => comingSoon("Setting a reminder")}
-            className="px-3 py-[7px] rounded-[8px] text-[12px] font-semibold border"
+            className="px-3 py-[7px] rounded-[8px] text-[12px] font-semibold border cursor-pointer"
             style={{ background: "transparent", color: "var(--muted)", borderColor: "var(--border)" }}
           >
             Remind Me Later
           </button>
           <button
-            onClick={() => comingSoon("Dismissing an opportunity")}
-            className="px-3 py-[7px] rounded-[8px] text-[12px] font-semibold border"
+            onClick={() => onUpdateStatus?.(opp.id, "dismissed")}
+            className="px-3 py-[7px] rounded-[8px] text-[12px] font-semibold border cursor-pointer hover:bg-rose-500/10"
             style={{ background: "transparent", color: "var(--muted)", borderColor: "var(--border)" }}
           >
             Not Interested

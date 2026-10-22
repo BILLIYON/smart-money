@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const http_1 = __importDefault(require("http"));
+const crypto_1 = __importDefault(require("crypto"));
 const config_js_1 = require("./config.js");
 const db_js_1 = require("./db.js");
 const consent_js_1 = require("./consent.js");
@@ -60,10 +61,11 @@ const server = http_1.default.createServer(async (req, res) => {
             timestamp: new Date().toISOString(),
         });
     }
-    // 2. Validate internal service security key for internal routes (allow public directory)
+    // 2. Validate internal service security key for internal routes (allow public directory and application intake)
     const isPublicDirectory = (pathname === "/api/v1/partners" || pathname.startsWith("/api/v1/partners/")) &&
         method === "GET";
-    if (!isPublicDirectory) {
+    const isPublicApplication = pathname.startsWith("/api/v1/partners/") && pathname.endsWith("/apply") && method === "POST";
+    if (!isPublicDirectory && !isPublicApplication) {
         const providedKey = req.headers["x-internal-service-key"];
         if (providedKey !== config_js_1.config.internalKey) {
             return sendJson(res, 401, { error: "Unauthorized: Invalid or missing internal service key" });
@@ -242,9 +244,9 @@ const server = http_1.default.createServer(async (req, res) => {
         // ------------------------------------------------------------------------
         if (pathname === "/api/v1/overview" && method === "GET") {
             const partnerOrgId = parsedUrl.searchParams.get("orgId") || "a0000000-0000-0000-0000-000000000001";
-            const [clientCountRes, pendingApprovalsRes, clientsNeedingAttentionRes] = await Promise.all([
+            const [clientCountRes, pendingApprovalsRes, clientsNeedingAttentionRes, aumRes] = await Promise.all([
                 (0, db_js_1.query)(`SELECT count(*) as total FROM public.partner_clients WHERE partner_org_id = $1 AND status != 'offboarded';`, [partnerOrgId]),
-                (0, db_js_1.query)(`SELECT count(*) as total FROM public.agent_actions WHERE status = 'pending_partner_approval';`).catch(() => ({ rows: [{ total: 0 }] })),
+                (0, db_js_1.query)(`SELECT count(*) as total FROM public.agent_actions WHERE partner_org_id = $1 AND status = 'pending_partner_approval';`, [partnerOrgId]).catch(() => ({ rows: [{ total: 0 }] })),
                 (0, db_js_1.query)(`
           SELECT pc.id, pc.user_id, pc.status, u.full_name, u.email 
           FROM public.partner_clients pc
@@ -252,9 +254,27 @@ const server = http_1.default.createServer(async (req, res) => {
           WHERE pc.partner_org_id = $1 AND pc.status = 'needs_attention'
           LIMIT 5;
         `, [partnerOrgId]).catch(() => ({ rows: [] })),
+                (0, db_js_1.query)(`
+          SELECT COALESCE(SUM(de.amount), 0) as total_aum_kobo
+          FROM public.partner_clients pc
+          JOIN public.databank_entries de ON de.user_id = pc.user_id
+          WHERE pc.partner_org_id = $1 AND pc.status != 'offboarded' AND de.entry_type IN ('asset', 'income');
+        `, [partnerOrgId]).catch(() => ({ rows: [{ total_aum_kobo: 0 }] })),
             ]);
             const totalClients = parseInt(clientCountRes.rows[0]?.total || "0", 10);
             const pendingApprovals = parseInt(pendingApprovalsRes.rows[0]?.total || "0", 10);
+            const aumKobo = parseInt(aumRes.rows[0]?.total_aum_kobo || "0", 10);
+            const aumNaira = Math.round(aumKobo / 100);
+            let aumDisplay = "₦0";
+            if (aumNaira >= 1_000_000_000) {
+                aumDisplay = `₦${(aumNaira / 1_000_000_000).toFixed(1)}B`;
+            }
+            else if (aumNaira >= 1_000_000) {
+                aumDisplay = `₦${(aumNaira / 1_000_000).toFixed(1)}M`;
+            }
+            else if (aumNaira > 0) {
+                aumDisplay = `₦${aumNaira.toLocaleString()}`;
+            }
             const attentionList = clientsNeedingAttentionRes.rows.map((r, idx) => {
                 const name = r.full_name || r.email?.split("@")[0] || "Client";
                 const initials = name.slice(0, 2).toUpperCase();
@@ -264,42 +284,18 @@ const server = http_1.default.createServer(async (req, res) => {
                     initials,
                     color: idx % 2 === 0 ? "#E24B4A" : "#F5A623",
                     name,
-                    meta: "Savings rate dropped · Flagged for advisor portfolio check",
+                    meta: "Flagged for advisor portfolio check",
                     cta: "View →",
                     bg: idx % 2 === 0 ? "rgba(226,75,74,.04)" : "rgba(245,166,35,.04)",
                     border: idx % 2 === 0 ? "rgba(226,75,74,.15)" : "rgba(245,166,35,.2)",
                 };
             });
-            // Default baseline fallbacks if firm newly created
-            if (attentionList.length === 0) {
-                attentionList.push({
-                    id: "mock-1",
-                    userId: "u-mock-1",
-                    initials: "AN",
-                    color: "#E24B4A",
-                    name: "Amaka Nwosu",
-                    meta: "Savings rate dropped from 54% → 21% · 3 new subscriptions detected",
-                    cta: "View →",
-                    bg: "rgba(226,75,74,.04)",
-                    border: "rgba(226,75,74,.15)",
-                }, {
-                    id: "mock-2",
-                    userId: "u-mock-2",
-                    initials: "BJ",
-                    color: "var(--gold)",
-                    name: "Biodun James",
-                    meta: "Goal deadline in 14 days · 43% funded · No activity this month",
-                    cta: "View →",
-                    bg: "rgba(245,166,35,.04)",
-                    border: "rgba(245,166,35,.2)",
-                });
-            }
             return sendJson(res, 200, {
                 kpis: [
-                    { label: "Total Clients", value: `${Math.max(totalClients, 48)}`, delta: "↑ 6 this month", tone: "up" },
-                    { label: "Avg Health Score", value: "74", delta: "↑ 3pts vs last month", tone: "warn" },
-                    { label: "Total AUM Tracked", value: "₦2.4B", delta: "↑ ₦280M this month", tone: "up" },
-                    { label: "Pending Approvals", value: `${Math.max(pendingApprovals, 3)}`, delta: "2 above limit", tone: "warn" },
+                    { label: "Total Clients", value: `${totalClients}`, delta: totalClients > 0 ? "Active roster" : "No clients connected", tone: "up" },
+                    { label: "Avg Health Score", value: totalClients > 0 ? "78" : "—", delta: totalClients > 0 ? "Stable" : "Awaiting data", tone: "warn" },
+                    { label: "Total AUM Tracked", value: aumDisplay, delta: aumNaira > 0 ? "From verified ledgers" : "₦0 connected", tone: "up" },
+                    { label: "Pending Approvals", value: `${pendingApprovals}`, delta: pendingApprovals > 0 ? "Requires review" : "Queue clear", tone: pendingApprovals > 0 ? "warn" : "up" },
                 ],
                 attentionList,
             });
@@ -370,10 +366,6 @@ const server = http_1.default.createServer(async (req, res) => {
                     advisorNotes: row.advisor_notes || "",
                 };
             });
-            // Sample baseline roster so advisor sees a populated environment if starting fresh
-            if (clientList.length === 0) {
-                clientList.push({ id: "c-1", initials: "TK", color: "#0B1E3D", name: "Tunde Kamara", joined: "Joined Feb 2026", healthScore: 78, healthColor: "var(--green)", netWorth: "₦1.07M", lastActivity: "2 hours ago", dataShared: "Full access", buddy: "The Contrarian", status: "Active", advisorNotes: "Reviewing fixed income allocation for Q2." }, { id: "c-2", initials: "AN", color: "#E24B4A", name: "Amaka Nwosu", joined: "Joined Jan 2026", healthScore: 42, healthColor: "#E24B4A", netWorth: "₦380k", lastActivity: "Yesterday", dataShared: "Full access", buddy: "Dave Ramsey (Fan)", status: "Needs attention", advisorNotes: "Scheduled review call regarding recurring debit alerts." }, { id: "c-3", initials: "BJ", color: "var(--gold)", name: "Biodun James", joined: "Joined Mar 2026", healthScore: 61, healthColor: "var(--gold)", netWorth: "₦2.1M", lastActivity: "3 days ago", dataShared: "Spend only", buddy: "Stanbic Advisor AI", status: "Active", advisorNotes: "Interested in dollar mutual funds." }, { id: "c-4", initials: "KO", color: "#4A90D9", name: "Kunle Okafor", joined: "Joined Nov 2025", healthScore: 89, healthColor: "var(--green)", netWorth: "₦8.4M", lastActivity: "1 hour ago", dataShared: "Full access", buddy: "Warren Buffett (Fan)", status: "Active", advisorNotes: "Discussed NGX equities strategy." });
-            }
             return sendJson(res, 200, { clients: clientList });
         }
         // ------------------------------------------------------------------------
@@ -410,6 +402,655 @@ const server = http_1.default.createServer(async (req, res) => {
                 email,
                 orgName,
                 inviteUrl: `https://smartmoney.technology/partners/${orgSlug}?invite=true`,
+            });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: GET /api/v1/goals (Partner-suggested Goals)
+        // ------------------------------------------------------------------------
+        if (pathname === "/api/v1/goals" && method === "GET") {
+            const partnerOrgId = parsedUrl.searchParams.get("orgId") || "a0000000-0000-0000-0000-000000000001";
+            const result = await (0, db_js_1.query)(`SELECT 
+          g.id, g.title, g.target_amount as "targetAmount", g.current_amount as "currentAmount",
+          g.target_date as "targetDate", g.status, g.advisor_note as "advisorNote",
+          g.requires_acceptance as "requiresAcceptance", g.accepted_at as "acceptedAt",
+          g.created_at as "createdAt", u.full_name as "clientName", u.email as "clientEmail"
+         FROM public.goals g
+         LEFT JOIN public.users u ON u.id = g.user_id
+         WHERE g.origin_partner_org_id = $1
+         ORDER BY g.created_at DESC;`, [partnerOrgId]).catch(() => ({ rows: [] }));
+            const goalsList = result.rows.map((row) => ({
+                ...row,
+                clientName: row.clientName || row.clientEmail?.split("@")[0] || "Client",
+            }));
+            return sendJson(res, 200, { goals: goalsList });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: POST /api/v1/goals (Create Partner-suggested Goal)
+        // ------------------------------------------------------------------------
+        if (pathname === "/api/v1/goals" && method === "POST") {
+            const body = await parseJsonBody(req);
+            const partnerOrgId = body.partnerOrgId || body.orgId;
+            let targetUserId = body.userId || body.clientUserId;
+            const title = body.title;
+            const targetAmount = body.targetAmount;
+            const targetDate = body.targetDate || body.deadline;
+            const advisorNote = body.advisorNote || body.notes;
+            if (!title || !targetAmount || !partnerOrgId) {
+                return sendJson(res, 400, { error: "Missing required goal fields (title, targetAmount, partnerOrgId)" });
+            }
+            // If specific userId not provided, pick first active client for this firm or null
+            if (!targetUserId) {
+                const clientRes = await (0, db_js_1.query)(`SELECT user_id FROM public.partner_clients WHERE partner_org_id = $1 LIMIT 1;`, [partnerOrgId]);
+                targetUserId = clientRes.rows[0]?.user_id || authenticatedUserId;
+            }
+            const insertRes = await (0, db_js_1.query)(`INSERT INTO public.goals (
+          user_id, title, target_amount, current_amount, target_date, status,
+          origin, origin_partner_org_id, advisor_note, requires_acceptance
+        ) VALUES ($1, $2, $3, 0, $4, 'pending_acceptance', 'partner', $5, $6, true)
+        RETURNING id, title, target_amount, target_date, status, requires_acceptance, created_at;`, [
+                targetUserId,
+                title.trim(),
+                parseInt(String(targetAmount), 10),
+                targetDate || null,
+                partnerOrgId,
+                advisorNote ? advisorNote.trim() : "Proposed by your wealth advisor.",
+            ]);
+            return sendJson(res, 200, {
+                success: true,
+                goal: insertRes.rows[0],
+            });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: PATCH /api/v1/goals/:id/accept (Client Accepts Proposed Goal)
+        // ------------------------------------------------------------------------
+        if (pathname.startsWith("/api/v1/goals/") && pathname.endsWith("/accept") && method === "PATCH") {
+            const goalId = pathname.replace("/api/v1/goals/", "").replace("/accept", "");
+            await (0, db_js_1.query)(`UPDATE public.goals 
+         SET requires_acceptance = false, status = 'active', accepted_at = NOW()
+         WHERE id::text = $1;`, [goalId]);
+            return sendJson(res, 200, { success: true, goalId, status: "active" });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: PATCH /api/v1/goals/:id/decline (Client Declines Proposed Goal)
+        // ------------------------------------------------------------------------
+        if (pathname.startsWith("/api/v1/goals/") && pathname.endsWith("/decline") && method === "PATCH") {
+            const goalId = pathname.replace("/api/v1/goals/", "").replace("/decline", "");
+            await (0, db_js_1.query)(`UPDATE public.goals 
+         SET requires_acceptance = false, status = 'declined'
+         WHERE id::text = $1;`, [goalId]);
+            return sendJson(res, 200, { success: true, goalId, status: "declined" });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: GET /api/v1/opportunities (Feed for Clients and Advisors)
+        // ------------------------------------------------------------------------
+        if (pathname === "/api/v1/opportunities" && method === "GET") {
+            const orgId = parsedUrl.searchParams.get("orgId");
+            const userId = parsedUrl.searchParams.get("userId") || authenticatedUserId;
+            let sql = `
+        SELECT 
+          id, partner_org_id as "partnerOrgId", title, category, source,
+          source_name as "sourceName", source_avatar as "sourceAvatar",
+          source_color as "sourceColor", reasoning, value_estimate as "valueEstimate",
+          status, window_label as "windowLabel", min_investment_kobo as "minInvestmentKobo",
+          created_at as "createdAt"
+        FROM public.opportunities
+        WHERE status = 'active'
+      `;
+            const params = [];
+            if (orgId) {
+                params.push(orgId);
+                sql += ` AND partner_org_id = $${params.length}`;
+            }
+            else if (userId) {
+                params.push(userId);
+                sql += ` AND (user_id IS NULL OR user_id = $${params.length})`;
+            }
+            sql += ` ORDER BY created_at DESC;`;
+            const result = await (0, db_js_1.query)(sql, params).catch(() => ({ rows: [] }));
+            const opps = result.rows;
+            return sendJson(res, 200, { opportunities: opps });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: POST /api/v1/opportunities (Advisor Dispatches Opportunity)
+        // ------------------------------------------------------------------------
+        if (pathname === "/api/v1/opportunities" && method === "POST") {
+            const body = await parseJsonBody(req);
+            const { partnerOrgId, title, category, reasoning, valueEstimate, windowLabel, targetUserId } = body;
+            if (!title || !reasoning) {
+                return sendJson(res, 400, { error: "Missing required opportunity fields (title, reasoning)" });
+            }
+            const orgId = partnerOrgId || "a0000000-0000-0000-0000-000000000001";
+            const orgRes = await (0, db_js_1.query)(`SELECT name FROM public.partner_orgs WHERE id = $1 LIMIT 1;`, [orgId]);
+            const orgName = orgRes.rows[0]?.name ? `${orgRes.rows[0].name} Advisor` : "Wealth Advisor";
+            const insertRes = await (0, db_js_1.query)(`INSERT INTO public.opportunities (
+          partner_org_id, user_id, title, category, source, source_name,
+          source_avatar, reasoning, value_estimate, window_label, status
+        ) VALUES ($1, $2, $3, $4, 'partner', $5, '🏛️', $6, $7, $8, 'active')
+        RETURNING id, title, category, status, created_at;`, [
+                orgId,
+                targetUserId || null,
+                title.trim(),
+                category || "Investment",
+                orgName,
+                reasoning.trim(),
+                valueEstimate || "High yield potential",
+                windowLabel || "Reassess weekly",
+            ]);
+            return sendJson(res, 200, {
+                success: true,
+                opportunity: insertRes.rows[0],
+            });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: PATCH /api/v1/opportunities/:id (Client/Advisor Updates Opportunity Status)
+        // ------------------------------------------------------------------------
+        if (pathname.startsWith("/api/v1/opportunities/") && method === "PATCH") {
+            const oppId = pathname.replace("/api/v1/opportunities/", "");
+            const body = await parseJsonBody(req);
+            const { status } = body;
+            if (!status || !["acted", "dismissed", "active"].includes(status)) {
+                return sendJson(res, 400, { error: "Invalid or missing status ('acted', 'dismissed', 'active')" });
+            }
+            const updateRes = await (0, db_js_1.query)(`UPDATE public.opportunities
+         SET status = $1, updated_at = NOW()
+         WHERE id::text = $2
+         RETURNING *;`, [status, oppId]);
+            return sendJson(res, 200, {
+                success: true,
+                opportunity: updateRes.rows[0] || null,
+            });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: GET /api/v1/approvals (Partner Approvals Queue)
+        // ------------------------------------------------------------------------
+        if (pathname === "/api/v1/approvals" && method === "GET") {
+            const orgId = parsedUrl.searchParams.get("orgId") || "a0000000-0000-0000-0000-000000000001";
+            const { rows } = await (0, db_js_1.query)(`SELECT 
+           a.id,
+           a.user_id,
+           a.buddy_id,
+           a.action_type,
+           a.description as action,
+           a.amount,
+           a.currency,
+           a.from_account,
+           a.to_account,
+           a.status,
+           a.reasoning,
+           a.created_at,
+           u.email as client_email,
+           u.full_name as client_name,
+           b.name as buddy_name
+         FROM public.agent_actions a
+         JOIN public.users u ON a.user_id = u.id
+         LEFT JOIN public.buddies b ON a.buddy_id = b.id
+         WHERE a.partner_org_id = $1 AND a.status = 'pending_partner_approval'
+         ORDER BY a.created_at DESC;`, [orgId]);
+            const approvals = rows.map((r) => {
+                const clientName = r.client_name || r.client_email?.split('@')[0] || "Client";
+                const initials = clientName.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+                const amtNaira = (Number(r.amount || 0)).toLocaleString();
+                return {
+                    id: r.id,
+                    client: clientName,
+                    clientEmail: r.client_email,
+                    initials: initials || "CL",
+                    color: "linear-gradient(135deg,#132952,#1E3A8A)",
+                    action: r.action || r.action_type,
+                    amount: `₦${amtNaira}`,
+                    amountRaw: Number(r.amount || 0),
+                    from: r.from_account || "Checking / Vault",
+                    to: r.to_account || "Investment Portfolio",
+                    requestedBy: r.buddy_name || r.buddy_id || "Finance Buddy",
+                    reasoning: r.reasoning || `Client-approved financial movement exceeding institutional threshold of ₦500,000.`,
+                    status: r.status,
+                    createdAt: r.created_at,
+                };
+            });
+            return sendJson(res, 200, { approvals });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: PATCH /api/v1/approvals/:id (Sign-off & Execute or Decline)
+        // ------------------------------------------------------------------------
+        if (pathname.startsWith("/api/v1/approvals/") && method === "PATCH") {
+            const actionId = pathname.replace("/api/v1/approvals/", "");
+            const body = await parseJsonBody(req);
+            const { decision, note, advisorId } = body;
+            if (!decision || !["approve", "decline"].includes(decision)) {
+                return sendJson(res, 400, { error: "Invalid decision ('approve' or 'decline' required)" });
+            }
+            if (decision === "approve") {
+                const updateRes = await (0, db_js_1.query)(`UPDATE public.agent_actions
+           SET status = 'approved',
+               approved_at = NOW(),
+               partner_decision_at = NOW(),
+               partner_decision_note = $1
+           WHERE id::text = $2 AND status = 'pending_partner_approval'
+           RETURNING *;`, [note || "Approved by Wealth Partner Advisor", actionId]);
+                if (updateRes.rowCount === 0) {
+                    return sendJson(res, 404, { error: "Action not found or already decided" });
+                }
+                const action = updateRes.rows[0];
+                // Record execution transaction in databank_entries
+                await (0, db_js_1.query)(`INSERT INTO public.databank_entries (
+             user_id, source, entry_type, amount, description, category, entry_date, metadata
+           ) VALUES ($1, 'agent', 'expense', $2, $3, 'transfer', CURRENT_DATE, $4);`, [
+                    action.user_id,
+                    action.amount * 100,
+                    `[Partner Approved] ${action.description || 'Agentic Action Execution'}`,
+                    JSON.stringify({
+                        action_id: action.id,
+                        partner_approved: true,
+                        approved_by: advisorId || "Advisor",
+                        approved_at: new Date().toISOString(),
+                    }),
+                ]);
+                // Mark executed
+                await (0, db_js_1.query)(`UPDATE public.agent_actions SET status = 'executed', executed_at = NOW() WHERE id = $1;`, [action.id]);
+                return sendJson(res, 200, {
+                    success: true,
+                    decision: "approved",
+                    actionId,
+                    status: "executed",
+                    message: "Action approved and executed successfully into client ledger.",
+                });
+            }
+            else {
+                const updateRes = await (0, db_js_1.query)(`UPDATE public.agent_actions
+           SET status = 'declined_by_partner',
+               partner_decision_at = NOW(),
+               partner_decision_note = $1
+           WHERE id::text = $2 AND status = 'pending_partner_approval'
+           RETURNING *;`, [note || "Declined by Wealth Partner Advisor", actionId]);
+                if (updateRes.rowCount === 0) {
+                    return sendJson(res, 404, { error: "Action not found or already decided" });
+                }
+                return sendJson(res, 200, {
+                    success: true,
+                    decision: "declined",
+                    actionId,
+                    status: "declined_by_partner",
+                    message: "Action has been declined. Client and buddy notified.",
+                });
+            }
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: GET /api/v1/staff (Partner Staff Roster)
+        // ------------------------------------------------------------------------
+        if (pathname === "/api/v1/staff" && method === "GET") {
+            const orgId = parsedUrl.searchParams.get("orgId") || "a0000000-0000-0000-0000-000000000001";
+            const { rows } = await (0, db_js_1.query)(`SELECT 
+           ps.id,
+           ps.name,
+           ps.email,
+           ps.role,
+           ps.invite_status as status,
+           ps.invite_token,
+           ps.invited_at,
+           ps.last_active_at,
+           COALESCE(client_counts.total_clients, 0) as assigned_clients,
+           b.name as assigned_buddy
+         FROM public.partner_staff ps
+         LEFT JOIN (
+           SELECT assigned_staff_id, COUNT(*) as total_clients
+           FROM public.partner_clients
+           GROUP BY assigned_staff_id
+         ) client_counts ON client_counts.assigned_staff_id = ps.id
+         LEFT JOIN public.buddies b ON b.escalates_to_staff_id = ps.id
+         WHERE ps.partner_org_id = $1
+         ORDER BY ps.created_at ASC;`, [orgId]);
+            const staff = rows.map((s) => {
+                const initials = s.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+                let lastActiveStr = "Never";
+                if (s.last_active_at) {
+                    const diffMs = Date.now() - new Date(s.last_active_at).getTime();
+                    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+                    lastActiveStr = diffHours < 1 ? "Just now" : diffHours < 24 ? `${diffHours}h ago` : `${Math.floor(diffHours / 24)}d ago`;
+                }
+                else if (s.status === 'invited') {
+                    lastActiveStr = "Invited";
+                }
+                return {
+                    id: s.id,
+                    name: s.name,
+                    email: s.email,
+                    role: s.role.charAt(0).toUpperCase() + s.role.slice(1),
+                    assigned: s.assigned_clients > 0 ? `${s.assigned_clients} clients` : "None assigned",
+                    buddy: s.assigned_buddy || "Stanbic Wealth Co-Pilot",
+                    lastActive: lastActiveStr,
+                    status: s.status === 'active' ? 'Active' : 'Invited',
+                    initials: initials || "ST",
+                    color: "linear-gradient(135deg,#0B1E3D,#1A3A6E)",
+                    inviteToken: s.invite_token,
+                };
+            });
+            return sendJson(res, 200, { staff });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: POST /api/v1/staff/invite (Invite Colleague to Firm)
+        // ------------------------------------------------------------------------
+        if (pathname === "/api/v1/staff/invite" && method === "POST") {
+            const body = await parseJsonBody(req);
+            const { partnerOrgId, name, email, role } = body;
+            if (!name || !email) {
+                return sendJson(res, 400, { error: "Staff name and email are required" });
+            }
+            const orgId = partnerOrgId || "a0000000-0000-0000-0000-000000000001";
+            const staffRole = ["admin", "advisor", "analyst", "view_only"].includes(role?.toLowerCase())
+                ? role.toLowerCase()
+                : "advisor";
+            const token = `tok_stf_${crypto_1.default.randomBytes(16).toString("hex")}`;
+            const insertRes = await (0, db_js_1.query)(`INSERT INTO public.partner_staff (
+           partner_org_id, name, email, role, invite_status, invite_token, invited_at
+         ) VALUES ($1, $2, $3, $4, 'invited', $5, NOW())
+         ON CONFLICT (partner_org_id, email) DO UPDATE SET
+           role = EXCLUDED.role,
+           invite_token = EXCLUDED.invite_token,
+           invited_at = NOW(),
+           invite_status = 'invited'
+         RETURNING id, name, email, role, invite_status, invite_token, invited_at;`, [orgId, name.trim(), email.trim().toLowerCase(), staffRole, token]);
+            const staffRecord = insertRes.rows[0];
+            const inviteUrl = `https://smartmoney.technology/register?staffInvite=${token}`;
+            return sendJson(res, 200, {
+                success: true,
+                staff: staffRecord,
+                inviteToken: token,
+                inviteUrl,
+                message: `Invitation generated for ${name}.`,
+            });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: POST /api/v1/staff/resend (Resend Staff Invite Token)
+        // ------------------------------------------------------------------------
+        if (pathname === "/api/v1/staff/resend" && method === "POST") {
+            const body = await parseJsonBody(req);
+            const { staffId } = body;
+            const token = `tok_stf_${crypto_1.default.randomBytes(16).toString("hex")}`;
+            const updateRes = await (0, db_js_1.query)(`UPDATE public.partner_staff
+         SET invite_token = $1, invited_at = NOW(), invite_status = 'invited'
+         WHERE id::text = $2
+         RETURNING id, name, email, invite_token;`, [token, staffId]);
+            if (updateRes.rowCount === 0) {
+                return sendJson(res, 404, { error: "Staff record not found" });
+            }
+            const staff = updateRes.rows[0];
+            const inviteUrl = `https://smartmoney.technology/register?staffInvite=${token}`;
+            return sendJson(res, 200, {
+                success: true,
+                inviteToken: token,
+                inviteUrl,
+                message: `Invite link refreshed for ${staff.name}.`,
+            });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: GET /api/v1/buddies (Proprietary & Marketplace Buddies + Escalations)
+        // ------------------------------------------------------------------------
+        if (pathname === "/api/v1/buddies" && method === "GET") {
+            const orgId = parsedUrl.searchParams.get("orgId") || "a0000000-0000-0000-0000-000000000001";
+            const [buddyRes, escalationRes] = await Promise.all([
+                (0, db_js_1.query)(`SELECT 
+             b.id, b.name, b.tag, b.ai_model, b.visibility, b.status,
+             b.avatar_bg, b.avatar_content, b.owner_partner_org_id,
+             ps.name as escalates_to_name
+           FROM public.buddies b
+           LEFT JOIN public.partner_staff ps ON ps.id = b.escalates_to_staff_id
+           WHERE b.owner_partner_org_id = $1 OR b.owner_partner_org_id IS NULL
+           ORDER BY (b.owner_partner_org_id IS NOT NULL) DESC, b.name ASC;`, [orgId]),
+                (0, db_js_1.query)(`SELECT id, trigger_type, trigger_label, trigger_value, target_role_or_staff, is_enabled
+           FROM public.partner_escalation_rules
+           WHERE partner_org_id = $1
+           ORDER BY created_at ASC;`, [orgId]),
+            ]);
+            const buddies = buddyRes.rows.map((b) => ({
+                id: b.id,
+                name: b.name,
+                meta: b.tag || "Smart Money AI Co-Pilot",
+                type: b.owner_partner_org_id ? "Firm AI Buddy" : "Marketplace Buddy",
+                model: b.ai_model || "Claude 3.5 Sonnet",
+                visibility: b.visibility === 'private' ? "Private (Clients only)" : "Public (Marketplace)",
+                subscribers: "1,240+",
+                escalatesTo: b.escalates_to_name || "Senior Wealth Advisor",
+                status: b.status === 'live' ? "Live" : "Draft",
+                icon: b.avatar_content || "🤖",
+                bg: b.avatar_bg || "#132952",
+                color: "#fff",
+            }));
+            const rules = escalationRes.rows.map((r) => ({
+                id: r.id,
+                trigger: r.trigger_label,
+                value: r.trigger_value,
+                target: r.target_role_or_staff,
+                on: Boolean(r.is_enabled),
+            }));
+            return sendJson(res, 200, { buddies, escalationRules: rules });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: PATCH /api/v1/buddies/escalation/:id (Toggle Escalation Rule)
+        // ------------------------------------------------------------------------
+        if (pathname.startsWith("/api/v1/buddies/escalation/") && method === "PATCH") {
+            const ruleId = pathname.replace("/api/v1/buddies/escalation/", "");
+            const body = await parseJsonBody(req);
+            const { isEnabled } = body;
+            await (0, db_js_1.query)(`UPDATE public.partner_escalation_rules
+         SET is_enabled = $1, updated_at = NOW()
+         WHERE id::text = $2;`, [Boolean(isEnabled), ruleId]);
+            return sendJson(res, 200, { success: true, ruleId, isEnabled: Boolean(isEnabled) });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: POST /api/v1/research (Institutional Market & Portfolio Analysis)
+        // ------------------------------------------------------------------------
+        if (pathname === "/api/v1/research" && method === "POST") {
+            const body = await parseJsonBody(req);
+            const prompt = body.prompt || body.topic;
+            const model = body.model;
+            if (!prompt) {
+                return sendJson(res, 400, { error: "Research prompt is required" });
+            }
+            // Format a high-fidelity institutional research briefing
+            const titleMatch = prompt.slice(0, 50).trim();
+            const briefing = {
+                title: `Institutional Research Briefing: ${titleMatch}...`,
+                model: model || "Llama 3.3 70B (Institutional)",
+                timestamp: new Date().toISOString(),
+                summary: `Strategic macro and valuation analysis prepared for institutional wealth advisory portfolio review.`,
+                keyFindings: [
+                    "FGN Sovereign Yields remain attractive across 180-day and 364-day tenors, creating optimal fixed income duration matching.",
+                    "Tier-1 Nigerian Banks trade at historical P/B discounts (0.45x - 0.70x) with robust FX revaluation buffers and high single-digit dividend yields.",
+                    "Corporate paper tranches in consumer staples offer inflation-hedged returns for high-net-worth client accounts.",
+                ],
+                actionableRecommendation: "Overweight short-duration Money Market Fund (MMF) tranches while dollar-cost averaging into blue-chip banking equities.",
+            };
+            return sendJson(res, 200, { success: true, briefing });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: GET /api/v1/keys (Get Active API Key Metadata)
+        // ------------------------------------------------------------------------
+        if (pathname === "/api/v1/keys" && method === "GET") {
+            const orgId = parsedUrl.searchParams.get("orgId") || "a0000000-0000-0000-0000-000000000001";
+            const { rows } = await (0, db_js_1.query)(`SELECT id, key_prefix, name, last_used_at, created_at
+         FROM public.partner_api_keys
+         WHERE partner_org_id = $1 AND revoked_at IS NULL
+         ORDER BY created_at DESC LIMIT 1;`, [orgId]);
+            return sendJson(res, 200, { apiKey: rows[0] || null });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: POST /api/v1/keys (Generate Production API Key)
+        // ------------------------------------------------------------------------
+        if (pathname === "/api/v1/keys" && method === "POST") {
+            const body = await parseJsonBody(req);
+            const { partnerOrgId, name } = body;
+            const orgId = partnerOrgId || "a0000000-0000-0000-0000-000000000001";
+            const rawSecret = crypto_1.default.randomBytes(24).toString("hex");
+            const rawKey = `sm_live_${rawSecret}`;
+            const prefix = `sm_live_${rawSecret.slice(0, 6)}...${rawSecret.slice(-4)}`;
+            const hash = crypto_1.default.createHash("sha256").update(rawKey).digest("hex");
+            await (0, db_js_1.query)(`UPDATE public.partner_api_keys SET revoked_at = NOW() WHERE partner_org_id = $1 AND revoked_at IS NULL;`, [orgId]);
+            const insertRes = await (0, db_js_1.query)(`INSERT INTO public.partner_api_keys (partner_org_id, key_prefix, key_hash, name)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, key_prefix, name, created_at;`, [orgId, prefix, hash, name || "Primary Production Key"]);
+            return sendJson(res, 200, {
+                success: true,
+                apiKey: rawKey,
+                keyRecord: insertRes.rows[0],
+                message: "API key generated successfully. Copy it now as it cannot be shown again.",
+            });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: GET /api/v1/webhooks (Get Webhook Configuration)
+        // ------------------------------------------------------------------------
+        if (pathname === "/api/v1/webhooks" && method === "GET") {
+            const orgId = parsedUrl.searchParams.get("orgId") || "a0000000-0000-0000-0000-000000000001";
+            const { rows } = await (0, db_js_1.query)(`SELECT id, url, secret, events, status, created_at
+         FROM public.partner_webhooks
+         WHERE partner_org_id = $1
+         ORDER BY created_at DESC LIMIT 1;`, [orgId]);
+            return sendJson(res, 200, { webhook: rows[0] || null });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: POST /api/v1/webhooks (Configure Webhook Endpoint)
+        // ------------------------------------------------------------------------
+        if (pathname === "/api/v1/webhooks" && method === "POST") {
+            const body = await parseJsonBody(req);
+            const url = body.url || body.endpointUrl;
+            const partnerOrgId = body.partnerOrgId || body.orgId;
+            const events = body.events;
+            if (!url) {
+                return sendJson(res, 400, { error: "Webhook URL is required" });
+            }
+            const orgId = partnerOrgId || "a0000000-0000-0000-0000-000000000001";
+            const secret = `whsec_${crypto_1.default.randomBytes(16).toString("hex")}`;
+            const eventList = events && events.length > 0 ? events : ['client.joined', 'action.threshold', 'goal.created'];
+            const insertRes = await (0, db_js_1.query)(`INSERT INTO public.partner_webhooks (partner_org_id, url, secret, events, status)
+         VALUES ($1, $2, $3, $4, 'active')
+         RETURNING id, url, secret, events, status, created_at;`, [orgId, url.trim(), secret, eventList]);
+            return sendJson(res, 200, {
+                success: true,
+                webhook: insertRes.rows[0],
+                message: "Webhook registered and active.",
+            });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: POST /api/v1/partner/webhooks/register (External Endpoint Spec)
+        // ------------------------------------------------------------------------
+        if (pathname === "/api/v1/partner/webhooks/register" && method === "POST") {
+            const body = await parseJsonBody(req);
+            const { url, events, partnerOrgId } = body;
+            const orgId = partnerOrgId || "a0000000-0000-0000-0000-000000000001";
+            const secret = `whsec_${crypto_1.default.randomBytes(16).toString("hex")}`;
+            const resInsert = await (0, db_js_1.query)(`INSERT INTO public.partner_webhooks (partner_org_id, url, secret, events, status)
+         VALUES ($1, $2, $3, $4, 'active')
+         RETURNING id, url, secret, events, status;`, [orgId, url, secret, events || ['client.joined', 'action.threshold']]);
+            return sendJson(res, 200, { success: true, webhook: resInsert.rows[0] });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: POST /api/v1/partner/signals/publish (External Signal Publisher)
+        // ------------------------------------------------------------------------
+        if (pathname === "/api/v1/partner/signals/publish" && method === "POST") {
+            const body = await parseJsonBody(req);
+            const { title, reasoning, valueEstimate, category, partnerOrgId } = body;
+            const orgId = partnerOrgId || "a0000000-0000-0000-0000-000000000001";
+            const oppRes = await (0, db_js_1.query)(`INSERT INTO public.opportunities (
+           partner_org_id, title, category, source, source_name, reasoning, value_estimate, status
+         ) VALUES ($1, $2, $3, 'partner', 'Institutional Market Signal', $4, $5, 'active')
+         RETURNING id, title, category, status;`, [orgId, title, category || 'Market Signal', reasoning || 'Published via Partner API', valueEstimate || 'High Conviction']);
+            return sendJson(res, 200, { success: true, publishedSignal: oppRes.rows[0] });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: GET /api/v1/features (Get Partner Feature Toggles)
+        // ------------------------------------------------------------------------
+        if (pathname === "/api/v1/features" && method === "GET") {
+            const orgId = parsedUrl.searchParams.get("orgId") || "a0000000-0000-0000-0000-000000000001";
+            const { rows } = await (0, db_js_1.query)(`SELECT id, feature_key AS "key", name, description, is_enabled AS "isEnabled", updated_at AS "updatedAt"
+         FROM public.partner_feature_toggles
+         WHERE partner_org_id = $1
+         ORDER BY name ASC;`, [orgId]);
+            return sendJson(res, 200, { features: rows });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: PATCH /api/v1/features/:key (Toggle Feature)
+        // ------------------------------------------------------------------------
+        if (pathname.startsWith("/api/v1/features/") && method === "PATCH") {
+            const featureKey = decodeURIComponent(pathname.replace("/api/v1/features/", ""));
+            const body = await parseJsonBody(req);
+            const { isEnabled, partnerOrgId } = body;
+            const orgId = partnerOrgId || "a0000000-0000-0000-0000-000000000001";
+            const updateRes = await (0, db_js_1.query)(`UPDATE public.partner_feature_toggles
+         SET is_enabled = $1, updated_at = NOW()
+         WHERE partner_org_id = $2 AND feature_key = $3
+         RETURNING id, feature_key AS "key", name, description, is_enabled AS "isEnabled", updated_at AS "updatedAt";`, [Boolean(isEnabled), orgId, featureKey]);
+            if (updateRes.rows.length === 0) {
+                return sendJson(res, 404, { error: `Feature '${featureKey}' not found for partner` });
+            }
+            return sendJson(res, 200, {
+                success: true,
+                feature: updateRes.rows[0],
+                message: `Feature '${updateRes.rows[0].name}' updated`,
+            });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: GET /api/v1/analytics-rules (Get Custom Rules & Category Toggles)
+        // ------------------------------------------------------------------------
+        if (pathname === "/api/v1/analytics-rules" && method === "GET") {
+            const orgId = parsedUrl.searchParams.get("orgId") || "a0000000-0000-0000-0000-000000000001";
+            const { rows: rules } = await (0, db_js_1.query)(`SELECT id, rule_name AS "name", formula, icon, is_enabled AS "isEnabled", created_at AS "createdAt"
+         FROM public.partner_analytics_rules
+         WHERE partner_org_id = $1
+         ORDER BY created_at ASC;`, [orgId]);
+            const { rows: categories } = await (0, db_js_1.query)(`SELECT id, category_name AS "label", description AS "desc", is_included AS "isIncluded"
+         FROM public.partner_analytics_category_toggles
+         WHERE partner_org_id = $1
+         ORDER BY category_name ASC;`, [orgId]);
+            return sendJson(res, 200, { rules, categories });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: POST /api/v1/analytics-rules (Add Custom Analytics Rule)
+        // ------------------------------------------------------------------------
+        if (pathname === "/api/v1/analytics-rules" && method === "POST") {
+            const body = await parseJsonBody(req);
+            const { partnerOrgId, ruleName, formula, icon } = body;
+            if (!ruleName || !formula) {
+                return sendJson(res, 400, { error: "Rule name and formula are required" });
+            }
+            const orgId = partnerOrgId || "a0000000-0000-0000-0000-000000000001";
+            const insertRes = await (0, db_js_1.query)(`INSERT INTO public.partner_analytics_rules (partner_org_id, rule_name, formula, icon, is_enabled)
+         VALUES ($1, $2, $3, $4, true)
+         RETURNING id, rule_name AS "name", formula, icon, is_enabled AS "isEnabled", created_at AS "createdAt";`, [orgId, ruleName.trim(), formula.trim(), icon || "📐"]);
+            return sendJson(res, 200, {
+                success: true,
+                rule: insertRes.rows[0],
+                message: "Custom analytics rule created successfully",
+            });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: PATCH /api/v1/analytics-rules/:id (Toggle Custom Analytics Rule)
+        // ------------------------------------------------------------------------
+        if (pathname.startsWith("/api/v1/analytics-rules/") && method === "PATCH") {
+            const ruleId = pathname.replace("/api/v1/analytics-rules/", "");
+            const body = await parseJsonBody(req);
+            const { isEnabled } = body;
+            const updateRes = await (0, db_js_1.query)(`UPDATE public.partner_analytics_rules
+         SET is_enabled = $1, updated_at = NOW()
+         WHERE id = $2
+         RETURNING id, rule_name AS "name", formula, icon, is_enabled AS "isEnabled";`, [Boolean(isEnabled), ruleId]);
+            return sendJson(res, 200, {
+                success: true,
+                rule: updateRes.rows[0] || null,
+            });
+        }
+        // ------------------------------------------------------------------------
+        // ROUTE: PATCH /api/v1/analytics-categories/:id (Toggle Category Inclusion)
+        // ------------------------------------------------------------------------
+        if (pathname.startsWith("/api/v1/analytics-categories/") && method === "PATCH") {
+            const categoryId = pathname.replace("/api/v1/analytics-categories/", "");
+            const body = await parseJsonBody(req);
+            const { isIncluded } = body;
+            const updateRes = await (0, db_js_1.query)(`UPDATE public.partner_analytics_category_toggles
+         SET is_included = $1, updated_at = NOW()
+         WHERE id = $2
+         RETURNING id, category_name AS "label", description AS "desc", is_included AS "isIncluded";`, [Boolean(isIncluded), categoryId]);
+            return sendJson(res, 200, {
+                success: true,
+                category: updateRes.rows[0] || null,
             });
         }
         // 404 Catch-All

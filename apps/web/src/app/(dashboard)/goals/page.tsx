@@ -24,6 +24,12 @@ type Goal = {
   label?: string;
   sublabel?: string;
   milestoneMessage: string;
+  origin?: "client" | "partner";
+  originPartnerOrgId?: string | null;
+  partnerName?: string | null;
+  advisorNote?: string | null;
+  requiresAcceptance?: boolean;
+  acceptedAt?: string | null;
 };
 
 // ── Milestone Toast ───────────────────────────────────────
@@ -257,11 +263,15 @@ function GoalCard({
   onMilestone,
   onEdit,
   onDelete,
+  onAccept,
+  onDecline,
 }: {
   goal: Goal;
   onMilestone: (g: Goal) => void;
   onEdit: (g: Goal) => void;
   onDelete: (id: string) => void;
+  onAccept: (id: string) => void;
+  onDecline: (id: string) => void;
 }) {
   const { userCurrency: goalCurrency } = useUserStore();
   const gsym = currencySymbol(goalCurrency);
@@ -273,14 +283,61 @@ function GoalCard({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="rounded-[14px] p-5 relative group"
+      className={`rounded-[14px] p-5 relative group transition-all ${
+        goal.requiresAcceptance ? "ring-1 ring-amber-500/40 bg-amber-500/[0.02]" : ""
+      }`}
       style={{ background: "var(--card)", border: "1px solid var(--border)" }}
     >
+      {/* Partner Proposal Banner */}
+      {goal.requiresAcceptance && (
+        <div className="mb-4 p-3.5 rounded-[12px] border bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border-amber-500/30">
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[16px]">🤝</span>
+              <div>
+                <span className="text-[12px] font-bold text-amber-400">
+                  Proposed by {goal.partnerName || "Your Advisory Partner"}
+                </span>
+                <span className="text-[10px] ml-2 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold uppercase tracking-wider">
+                  Action Required
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => onDecline(goal.id)}
+                className="px-3 py-1.5 text-[11px] font-semibold text-rose-400 hover:text-rose-300 rounded-[8px] border border-rose-500/30 hover:bg-rose-500/10 transition-all cursor-pointer"
+              >
+                Decline
+              </button>
+              <button
+                onClick={() => onAccept(goal.id)}
+                className="px-4 py-1.5 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-[8px] transition-all shadow-md shadow-emerald-950/40 cursor-pointer"
+              >
+                Accept Goal ✓
+              </button>
+            </div>
+          </div>
+          {goal.advisorNote && (
+            <div className="text-[11px] text-zinc-300 italic pl-6 border-l-2 border-amber-500/50 mt-1.5">
+              &ldquo;{goal.advisorNote}&rdquo;
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Header row */}
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1 min-w-0 mr-4">
-          <div className="text-[14px] font-semibold mb-[3px]" style={{ color: "var(--text)" }}>
-            {goal.emoji} {goal.title}
+          <div className="flex items-center gap-2 flex-wrap mb-[3px]">
+            <span className="text-[14px] font-semibold" style={{ color: "var(--text)" }}>
+              {goal.emoji} {goal.title}
+            </span>
+            {goal.origin === "partner" && !goal.requiresAcceptance && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
+                🤝 {goal.partnerName || "Partner"} Strategy
+              </span>
+            )}
           </div>
           <div className="text-[11px]" style={{ color: "var(--muted)" }}>
             {goal.meta} · Set with {goal.buddy}
@@ -432,6 +489,51 @@ export default function GoalsPage() {
         }
       },
       "Delete Goal"
+    );
+  }
+
+  // Accept Partner Goal handler
+  async function handleAcceptGoal(id: string) {
+    try {
+      const res = await fetch(`/api/goals/${id}/accept`, {
+        method: "PATCH",
+      });
+      if (res.ok) {
+        popup.success("Goal Accepted 🎯", "This advisor goal is now active and tracked in your financial portfolio.");
+        fetchGoals();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        popup.error("Error", d.error || "Failed to accept goal");
+      }
+    } catch (err) {
+      console.error(err);
+      popup.error("Error", "Error accepting goal");
+    }
+  }
+
+  // Decline Partner Goal handler
+  async function handleDeclineGoal(id: string) {
+    popup.confirm(
+      "Decline Proposed Goal",
+      "Are you sure you want to decline this goal proposed by your advisor?",
+      async () => {
+        try {
+          const res = await fetch(`/api/goals/${id}/decline`, {
+            method: "PATCH",
+          });
+          if (res.ok) {
+            popup.alert("Goal Declined", "The proposed goal has been declined.");
+            fetchGoals();
+          } else {
+            const d = await res.json().catch(() => ({}));
+            popup.error("Error", d.error || "Failed to decline goal");
+          }
+        } catch (err) {
+          console.error(err);
+          popup.error("Error", "Error declining goal");
+        }
+      },
+      { confirmText: "Decline", type: "danger" }
     );
   }
 
@@ -738,6 +840,8 @@ export default function GoalsPage() {
                 onMilestone={handleMilestone}
                 onEdit={handleStartEdit}
                 onDelete={handleDelete}
+                onAccept={handleAcceptGoal}
+                onDecline={handleDeclineGoal}
               />
             ))}
           </div>

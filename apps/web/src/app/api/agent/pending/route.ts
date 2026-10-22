@@ -9,7 +9,7 @@ export async function GET() {
     .from("agent_actions")
     .select("*")
     .eq("user_id", userId)
-    .eq("status", "pending")
+    .in("status", ["pending", "pending_partner_approval"])
     .order("created_at", { ascending: false });
 
   if (dbError) {

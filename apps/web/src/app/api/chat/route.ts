@@ -227,7 +227,7 @@ export async function POST(req: Request) {
         // Extract [AGENT_ACTION: {...}]
         const actionRegex = /\[AGENT_ACTION:\s*(\{[\s\S]*?\})\s*\]/g;
         let match;
-        const actionsToInsert = [];
+        const actionsToInsert: any[] = [];
         
         while ((match = actionRegex.exec(fullText)) !== null) {
           try {
@@ -239,6 +239,7 @@ export async function POST(req: Request) {
               description: payload.title || 'Agent Action',
               amount: payload.amount || 0,
               currency: 'NGN',
+              reasoning: payload.reasoning || payload.description || 'AI agentic action proposed in chat',
               status: 'pending'
             });
           } catch (e) {
@@ -247,6 +248,30 @@ export async function POST(req: Request) {
         }
 
         if (actionsToInsert.length > 0) {
+          // Check partner affiliation and threshold interceptor
+          try {
+            const serviceSupabase = createServiceSupabaseClient();
+            const { data: partnerClient } = await serviceSupabase
+              .from("partner_clients")
+              .select("partner_org_id, partner_orgs(approval_threshold_kobo)")
+              .eq("user_id", user.id)
+              .eq("status", "active")
+              .maybeSingle();
+
+            const partnerOrgId = partnerClient?.partner_org_id || null;
+            const thresholdKobo = Number((partnerClient?.partner_orgs as any)?.approval_threshold_kobo) || 50000000;
+
+            for (const act of actionsToInsert) {
+              const amtKobo = (Number(act.amount) || 0) * 100;
+              if (partnerOrgId && amtKobo >= thresholdKobo) {
+                act.status = 'pending_partner_approval';
+                act.partner_org_id = partnerOrgId;
+              }
+            }
+          } catch (partnerErr) {
+            console.warn("[/api/chat] Failed to verify partner threshold:", partnerErr);
+          }
+
           await supabase.from("agent_actions").insert(actionsToInsert);
           // Strip the action blocks from the final message saved to DB
           finalContent = fullText.replace(/\[AGENT_ACTION:\s*\{[\s\S]*?\}\s*\]/g, '').trim();

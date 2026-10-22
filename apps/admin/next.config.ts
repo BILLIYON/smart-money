@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  assetPrefix: "/_admin_assets",
   serverExternalPackages: ["pg", "pdf-parse"],
   compress: true,
   typescript: {

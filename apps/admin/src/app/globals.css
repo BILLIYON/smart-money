@@ -31,47 +31,30 @@
   --color-topbar:   var(--topbar-bg);
 }
 
-/* ─── Light mode CSS custom properties ──────────────────────────────────── */
-:root {
+/* ─── Light mode CSS custom properties (Universal Admin Theme) ───────────── */
+:root,
+[data-theme="light"],
+[data-theme="dark"] {
   --navy:            #0B1E3D;
   --navy2:           #132952;
   --green:           #00C48C;
-  --green2:          #00A677;
+  --green2:          #009E70;
   --gold:            #F5A623;
 
-  --bg:              #F4F6FB;
+  --bg:              #F8FAFC;
   --card:            #ffffff;
   --text:            #0B1E3D;
   --muted:           #5A6A87;
-  --border:          #E2E7F0;
-  --input-bg:        #F4F6FB;
-  --shadow:          rgba(11, 30, 61, 0.08);
+  --border:          #E2E8F0;
+  --input-bg:        #ffffff;
+  --shadow:          0 1px 3px rgba(11, 30, 61, 0.05), 0 1px 2px rgba(11, 30, 61, 0.03);
 
-  --sidebar-bg:      #0B1E3D;
-  --sidebar-icon:    #8A9BBE;
+  --sidebar-bg:      #ffffff;
+  --sidebar-icon:    #5A6A87;
   --topbar-bg:       #ffffff;
   --onboard-overlay: rgba(11, 30, 61, 0.55);
 
   --radius:          16px;
-}
-
-/* ─── Dark mode CSS custom properties ───────────────────────────────────── */
-[data-theme="dark"] {
-  --bg:              #0D1117;
-  --card:            #13191F;
-  --text:            #E8EFF7;
-  --muted:           #8A96A8;
-  --border:          rgba(255, 255, 255, 0.08);
-  --input-bg:        #1C2330;
-  --shadow:          rgba(0, 0, 0, 0.4);
-
-  --sidebar-bg:      #080C10;
-  --sidebar-icon:    #5A6478;
-  --topbar-bg:       #13191F;
-  --onboard-overlay: rgba(0, 0, 0, 0.7);
-
-  --navy:            #1C2C4A;
-  --navy2:           #243558;
 }
 
 /* ─── Animations ─────────────────────────────────────────────────────────── */

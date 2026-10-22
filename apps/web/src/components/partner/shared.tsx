@@ -84,10 +84,10 @@ export function InfoBanner({ children, tone = "blue" }: { children: React.ReactN
   );
 }
 
-export function Toggle({ on }: { on: boolean }) {
+export function Toggle({ on, onToggle }: { on: boolean; onToggle?: () => void }) {
   return (
     <div
-      onClick={() => comingSoon("Editing this setting")}
+      onClick={onToggle ?? (() => comingSoon("Editing this setting"))}
       className="w-[38px] h-[22px] rounded-[11px] relative cursor-pointer flex-shrink-0 transition-colors duration-200"
       style={{ background: on ? "var(--green)" : "var(--border)" }}
     >

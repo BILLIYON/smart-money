@@ -2,7 +2,76 @@
 
 import { useState } from "react";
 import { SectionHeader, comingSoon } from "../shared";
-import { API_ENDPOINTS, type ApiEndpoint } from "../mockData";
+
+export interface ApiEndpoint {
+  method: "GET" | "POST" | "PATCH";
+  path: string;
+  desc: string;
+  params: { name: string; type: string; req?: string; desc: string }[];
+  example?: string;
+}
+
+const API_ENDPOINTS: ApiEndpoint[] = [
+  {
+    method: "GET",
+    path: "/api/v1/clients",
+    desc: "List all connected clients with pagination and consent scopes",
+    params: [
+      { name: "status", type: "string", req: "optional", desc: "Filter by: active | needs_attention" },
+      { name: "search", type: "string", req: "optional", desc: "Search by client name or email" },
+    ],
+    example: `{"clients": [{"id": "c-1","name": "Move-E","email": "johnadeolu2@gmail.com","dataShared": "3 of 5 scopes"}]}`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/overview",
+    desc: "Live aggregated firm KPIs, active client counts and attention queues",
+    params: [
+      { name: "orgId", type: "uuid", req: "optional", desc: "Institutional firm ID" },
+    ],
+    example: `{"kpis": [{"label": "Total Clients", "value": "1"}, {"label": "Pending Approvals", "value": "0"}]}`,
+  },
+  {
+    method: "POST",
+    path: "/api/v1/goals",
+    desc: "Propose an advisory milestone to a connected client's Goal Tracker",
+    params: [
+      { name: "userId", type: "uuid", req: "required", desc: "Client user ID" },
+      { name: "title", type: "string", req: "required", desc: "Goal name shown to client" },
+      { name: "targetAmount", type: "integer", req: "required", desc: "Target amount in Naira" },
+      { name: "advisorNote", type: "string", req: "optional", desc: "Advisory rationale shown to client" },
+    ],
+  },
+  {
+    method: "POST",
+    path: "/api/v1/opportunities",
+    desc: "Dispatch time-sensitive investment or rate opportunities to clients",
+    params: [
+      { name: "title", type: "string", req: "required", desc: "Opportunity title" },
+      { name: "category", type: "string", req: "required", desc: "Rate Alert | Investment | Real Estate" },
+      { name: "reasoning", type: "string", req: "required", desc: "Financial rationale" },
+      { name: "targetUserId", type: "uuid", req: "optional", desc: "Target specific client or broadcast to all" },
+    ],
+  },
+  {
+    method: "PATCH",
+    path: "/api/v1/approvals/:id",
+    desc: "Sign-off and execute or decline a pending client agent action",
+    params: [
+      { name: "decision", type: "string", req: "required", desc: "approve | decline" },
+      { name: "note", type: "string", req: "optional", desc: "Reason for decline or sign-off comment" },
+    ],
+  },
+  {
+    method: "POST",
+    path: "/api/v1/webhooks",
+    desc: "Register a webhook URL for real-time ledger & escalation events",
+    params: [
+      { name: "url", type: "string", req: "required", desc: "HTTPS webhook endpoint" },
+      { name: "events", type: "string[]", req: "required", desc: "Event topics e.g. client.joined, action.pending" },
+    ],
+  },
+];
 
 const METHOD_STYLES: Record<ApiEndpoint["method"], { bg: string; color: string }> = {
   GET: { bg: "rgba(0,196,140,.12)", color: "var(--green2)" },

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { popup } from "@/store/popupStore";
+import { SectionHeader, InfoBanner, Card, KpiCard, StatusPill } from "@/components/admin/shared";
 
 type Ticket = {
   id: string;
@@ -30,18 +31,18 @@ function fmt(iso: string): string {
   });
 }
 
-const TYPE_BADGES: Record<Ticket["type"], { label: string; bg: string; color: string }> = {
-  feature: { label: "💡 Feature Request", bg: "rgba(0,196,140,0.12)", color: "#00C48C" },
-  review: { label: "⭐ App Review", bg: "rgba(245,166,35,0.12)", color: "#F5A623" },
-  bug: { label: "🐛 Bug Report", bg: "rgba(226,75,74,0.12)", color: "#E24B4A" },
-  support: { label: "🤝 Support Ticket", bg: "rgba(74,144,217,0.12)", color: "#4A90D9" },
+const TYPE_BADGES: Record<Ticket["type"], { label: string; tone: "active" | "pending" | "danger" | "inactive" }> = {
+  feature: { label: "💡 Feature Request", tone: "active" },
+  review: { label: "⭐ App Review", tone: "pending" },
+  bug: { label: "🐛 Bug Report", tone: "danger" },
+  support: { label: "🤝 Support Ticket", tone: "inactive" },
 };
 
-const STATUS_BADGES: Record<Ticket["status"], { label: string; bg: string; color: string }> = {
-  new: { label: "New Ticket", bg: "#E3F2FD", color: "#1976D2" },
-  in_progress: { label: "In Progress", bg: "#FFF3E0", color: "#E65100" },
-  resolved: { label: "Resolved", bg: "#E8F5E9", color: "#2E7D32" },
-  implemented: { label: "Implemented 🎉", bg: "#F3E5F5", color: "#7B1FA2" },
+const STATUS_BADGES: Record<Ticket["status"], { label: string; tone: "active" | "pending" | "danger" | "inactive" }> = {
+  new: { label: "New", tone: "pending" },
+  in_progress: { label: "In Progress", tone: "warn" as any || "pending" },
+  resolved: { label: "Resolved", tone: "active" },
+  implemented: { label: "Implemented 🎉", tone: "active" },
 };
 
 export default function AdminHelpDeskPage() {
@@ -50,8 +51,7 @@ export default function AdminHelpDeskPage() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  
-  // Selected Ticket Modal for Admin Action
+
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [adminReplyText, setAdminReplyText] = useState("");
   const [updatingStatus, setUpdatingStatus] = useState(false);
@@ -118,131 +118,79 @@ export default function AdminHelpDeskPage() {
   const totalTickets = tickets.length;
   const pendingCount = tickets.filter((t) => t.status === "new" || t.status === "in_progress").length;
   const implementedCount = tickets.filter((t) => t.status === "implemented").length;
-  const avgRating = totalTickets > 0
-    ? (tickets.reduce((acc, t) => acc + t.rating, 0) / totalTickets).toFixed(1)
-    : "5.0";
+  const avgRating =
+    totalTickets > 0
+      ? (tickets.reduce((acc, t) => acc + t.rating, 0) / totalTickets).toFixed(1)
+      : "5.0";
 
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-      
+    <div className="space-y-6">
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16, marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#0B1E3D", margin: 0 }}>
-            💬 Admin Help Desk &amp; User Reviews
-          </h1>
-          <p style={{ fontSize: 13, color: "#6B7A99", marginTop: 4, margin: 0 }}>
-            Real-time support desk — Monitor every user review, feedback submission, feature request, and issue report sent from Smart Money users.
-          </p>
-        </div>
+      <SectionHeader
+        title="💬"
+        emphasis="Help Desk & User Feedback"
+        sub="Monitor user reviews, incoming bug reports, feature suggestions, and customer support inquiries."
+        action={
+          <button
+            onClick={fetchTickets}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-[8px] text-[12px] font-semibold text-white transition hover:opacity-95"
+            style={{ background: "var(--green)" }}
+          >
+            🔄 Refresh
+          </button>
+        }
+      />
 
-        <button
-          onClick={fetchTickets}
-          style={{
-            padding: "8px 16px",
-            background: "#00C48C",
-            color: "#fff",
-            border: "none",
-            borderRadius: 8,
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
-          🔄 Refresh Tickets
-        </button>
-      </div>
+      <InfoBanner tone="blue">
+        💡 Real-time customer support console. All submissions generate automated AI replies while allowing direct administrator resolution.
+      </InfoBanner>
 
       {/* KPI Stat Cards */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-          gap: 16,
-          marginBottom: 28,
-        }}
-      >
-        <div style={{ background: "#fff", padding: "18px 20px", borderRadius: 12, border: "1px solid #E2E8F0" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7A99", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            Total Tickets / Reviews
-          </div>
-          <div style={{ fontSize: 26, fontWeight: 700, color: "#0B1E3D", marginTop: 4 }}>
-            {totalTickets}
-          </div>
-        </div>
-
-        <div style={{ background: "#fff", padding: "18px 20px", borderRadius: 12, border: "1px solid #E2E8F0" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#E65100", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            Pending Action
-          </div>
-          <div style={{ fontSize: 26, fontWeight: 700, color: "#E65100", marginTop: 4 }}>
-            {pendingCount}
-          </div>
-        </div>
-
-        <div style={{ background: "#fff", padding: "18px 20px", borderRadius: 12, border: "1px solid #E2E8F0" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#7B1FA2", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            Implemented Features
-          </div>
-          <div style={{ fontSize: 26, fontWeight: 700, color: "#7B1FA2", marginTop: 4 }}>
-            {implementedCount}
-          </div>
-        </div>
-
-        <div style={{ background: "#fff", padding: "18px 20px", borderRadius: 12, border: "1px solid #E2E8F0" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#F5A623", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            Average Rating
-          </div>
-          <div style={{ fontSize: 26, fontWeight: 700, color: "#F5A623", marginTop: 4 }}>
-            ⭐ {avgRating} / 5
-          </div>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard
+          label="Total Tickets / Reviews"
+          value={totalTickets}
+          subtitle="All Time"
+          tone="neutral"
+        />
+        <KpiCard
+          label="Pending Action"
+          value={pendingCount}
+          subtitle="Needs review"
+          tone={pendingCount > 0 ? "warn" : "up"}
+        />
+        <KpiCard
+          label="Implemented Features"
+          value={implementedCount}
+          subtitle="Shipped"
+          tone="up"
+        />
+        <KpiCard
+          label="Average Rating"
+          value={`⭐ ${avgRating} / 5`}
+          subtitle="User sentiment"
+          tone="up"
+        />
       </div>
 
-      {/* Filter & Search Controls */}
+      {/* Filter & Search Bar */}
       <div
-        style={{
-          background: "#fff",
-          padding: 16,
-          borderRadius: 12,
-          border: "1px solid #E2E8F0",
-          marginBottom: 20,
-          display: "flex",
-          gap: 12,
-          flexWrap: "wrap",
-          alignItems: "center",
-        }}
+        className="p-3 rounded-[12px] flex items-center gap-3 flex-wrap"
+        style={{ background: "var(--card)", border: "1px solid var(--border)" }}
       >
         <input
           type="text"
           placeholder="Search by user email, subject, or message..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{
-            flex: 1,
-            minWidth: 260,
-            padding: "8px 14px",
-            borderRadius: 8,
-            border: "1px solid #CBD5E1",
-            fontSize: 13,
-            outline: "none",
-          }}
+          className="flex-1 min-w-[240px] text-[13px] px-3.5 py-2 rounded-[8px] outline-none"
+          style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)" }}
         />
-
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
-          style={{
-            padding: "8px 14px",
-            borderRadius: 8,
-            border: "1px solid #CBD5E1",
-            fontSize: 13,
-            background: "#fff",
-            cursor: "pointer",
-          }}
+          className="text-[12px] px-3 py-2 rounded-[8px] outline-none font-medium cursor-pointer"
+          style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)" }}
         >
           <option value="all">All Types</option>
           <option value="feature">💡 Feature Suggestions</option>
@@ -250,18 +198,11 @@ export default function AdminHelpDeskPage() {
           <option value="bug">🐛 Bug Reports</option>
           <option value="support">🤝 Support</option>
         </select>
-
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          style={{
-            padding: "8px 14px",
-            borderRadius: 8,
-            border: "1px solid #CBD5E1",
-            fontSize: 13,
-            background: "#fff",
-            cursor: "pointer",
-          }}
+          className="text-[12px] px-3 py-2 rounded-[8px] outline-none font-medium cursor-pointer"
+          style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)" }}
         >
           <option value="all">All Statuses</option>
           <option value="new">New</option>
@@ -272,220 +213,185 @@ export default function AdminHelpDeskPage() {
       </div>
 
       {/* Tickets List Table */}
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 14,
-          border: "1px solid #E2E8F0",
-          overflow: "hidden",
-        }}
-      >
+      <Card className="p-0 overflow-hidden">
         {loading ? (
-          <div style={{ padding: 40, textAlign: "center", color: "#6B7A99", fontSize: 14 }}>
-            Loading user reviews &amp; tickets...
+          <div className="py-12 text-center text-[13px]" style={{ color: "var(--muted)" }}>
+            Loading user feedback &amp; tickets...
           </div>
         ) : filteredTickets.length === 0 ? (
-          <div style={{ padding: 40, textAlign: "center", color: "#6B7A99", fontSize: 14 }}>
+          <div className="py-12 text-center text-[13px]" style={{ color: "var(--muted)" }}>
             No user feedback found matching your filter criteria.
           </div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: "#F8FAFC", borderBottom: "1px solid #E2E8F0", color: "#475569", fontWeight: 600 }}>
-                <th style={{ padding: "12px 16px" }}>Ticket ID / User</th>
-                <th style={{ padding: "12px 16px" }}>Type / Category</th>
-                <th style={{ padding: "12px 16px" }}>Rating</th>
-                <th style={{ padding: "12px 16px" }}>Subject &amp; Message</th>
-                <th style={{ padding: "12px 16px" }}>Status</th>
-                <th style={{ padding: "12px 16px" }}>Date</th>
-                <th style={{ padding: "12px 16px", textAlign: "right" }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredTickets.map((t) => {
-                const typeB = TYPE_BADGES[t.type] || TYPE_BADGES.review;
-                const statusB = STATUS_BADGES[t.status] || STATUS_BADGES.new;
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-[13px] border-collapse">
+              <thead>
+                <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--muted)" }}>
+                    User
+                  </th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--muted)" }}>
+                    Type
+                  </th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--muted)" }}>
+                    Rating
+                  </th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--muted)" }}>
+                    Subject &amp; Message
+                  </th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--muted)" }}>
+                    Status
+                  </th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--muted)" }}>
+                    Date
+                  </th>
+                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-right" style={{ color: "var(--muted)" }}>
+                    Action
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredTickets.map((t, i) => {
+                  const typeB = TYPE_BADGES[t.type] || TYPE_BADGES.review;
+                  const statusB = STATUS_BADGES[t.status] || STATUS_BADGES.new;
 
-                return (
-                  <tr
-                    key={t.id}
-                    style={{ borderBottom: "1px solid #F1F5F9", transition: "background .15s" }}
-                  >
-                    <td style={{ padding: "14px 16px" }}>
-                      <div style={{ fontWeight: 700, color: "#0B1E3D" }}>{t.userName}</div>
-                      <div style={{ fontSize: 11, color: "#64748B" }}>{t.userEmail}</div>
-                      <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 2 }}>{t.id}</div>
-                    </td>
+                  return (
+                    <tr
+                      key={t.id}
+                      className="transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                      style={{ borderTop: i > 0 ? "1px solid var(--border)" : undefined }}
+                    >
+                      <td className="px-5 py-3.5">
+                        <div className="font-semibold" style={{ color: "var(--text)" }}>{t.userName}</div>
+                        <div className="text-[11px]" style={{ color: "var(--muted)" }}>{t.userEmail}</div>
+                      </td>
 
-                    <td style={{ padding: "14px 16px" }}>
-                      <span
-                        style={{
-                          display: "inline-block",
-                          padding: "3px 8px",
-                          borderRadius: 6,
-                          fontSize: 11,
-                          fontWeight: 600,
-                          background: typeB.bg,
-                          color: typeB.color,
-                          marginBottom: 4,
-                        }}
-                      >
-                        {typeB.label}
-                      </span>
-                      <div style={{ fontSize: 11, color: "#64748B" }}>{t.category}</div>
-                    </td>
+                      <td className="px-5 py-3.5">
+                        <StatusPill label={typeB.label} tone={typeB.tone} />
+                      </td>
 
-                    <td style={{ padding: "14px 16px", fontWeight: 700, color: "#F5A623" }}>
-                      {"⭐".repeat(t.rating)}
-                    </td>
+                      <td className="px-5 py-3.5 font-bold" style={{ color: "var(--gold)" }}>
+                        {"⭐".repeat(t.rating)}
+                      </td>
 
-                    <td style={{ padding: "14px 16px", maxWidth: 320 }}>
-                      <div style={{ fontWeight: 600, color: "#1E293B", marginBottom: 2 }}>{t.subject}</div>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "#475569",
-                          display: "-webkit-box",
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: "vertical",
-                          overflow: "hidden",
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        {t.message}
-                      </div>
-                    </td>
+                      <td className="px-5 py-3.5 max-w-xs">
+                        <div className="font-semibold text-[13px] truncate" style={{ color: "var(--text)" }}>
+                          {t.subject}
+                        </div>
+                        <div className="text-[11px] truncate mt-0.5" style={{ color: "var(--muted)" }}>
+                          {t.message}
+                        </div>
+                      </td>
 
-                    <td style={{ padding: "14px 16px" }}>
-                      <span
-                        style={{
-                          display: "inline-block",
-                          padding: "4px 10px",
-                          borderRadius: 20,
-                          fontSize: 11,
-                          fontWeight: 600,
-                          background: statusB.bg,
-                          color: statusB.color,
-                        }}
-                      >
-                        {statusB.label}
-                      </span>
-                    </td>
+                      <td className="px-5 py-3.5">
+                        <StatusPill label={statusB.label} tone={statusB.tone} />
+                      </td>
 
-                    <td style={{ padding: "14px 16px", fontSize: 11, color: "#64748B", whiteSpace: "nowrap" }}>
-                      {fmt(t.created_at)}
-                    </td>
+                      <td className="px-5 py-3.5 text-[11px] whitespace-nowrap" style={{ color: "var(--muted)" }}>
+                        {fmt(t.created_at)}
+                      </td>
 
-                    <td style={{ padding: "14px 16px", textAlign: "right" }}>
-                      <button
-                        onClick={() => {
-                          setSelectedTicket(t);
-                          setAdminReplyText(t.adminReply || "");
-                        }}
-                        style={{
-                          padding: "6px 12px",
-                          borderRadius: 6,
-                          background: "#0B1E3D",
-                          color: "#fff",
-                          border: "none",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                      >
-                        View &amp; Manage
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      <td className="px-5 py-3.5 text-right">
+                        <button
+                          onClick={() => {
+                            setSelectedTicket(t);
+                            setAdminReplyText(t.adminReply || "");
+                          }}
+                          className="px-2.5 py-1 rounded-[6px] text-[11px] font-semibold border transition"
+                          style={{
+                            background: "var(--bg)",
+                            borderColor: "var(--border)",
+                            color: "var(--text)",
+                          }}
+                        >
+                          Manage
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
-      </div>
+      </Card>
 
-      {/* Detail & Action Modal */}
+      {/* Ticket Management Modal */}
       {selectedTicket && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.6)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 100,
-            padding: 16,
-          }}
-        >
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div
-            style={{
-              background: "#fff",
-              borderRadius: 16,
-              maxWidth: 580,
-              width: "100%",
-              padding: 24,
-              boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)",
-              maxHeight: "90vh",
-              overflowY: "auto",
-            }}
+            className="w-full max-w-xl rounded-[16px] p-6 max-h-[90vh] overflow-y-auto"
+            style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 20px 25px -5px var(--shadow)" }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div className="flex justify-between items-center mb-4">
               <div>
-                <span style={{ fontSize: 11, fontWeight: 700, color: "#00C48C", textTransform: "uppercase" }}>
+                <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--green2)" }}>
                   {selectedTicket.id} · {selectedTicket.category}
                 </span>
-                <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0B1E3D", margin: "4px 0 0" }}>
+                <h2 className="text-[17px] font-bold mt-0.5" style={{ color: "var(--text)" }}>
                   {selectedTicket.subject}
                 </h2>
               </div>
               <button
                 onClick={() => setSelectedTicket(null)}
-                style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#64748B" }}
+                className="text-[18px] text-slate-400 hover:text-slate-700 transition-colors"
               >
-                ×
+                ✕
               </button>
             </div>
 
             {/* User Details */}
-            <div style={{ background: "#F8FAFC", padding: 12, borderRadius: 10, marginBottom: 16, fontSize: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span><strong>User:</strong> {selectedTicket.userName} ({selectedTicket.userEmail})</span>
-                <span><strong>Rating:</strong> ⭐ {selectedTicket.rating}/5</span>
+            <div
+              className="p-3 rounded-[10px] mb-4 text-[12px] flex justify-between items-center"
+              style={{ background: "var(--bg)", border: "1px solid var(--border)" }}
+            >
+              <div>
+                <span className="font-semibold" style={{ color: "var(--text)" }}>{selectedTicket.userName}</span>
+                <span style={{ color: "var(--muted)" }}> ({selectedTicket.userEmail})</span>
               </div>
-              <div style={{ marginTop: 4, color: "#64748B" }}>Submitted on {fmt(selectedTicket.created_at)}</div>
+              <span className="font-bold" style={{ color: "var(--gold)" }}>⭐ {selectedTicket.rating}/5</span>
             </div>
 
             {/* User Message */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", textTransform: "uppercase", marginBottom: 6 }}>
+            <div className="mb-4">
+              <label className="text-[10px] font-bold uppercase tracking-wider block mb-1" style={{ color: "var(--muted)" }}>
                 User Feedback Message
-              </div>
-              <div style={{ background: "#F1F5F9", padding: 14, borderRadius: 10, fontSize: 13, lineHeight: 1.5, color: "#1E293B" }}>
+              </label>
+              <div
+                className="p-3.5 rounded-[10px] text-[13px] leading-relaxed"
+                style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)" }}
+              >
                 {selectedTicket.message}
               </div>
             </div>
 
             {/* AI Auto-Response */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#00C48C", textTransform: "uppercase", marginBottom: 6 }}>
+            <div className="mb-4">
+              <label className="text-[10px] font-bold uppercase tracking-wider block mb-1" style={{ color: "var(--green2)" }}>
                 Automated AI Response Served To User
-              </div>
-              <div style={{ background: "rgba(0,196,140,0.08)", border: "1px solid rgba(0,196,140,0.2)", padding: 14, borderRadius: 10, fontSize: 12, lineHeight: 1.5, color: "#0F766E", fontStyle: "italic" }}>
+              </label>
+              <div
+                className="p-3.5 rounded-[10px] text-[12px] italic leading-relaxed"
+                style={{
+                  background: "rgba(0,196,140,0.06)",
+                  border: "1px solid rgba(0,196,140,0.2)",
+                  color: "var(--green2)",
+                }}
+              >
                 &ldquo;{selectedTicket.aiReply}&rdquo;
               </div>
             </div>
 
-            {/* Change Status */}
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: "#475569", textTransform: "uppercase", display: "block", marginBottom: 6 }}>
+            {/* Update Status */}
+            <div className="mb-4">
+              <label className="text-[10px] font-bold uppercase tracking-wider block mb-1" style={{ color: "var(--muted)" }}>
                 Update Ticket Status
               </label>
               <select
                 value={selectedTicket.status}
                 onChange={(e) => setSelectedTicket({ ...selectedTicket, status: e.target.value as any })}
-                style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 13, background: "#fff" }}
+                className="w-full px-3 py-2 rounded-[8px] text-[13px] outline-none cursor-pointer"
+                style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)" }}
               >
                 <option value="new">🔵 New Ticket</option>
                 <option value="in_progress">🟠 In Progress</option>
@@ -495,40 +401,41 @@ export default function AdminHelpDeskPage() {
             </div>
 
             {/* Admin Response Note */}
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: "#475569", textTransform: "uppercase", display: "block", marginBottom: 6 }}>
+            <div className="mb-5">
+              <label className="text-[10px] font-bold uppercase tracking-wider block mb-1" style={{ color: "var(--muted)" }}>
                 Admin Internal Notes / Official Response
               </label>
               <textarea
                 rows={3}
                 value={adminReplyText}
                 onChange={(e) => setAdminReplyText(e.target.value)}
-                placeholder="Type official response or engineering notes for this ticket..."
-                style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #CBD5E1", fontSize: 13, outline: "none", resize: "none" }}
+                placeholder="Type engineering or resolution notes..."
+                className="w-full px-3 py-2 rounded-[8px] text-[13px] outline-none resize-none"
+                style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)" }}
               />
             </div>
 
-            {/* Modal Actions */}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+            {/* Actions */}
+            <div className="flex justify-end gap-2 pt-2" style={{ borderTop: "1px solid var(--border)" }}>
               <button
                 onClick={() => setSelectedTicket(null)}
-                style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #CBD5E1", background: "transparent", fontSize: 13, fontWeight: 600, color: "#64748B", cursor: "pointer" }}
+                className="px-3.5 py-1.5 rounded-[8px] text-[12px] font-medium"
+                style={{ color: "var(--muted)" }}
               >
                 Cancel
               </button>
               <button
                 onClick={() => handleUpdateTicket(selectedTicket.id, selectedTicket.status, adminReplyText)}
                 disabled={updatingStatus}
-                style={{ padding: "8px 20px", borderRadius: 8, background: "#00C48C", color: "#fff", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                className="px-4 py-1.5 rounded-[8px] text-[12px] font-semibold text-white transition hover:opacity-95"
+                style={{ background: "var(--green)" }}
               >
-                {updatingStatus ? "Saving Changes..." : "Save Changes"}
+                {updatingStatus ? "Saving..." : "Save Changes"}
               </button>
             </div>
-
           </div>
         </div>
       )}
-
     </div>
   );
 }

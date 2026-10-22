@@ -4,7 +4,42 @@ import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 
 import { comingSoon } from "@/components/partner/shared";
-import { PARTNER_FIRMS, PARTNER_CATEGORY_FILTERS, type PartnerFirm } from "@/components/partner/mockData";
+import type { PartnerFirm } from "@/types/partner";
+
+const CATEGORY_FILTERS = [
+  "All",
+  "Wealth Management",
+  "Investment Advisory",
+  "Asset Management",
+  "Multi-Family Office",
+];
+
+function PartnerCardSkeleton() {
+  return (
+    <div
+      className="rounded-[16px] overflow-hidden animate-pulse"
+      style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+    >
+      <div style={{ height: 80, background: "var(--border)" }} />
+      <div className="p-5 space-y-3">
+        <div className="flex justify-between items-start">
+          <div className="space-y-1.5 w-3/4">
+            <div className="h-4 rounded bg-slate-200 dark:bg-slate-700 w-2/3" />
+            <div className="h-2.5 rounded bg-slate-200 dark:bg-slate-700 w-1/3" />
+          </div>
+          <div className="w-10 h-10 rounded-[12px] bg-slate-300 dark:bg-slate-600 -mt-9" />
+        </div>
+        <div className="h-3 rounded bg-slate-200 dark:bg-slate-700 w-full" />
+        <div className="h-3 rounded bg-slate-200 dark:bg-slate-700 w-4/5" />
+        <div className="flex gap-2 py-2">
+          <div className="h-5 w-16 rounded-full bg-slate-200 dark:bg-slate-700" />
+          <div className="h-5 w-20 rounded-full bg-slate-200 dark:bg-slate-700" />
+        </div>
+        <div className="h-10 rounded-[10px] bg-slate-200 dark:bg-slate-700 mt-2" />
+      </div>
+    </div>
+  );
+}
 
 function PartnerCard({ firm }: { firm: PartnerFirm }) {
   return (
@@ -27,7 +62,7 @@ function PartnerCard({ firm }: { firm: PartnerFirm }) {
             {firm.icon}
           </div>
         </div>
-        <div className="text-[12px] leading-relaxed mb-3" style={{ color: "var(--muted)" }}>{firm.desc}</div>
+        <div className="text-[12px] leading-relaxed mb-3 line-clamp-2" style={{ color: "var(--muted)" }}>{firm.desc}</div>
         <div className="flex flex-wrap gap-[6px] mb-3">
           {firm.tags.map((t) => (
             <span key={t} className="px-[9px] py-[3px] rounded-full text-[10px] font-semibold" style={{ background: "var(--bg)", color: "var(--muted)", border: "1px solid var(--border)" }}>{t}</span>
@@ -50,7 +85,8 @@ function PartnerCard({ firm }: { firm: PartnerFirm }) {
 }
 
 export default function PartnersPage() {
-  const [firms, setFirms] = useState<PartnerFirm[]>(PARTNER_FIRMS);
+  const [firms, setFirms] = useState<PartnerFirm[]>([]);
+  const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("All");
   const [search, setSearch] = useState("");
 
@@ -58,11 +94,13 @@ export default function PartnersPage() {
     let mounted = true;
     async function loadFirms() {
       try {
+        setLoading(true);
         const res = await fetch("/api/partners");
         if (!res.ok) return;
         const data = await res.json();
-        if (mounted && Array.isArray(data.firms) && data.firms.length > 0) {
-          setFirms(data.firms.map((f: any) => ({
+        const list = data.firms || data.partners || [];
+        if (mounted && Array.isArray(list)) {
+          setFirms(list.map((f: any) => ({
             id: f.slug || f.id,
             name: f.name,
             type: f.type,
@@ -78,6 +116,8 @@ export default function PartnersPage() {
         }
       } catch (err) {
         console.error("Failed to load partner firms:", err);
+      } finally {
+        if (mounted) setLoading(false);
       }
     }
     loadFirms();
@@ -97,7 +137,6 @@ export default function PartnersPage() {
     }
     return list;
   }, [firms, activeFilter, search]);
-
 
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8 w-full">
@@ -132,13 +171,15 @@ export default function PartnersPage() {
           </div>
         </div>
         <div className="text-center px-5 py-3 rounded-[12px] flex-shrink-0" style={{ background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.1)" }}>
-          <div className="text-[24px]" style={{ fontFamily: "var(--font-dm-serif)", color: "var(--green)" }}>{PARTNER_FIRMS.length}</div>
+          <div className="text-[24px]" style={{ fontFamily: "var(--font-dm-serif)", color: "var(--green)" }}>
+            {loading ? "..." : firms.length}
+          </div>
           <div className="text-[10px]" style={{ color: "rgba(255,255,255,.45)" }}>Verified Partners</div>
         </div>
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-2 mb-5" style={{ scrollbarWidth: "none" }}>
-        {PARTNER_CATEGORY_FILTERS.map((f) => (
+        {CATEGORY_FILTERS.map((f) => (
           <button
             key={f}
             onClick={() => setActiveFilter(f)}
@@ -154,7 +195,13 @@ export default function PartnersPage() {
         ))}
       </div>
 
-      {filtered.length > 0 ? (
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <PartnerCardSkeleton />
+          <PartnerCardSkeleton />
+          <PartnerCardSkeleton />
+        </div>
+      ) : filtered.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((f) => <PartnerCard key={f.id} firm={f} />)}
         </div>

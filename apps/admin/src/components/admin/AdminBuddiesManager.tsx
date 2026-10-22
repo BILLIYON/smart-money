@@ -11,6 +11,7 @@ import {
 } from "@/app/admin/buddies/actions";
 import { popup } from "@/store/popupStore";
 import { isImageAvatar } from "@/lib/utils";
+import { SectionHeader } from "./shared";
 
 interface Props {
   initialBuddies: DbBuddy[];
@@ -300,28 +301,24 @@ export function AdminBuddiesManager({ initialBuddies, initialHiddenIds }: Props)
   return (
     <div>
       {/* Top Header & Actions */}
-      <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
-        <div>
-          <h1 className="text-[22px] font-bold tracking-tight" style={{ color: "var(--text)" }}>
-            🤖 Marketplace Buddy Catalogue
-          </h1>
-          <p className="text-[13px] mt-1" style={{ color: "var(--muted)" }}>
-            {buddies.length} Total Buddies in Database · {hiddenIds.size} Hidden from Marketplace
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={openCreateModal}
-          className="px-5 py-2.5 rounded-[10px] text-[13px] font-bold text-white transition-all shadow-md flex items-center gap-2"
-          style={{
-            background: "linear-gradient(135deg, #00C48C 0%, #009E70 100%)",
-            cursor: "pointer",
-          }}
-        >
-          <span>＋</span> Add New Buddy
-        </button>
-      </div>
+      <SectionHeader
+        title="✦"
+        emphasis="Buddy Catalogue"
+        sub={`${buddies.length} Total Buddies in Database · ${hiddenIds.size} Hidden from Marketplace`}
+        action={
+          <button
+            type="button"
+            onClick={openCreateModal}
+            className="px-4 py-2 rounded-[10px] text-[12px] font-bold text-white transition-all shadow-md flex items-center gap-1.5 hover:opacity-95"
+            style={{
+              background: "var(--green)",
+              cursor: "pointer",
+            }}
+          >
+            <span>＋</span> Add New Buddy
+          </button>
+        }
+      />
 
       {/* Filter Bar */}
       <div

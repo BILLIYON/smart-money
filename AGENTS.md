@@ -77,6 +77,17 @@ The repository is structured as a unified monorepo with peer directories for fro
 * **Live Ledger Verification**:
   * Verified for user `f57f8127-f6fd-4084-a60a-0e088f9cd0a8` (`Smart Money — Financial Ledger`, Sheet ID `1dvywSJwQg_L3Yn8b2k_xU1wcEAYVNUMVhVqQomqx93A`). 40 clean transactions extracted and formatted with currency (₦) and category mappings.
 
+### 7. Partner Wealth & Institutional Portal System (100% Completed)
+* **Architecture**: Decoupled Monorepo setup with `apps/web` (PWA, port 3000), `apps/admin` (Decoupled backoffice, port 3002), and `services/partner_service` (B2B Partner Ledger daemon, port 8001).
+* **Phases 0–8 Fully Implemented**:
+  * **Database Migrations (`001` through `006`)**: Dual synced across local (`127.0.0.1:5432/smart_money`) and Supabase pooler (`aws-0-eu-west-1.pooler.supabase.com:6543/postgres`).
+  * **Phase 1-3**: Partner Directory, Client Consent Engine, Privacy Scope Masking, Advisor Notes, AWS SES email invites.
+  * **Phase 4**: Goals Origin & Acceptance (`/api/partner/goals`, `/api/goals/[id]/accept`), Bilateral Opportunities Dispatch Engine (`/api/partner/opportunities`).
+  * **Phase 5**: Agentic Threshold Interceptor (₦500k auto-escalation to `pending_partner_approval`), Partner Approvals Queue (`/api/partner/approvals`), One-Click Execute into ledger.
+  * **Phase 6**: Staff Roster (`admin`, `advisor`, `analyst`, `view_only`), AWS SES Staff Invites, Proprietary Partner Buddies with Escalation rules (`public.partner_escalation_rules`), Institutional AI Research Briefings.
+  * **Phase 7**: Production API Keys (`sm_live_...` with SHA-256 hash storage), Webhook registration & event dispatch.
+  * **Phase 8**: Feature Policy Gating Engine (`/api/partner/features`), Custom Analytics Calculation Rules & Category Inclusions (`/api/partner/analytics-rules`, `/api/partner/analytics-categories/[id]`), Live UI in `FeatureControlPanel.tsx` and `AnalyticsRulesPanel.tsx`.
+
 ---
 
 ## 🔒 Important System Guidelines for Future Sessions
@@ -84,3 +95,4 @@ The repository is structured as a unified monorepo with peer directories for fro
 2. **Database Pooling**: Always reuse the cached singleton `getPool()` with SSL rejection disabled for remote connections. For Python `psycopg`, ALWAYS pass `prepare_threshold=None` for Supabase transaction poolers.
 3. **AWS SES Sender Formatting**: Always sanitize `SES_FROM_EMAIL` by stripping wrapping quotes to avoid AWS SES `InvalidParameterValue` errors.
 4. **Bank Transaction Qualification**: Never qualify an email as a transaction simply because sender is a financial domain; always verify against negative marketing keywords and require explicit transaction intent phrases.
+

@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { comingSoon } from "./shared";
-import type { PartnerFirm, PartnerReview } from "./mockData";
+import type { PartnerFirm, PartnerReview } from "@/types/partner";
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
