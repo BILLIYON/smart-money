@@ -63,7 +63,7 @@ export async function GET(req: Request) {
       `SELECT pc.partner_org_id, po.name, po.type, po.slug, pc.status
        FROM public.partner_clients pc
        JOIN public.partner_orgs po ON po.id = pc.partner_org_id
-       WHERE pc.user_id = $1 AND pc.status != 'offboarded'
+       WHERE pc.user_id = $1 AND pc.status IN ('active', 'needs_attention')
        ORDER BY pc.joined_at DESC LIMIT 1;`,
       [auth.userId]
     );

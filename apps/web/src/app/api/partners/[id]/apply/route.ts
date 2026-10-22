@@ -68,23 +68,35 @@ export async function POST(
     );
 
     await pool.query(
-      `INSERT INTO public.partner_clients (partner_org_id, user_id, status)
-       VALUES ($1, $2, 'needs_attention')
-       ON CONFLICT (partner_org_id, user_id) DO NOTHING;`,
+      `INSERT INTO public.partner_clients (partner_org_id, user_id, status, joined_at)
+       VALUES ($1, $2, 'needs_attention', NOW())
+       ON CONFLICT (partner_org_id, user_id) 
+       DO UPDATE SET status = 'needs_attention', joined_at = NOW();`,
       [orgId, auth.userId]
     );
 
     await pool.query(
-      `INSERT INTO public.partner_client_scopes (partner_org_id, user_id, scope, enabled)
+      `INSERT INTO public.partner_client_scopes (partner_org_id, user_id, scope, enabled, updated_at)
        VALUES 
-         ($1, $2, 'networth', true),
-         ($1, $2, 'transactions', true),
-         ($1, $2, 'goals', true),
-         ($1, $2, 'chat', false),
-         ($1, $2, 'actions', false)
-       ON CONFLICT (partner_org_id, user_id, scope) DO NOTHING;`,
+         ($1, $2, 'networth', true, NOW()),
+         ($1, $2, 'transactions', true, NOW()),
+         ($1, $2, 'goals', true, NOW()),
+         ($1, $2, 'chat', false, NOW()),
+         ($1, $2, 'actions', false, NOW())
+       ON CONFLICT (partner_org_id, user_id, scope) 
+       DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = NOW();`,
       [orgId, auth.userId]
     );
+
+    await pool.query(
+      `INSERT INTO public.notifications (user_id, title, body, action_url, read, created_at)
+       VALUES ($1, $2, $3, '/settings', false, NOW());`,
+      [
+        auth.userId,
+        `Application Submitted: ${orgName}`,
+        `Your onboarding application to ${orgName} has been submitted. You can manage your privacy consent scopes in Settings → Partner Access.`
+      ]
+    ).catch(() => {});
 
     return NextResponse.json({
       success: true,

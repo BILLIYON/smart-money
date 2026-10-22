@@ -169,23 +169,35 @@ const server = http.createServer(async (req, res) => {
       );
 
       await query(
-        `INSERT INTO public.partner_clients (partner_org_id, user_id, status)
-         VALUES ($1, $2, 'needs_attention')
-         ON CONFLICT (partner_org_id, user_id) DO NOTHING;`,
+        `INSERT INTO public.partner_clients (partner_org_id, user_id, status, joined_at)
+         VALUES ($1, $2, 'needs_attention', NOW())
+         ON CONFLICT (partner_org_id, user_id) 
+         DO UPDATE SET status = 'needs_attention', joined_at = NOW();`,
         [orgId, authenticatedUserId]
       );
 
       await query(
-        `INSERT INTO public.partner_client_scopes (partner_org_id, user_id, scope, enabled)
+        `INSERT INTO public.partner_client_scopes (partner_org_id, user_id, scope, enabled, updated_at)
          VALUES 
-           ($1, $2, 'networth', true),
-           ($1, $2, 'transactions', true),
-           ($1, $2, 'goals', true),
-           ($1, $2, 'chat', false),
-           ($1, $2, 'actions', false)
-         ON CONFLICT (partner_org_id, user_id, scope) DO NOTHING;`,
+           ($1, $2, 'networth', true, NOW()),
+           ($1, $2, 'transactions', true, NOW()),
+           ($1, $2, 'goals', true, NOW()),
+           ($1, $2, 'chat', false, NOW()),
+           ($1, $2, 'actions', false, NOW())
+         ON CONFLICT (partner_org_id, user_id, scope) 
+         DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = NOW();`,
         [orgId, authenticatedUserId]
       );
+
+      await query(
+        `INSERT INTO public.notifications (user_id, title, body, action_url, read, created_at)
+         VALUES ($1, $2, $3, '/settings', false, NOW());`,
+        [
+          authenticatedUserId,
+          `Application Submitted: ${orgName}`,
+          `Your onboarding application to ${orgName} has been submitted. You can manage your privacy consent scopes in Settings → Partner Access.`
+        ]
+      ).catch(() => {});
 
       return sendJson(res, 200, {
         success: true,
@@ -207,7 +219,7 @@ const server = http.createServer(async (req, res) => {
         `SELECT pc.partner_org_id, po.name, po.type, po.slug, pc.status
          FROM public.partner_clients pc
          JOIN public.partner_orgs po ON po.id = pc.partner_org_id
-         WHERE pc.user_id = $1 AND pc.status != 'offboarded'
+         WHERE pc.user_id = $1 AND pc.status IN ('active', 'needs_attention')
          ORDER BY pc.joined_at DESC LIMIT 1;`,
         [authenticatedUserId]
       );
