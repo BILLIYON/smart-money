@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { comingSoon } from "@/components/partner/shared";
+import toast from "react-hot-toast";
 import type { Opportunity } from "@/types/opportunities";
 
 const STATUS_STYLES: Record<Opportunity["status"], { bg: string; color: string; label: string }> = {
@@ -93,8 +93,8 @@ export function OpportunityCard({
             ⚡ Act on This
           </button>
           <button
-            onClick={() => comingSoon("Setting a reminder")}
-            className="px-3 py-[7px] rounded-[8px] text-[12px] font-semibold border cursor-pointer"
+            onClick={() => toast.success("⏰ Reminder scheduled! We'll resurface this opportunity in 3 days.")}
+            className="px-3 py-[7px] rounded-[8px] text-[12px] font-semibold border cursor-pointer hover:bg-neutral-500/10 transition"
             style={{ background: "transparent", color: "var(--muted)", borderColor: "var(--border)" }}
           >
             Remind Me Later

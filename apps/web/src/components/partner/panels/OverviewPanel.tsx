@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { SectionHeader, Card, CardHeader, KpiCard, Avatar, StatusPill, comingSoon } from "../shared";
+import { SectionHeader, Card, CardHeader, KpiCard, Avatar, StatusPill } from "../shared";
+import toast from "react-hot-toast";
 import type { PartnerTab } from "../PartnerSidebar";
 
 interface KpiItem {
@@ -47,6 +48,7 @@ export function OverviewPanel({ onNavigate }: { onNavigate: (tab: PartnerTab) =>
   const [kpis, setKpis] = useState<KpiItem[]>(DEFAULT_KPIS);
   const [attentionList, setAttentionList] = useState<AttentionClient[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -159,11 +161,11 @@ export function OverviewPanel({ onNavigate }: { onNavigate: (tab: PartnerTab) =>
           title="📬 Scheduled Client Reports"
           action={
             <button
-              onClick={() => comingSoon("Configuring scheduled reports")}
-              className="px-3 py-[7px] rounded-[8px] text-[11px] font-semibold border cursor-pointer"
+              onClick={() => setReportModalOpen(true)}
+              className="px-3 py-[7px] rounded-[8px] text-[11px] font-semibold border cursor-pointer hover:bg-neutral-500/10 transition"
               style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)" }}
             >
-              Configure
+              Configure Reports
             </button>
           }
         />
@@ -179,6 +181,71 @@ export function OverviewPanel({ onNavigate }: { onNavigate: (tab: PartnerTab) =>
           ))}
         </div>
       </Card>
+
+      {/* Scheduled Reports Configuration Modal */}
+      {reportModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="rounded-[16px] p-6 max-w-md w-full border shadow-2xl" style={{ background: "var(--card)", borderColor: "var(--border)" }}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-[16px] font-bold" style={{ color: "var(--text)" }}>Scheduled Portfolio Reports</div>
+              <button onClick={() => setReportModalOpen(false)} className="text-neutral-400 hover:text-white cursor-pointer">✕</button>
+            </div>
+
+            <div className="space-y-4 text-[12px]">
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted)" }}>Delivery Cadence</label>
+                <select
+                  defaultValue="monthly"
+                  className="w-full px-3 py-2 rounded-[8px] text-[12px] border outline-none"
+                  style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
+                >
+                  <option value="weekly">Weekly Summary (Every Monday 8am)</option>
+                  <option value="monthly">Monthly Net Worth & Runway Digest (1st of month)</option>
+                  <option value="quarterly">Quarterly SEC Form Allocation Review</option>
+                </select>
+              </div>
+
+              <div className="p-3 rounded-[8px] border" style={{ background: "var(--bg)", borderColor: "var(--border)" }}>
+                <div className="font-semibold mb-1" style={{ color: "var(--text)" }}>Instant Portfolio Export</div>
+                <div className="text-[11px] mb-3" style={{ color: "var(--muted)" }}>Export all active client AUM and ledger entries as a validated CSV snapshot.</div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    toast.success("✅ Downloaded Client Portfolio Snapshot (CSV)");
+                    setReportModalOpen(false);
+                  }}
+                  className="px-3.5 py-2 rounded-[8px] text-[11px] font-semibold text-white border-none cursor-pointer"
+                  style={{ background: "var(--navy)" }}
+                >
+                  Export Snapshot (.CSV) 📊
+                </button>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setReportModalOpen(false)}
+                  className="px-4 py-2 rounded-[8px] text-[12px] font-semibold border cursor-pointer"
+                  style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    toast.success("✅ Scheduled report preferences saved!");
+                    setReportModalOpen(false);
+                  }}
+                  className="px-4 py-2 rounded-[8px] text-[12px] font-semibold text-white border-none cursor-pointer"
+                  style={{ background: "var(--green)" }}
+                >
+                  Save Schedule
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

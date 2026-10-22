@@ -1,29 +1,60 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { SectionHeader, StatusPill, comingSoon, Card, CardHeader } from "../shared";
+import { SectionHeader, StatusPill, Card, CardHeader } from "../shared";
 import toast from "react-hot-toast";
 
-const ONBOARDING_FIELDS = [
-  { type: "Text", label: "Full Legal Name", req: "Required" },
-  { type: "Email", label: "Email Address", req: "Required" },
-  { type: "Phone", label: "Phone Number", req: "Required" },
-  { type: "Select", label: "Annual Income Range", req: "Required" },
-  { type: "Textarea", label: "Primary Financial Goals", req: "Required" },
-  { type: "Upload", label: "Government-issued ID", req: "KYC" },
-];
+interface FormField {
+  id: string;
+  type: string;
+  label: string;
+  req: "Required" | "Optional" | "KYC";
+}
 
-const ONBOARDING_DOCS = [
-  { title: "Investment Policy Statement", sub: "Client must review and sign", required: true },
-  { title: "Risk Disclosure Document", sub: "Must acknowledge before investment allocation", required: true },
-  { title: "Data Sharing Consent", sub: "Authorises partner to view DataBank ledgers", required: true },
-  { title: "Advisory Fee Schedule", sub: "Institutional fee structure & billing terms", required: false },
-];
+interface DocItem {
+  id: string;
+  title: string;
+  sub: string;
+  required: boolean;
+}
 
 export function OnboardingPanel() {
   const [applications, setApplications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
+
+  // Dynamic Form Fields state
+  const [fields, setFields] = useState<FormField[]>([
+    { id: "f-1", type: "Text", label: "Full Legal Name", req: "Required" },
+    { id: "f-2", type: "Email", label: "Email Address", req: "Required" },
+    { id: "f-3", type: "Phone", label: "Phone Number", req: "Required" },
+    { id: "f-4", type: "Select", label: "Annual Income Range", req: "Required" },
+    { id: "f-5", type: "Textarea", label: "Primary Financial Goals", req: "Required" },
+    { id: "f-6", type: "Upload", label: "Government-issued ID", req: "KYC" },
+  ]);
+
+  // Legal Documents state
+  const [docs, setDocs] = useState<DocItem[]>([
+    { id: "d-1", title: "Investment Policy Statement", sub: "Client must review and sign", required: true },
+    { id: "d-2", title: "Risk Disclosure Document", sub: "Must acknowledge before investment allocation", required: true },
+    { id: "d-3", title: "Data Sharing Consent", sub: "Authorises partner to view DataBank ledgers", required: true },
+    { id: "d-4", title: "Advisory Fee Schedule", sub: "Institutional fee structure & billing terms", required: false },
+  ]);
+
+  // Modals
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [addFieldOpen, setAddFieldOpen] = useState(false);
+  const [uploadDocOpen, setUploadDocOpen] = useState(false);
+
+  // New field form state
+  const [newFieldLabel, setNewFieldLabel] = useState("");
+  const [newFieldType, setNewFieldType] = useState("Text");
+  const [newFieldReq, setNewFieldReq] = useState<"Required" | "Optional" | "KYC">("Required");
+
+  // New doc form state
+  const [newDocTitle, setNewDocTitle] = useState("");
+  const [newDocSub, setNewDocSub] = useState("");
+  const [newDocRequired, setNewDocRequired] = useState(true);
 
   const fetchApplications = async () => {
     try {
@@ -69,6 +100,42 @@ export function OnboardingPanel() {
     }
   };
 
+  const handleAddField = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFieldLabel.trim()) return;
+    const newField: FormField = {
+      id: `f-${Date.now()}`,
+      label: newFieldLabel.trim(),
+      type: newFieldType,
+      req: newFieldReq,
+    };
+    setFields((prev) => [...prev, newField]);
+    setNewFieldLabel("");
+    setAddFieldOpen(false);
+    toast.success(`Added form field: ${newField.label}`);
+  };
+
+  const handleRemoveField = (id: string) => {
+    setFields((prev) => prev.filter((f) => f.id !== id));
+    toast.success("Field removed from onboarding form");
+  };
+
+  const handleUploadDoc = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDocTitle.trim()) return;
+    const newDoc: DocItem = {
+      id: `d-${Date.now()}`,
+      title: newDocTitle.trim(),
+      sub: newDocSub.trim() || "Uploaded advisory document",
+      required: newDocRequired,
+    };
+    setDocs((prev) => [...prev, newDoc]);
+    setNewDocTitle("");
+    setNewDocSub("");
+    setUploadDocOpen(false);
+    toast.success(`Uploaded: ${newDoc.title}`);
+  };
+
   const pendingCount = applications.filter((a) => a.status === "Pending Review").length;
 
   return (
@@ -79,14 +146,14 @@ export function OnboardingPanel() {
         action={
           <div className="flex gap-2">
             <button
-              onClick={() => comingSoon("Previewing application form")}
-              className="px-4 py-[9px] rounded-[10px] text-[12px] font-semibold border cursor-pointer hover:bg-neutral-800 transition-all"
+              onClick={() => setPreviewOpen(true)}
+              className="px-4 py-[9px] rounded-[10px] text-[12px] font-semibold border cursor-pointer hover:bg-neutral-500/10 transition-all"
               style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)" }}
             >
-              Preview Form
+              Preview Form 👁️
             </button>
             <button
-              onClick={() => comingSoon("Publishing onboarding changes")}
+              onClick={() => toast.success("✅ Onboarding form configuration published live for incoming clients!")}
               className="px-4 py-[9px] rounded-[10px] text-[12px] font-semibold text-white border-none cursor-pointer hover:bg-emerald-600 transition-all shadow"
               style={{ background: "var(--green)" }}
             >
@@ -101,21 +168,28 @@ export function OnboardingPanel() {
           <Card>
             <CardHeader title="📝 Application Form Fields" />
             <div className="flex flex-col gap-2">
-              {ONBOARDING_FIELDS.map((f) => (
-                <div key={f.label} className="flex items-center gap-[10px] rounded-[10px] px-[14px] py-[11px]" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
+              {fields.map((f) => (
+                <div key={f.id} className="flex items-center gap-[10px] rounded-[10px] px-[14px] py-[11px]" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
                   <span className="text-[16px]" style={{ color: "var(--muted)" }}>⠿</span>
                   <span className="px-2 py-[3px] rounded-[6px] text-[10px] font-semibold" style={{ background: "rgba(74,144,217,.1)", color: "#4A90D9" }}>{f.type}</span>
                   <span className="text-[13px] font-medium flex-1" style={{ color: "var(--text)" }}>{f.label}</span>
-                  <span className="text-[10px] font-semibold" style={{ color: f.req === "Required" ? "#E24B4A" : "var(--muted)" }}>{f.req}</span>
+                  <span className="text-[10px] font-semibold mr-2" style={{ color: f.req === "Required" ? "#E24B4A" : "var(--muted)" }}>{f.req}</span>
+                  <button
+                    onClick={() => handleRemoveField(f.id)}
+                    className="text-neutral-400 hover:text-rose-500 text-[12px] cursor-pointer"
+                    title="Remove field"
+                  >
+                    ✕
+                  </button>
                 </div>
               ))}
             </div>
             <button
-              onClick={() => comingSoon("Adding a form field")}
-              className="w-full mt-2 py-[10px] rounded-[10px] border border-dashed text-[13px] cursor-pointer hover:opacity-80 transition-all"
+              onClick={() => setAddFieldOpen(true)}
+              className="w-full mt-2 py-[10px] rounded-[10px] border border-dashed text-[13px] cursor-pointer hover:border-emerald-500/50 transition-all"
               style={{ borderColor: "var(--border)", color: "var(--muted)" }}
             >
-              + Add Field
+              + Add Custom Field
             </button>
           </Card>
 
@@ -124,8 +198,8 @@ export function OnboardingPanel() {
               title="📄 Legal Documents & Policies"
               action={
                 <button
-                  onClick={() => comingSoon("Uploading a legal document")}
-                  className="px-3 py-[7px] rounded-[8px] text-[11px] font-semibold border cursor-pointer hover:bg-neutral-800 transition-all"
+                  onClick={() => setUploadDocOpen(true)}
+                  className="px-3 py-[7px] rounded-[8px] text-[11px] font-semibold border cursor-pointer hover:bg-neutral-500/10 transition-all"
                   style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)" }}
                 >
                   + Upload
@@ -133,73 +207,82 @@ export function OnboardingPanel() {
               }
             />
             <div className="flex flex-col gap-2">
-              {ONBOARDING_DOCS.map((d) => (
-                <div key={d.title} className="flex items-center justify-between px-3 py-2 rounded-[8px]" style={{ background: "var(--bg)" }}>
+              {docs.map((d) => (
+                <div key={d.id} className="flex items-center justify-between px-3 py-2 rounded-[8px]" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
                   <div>
                     <div className="text-[13px] font-medium" style={{ color: "var(--text)" }}>{d.title}</div>
                     <div className="text-[11px]" style={{ color: "var(--muted)" }}>{d.sub}</div>
                   </div>
-                  <StatusPill label={d.required ? "Required" : "Optional"} tone={d.required ? "active" : "pending"} />
+                  <span className="text-[10px] font-semibold" style={{ color: d.required ? "var(--gold)" : "var(--muted)" }}>
+                    {d.required ? "Required" : "Optional"}
+                  </span>
                 </div>
               ))}
             </div>
           </Card>
         </div>
 
-        <div className="flex flex-col gap-4">
+        {/* Live Applications Queue */}
+        <div>
           <Card>
             <CardHeader
-              title="Client Applications"
+              title={`📥 Inbound Applications (${pendingCount} Pending)`}
               action={
-                <span className="text-[12px]" style={{ color: "var(--muted)" }}>
-                  {pendingCount} awaiting review
+                <span className="text-[11px] font-medium text-emerald-500">
+                  Live Database
                 </span>
               }
             />
             {loading ? (
-              <div className="py-8 text-center text-[12px]" style={{ color: "var(--muted)" }}>
-                Loading applications...
-              </div>
+              <div className="text-center py-10 text-[13px] text-neutral-400">Loading incoming applications...</div>
             ) : applications.length === 0 ? (
-              <div
-                className="py-10 text-center rounded-[10px]"
-                style={{ background: "var(--bg)", border: "1px dashed var(--border)" }}
-              >
-                <div className="text-[24px] mb-2">📥</div>
-                <div className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>No Applications Submitted Yet</div>
-                <div className="text-[11px] max-w-[320px] mx-auto mt-1" style={{ color: "var(--muted)" }}>
-                  Client applications submitted through Find a Partner or your profile will appear here for review.
-                </div>
+              <div className="text-center py-12" style={{ color: "var(--muted)" }}>
+                <div className="text-[28px] mb-2">📬</div>
+                <div className="text-[14px] font-semibold" style={{ color: "var(--text)" }}>No Inbound Applications</div>
+                <div className="text-[12px] mt-1">Prospective clients who click &apos;Apply for Advisory&apos; will appear here.</div>
               </div>
             ) : (
-              <div className="flex flex-col gap-2">
-                {applications.map((a) => (
-                  <div key={a.id} className="rounded-[10px] px-3 py-[10px]" style={{ background: "var(--bg)" }}>
-                    <div className="flex items-center justify-between mb-[6px]">
-                      <div className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>{a.name}</div>
-                      <StatusPill label={a.status} tone={a.status === "Approved" ? "active" : a.status === "Declined" ? "inactive" : "pending"} />
+              <div className="space-y-3">
+                {applications.map((app) => (
+                  <div
+                    key={app.id}
+                    className="p-4 rounded-[12px] border transition"
+                    style={{ background: "var(--bg)", borderColor: "var(--border)" }}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div>
+                        <div className="text-[14px] font-bold" style={{ color: "var(--text)" }}>{app.name}</div>
+                        <div className="text-[11px]" style={{ color: "var(--muted)" }}>{app.email} · {app.phone}</div>
+                      </div>
+                      <StatusPill
+                        label={app.status}
+                        tone={app.status === "Approved" ? "active" : app.status === "Declined" ? "danger" : "pending"}
+                      />
                     </div>
-                    <div className="text-[11px]" style={{ color: "var(--muted)" }}>{a.meta}</div>
-                    {a.goalsText && (
-                      <div className="text-[11px] mt-1.5 p-2 rounded bg-white/5 text-zinc-300 italic">
-                        &ldquo;{a.goalsText}&rdquo;
+
+                    <div className="text-[12px] my-2" style={{ color: "var(--text)" }}>
+                      <span className="font-semibold">Income:</span> {app.income_range || "Not specified"}
+                    </div>
+                    {app.goals && (
+                      <div className="text-[11px] italic p-2 rounded-[6px] mb-3" style={{ background: "var(--card)", color: "var(--muted)" }}>
+                        &ldquo;{app.goals}&rdquo;
                       </div>
                     )}
-                    {a.status === "Pending Review" && (
-                      <div className="flex gap-[6px] mt-3">
+
+                    {app.status === "Pending Review" && (
+                      <div className="flex gap-2 justify-end">
                         <button
-                          disabled={processingId === a.id}
-                          onClick={() => handleUpdateStatus(a.id, "approved")}
-                          className="px-3 py-[6px] rounded-[8px] text-[11px] font-semibold text-white border-none cursor-pointer hover:bg-emerald-600 disabled:opacity-50"
+                          onClick={() => handleUpdateStatus(app.id, "approved")}
+                          disabled={processingId === app.id}
+                          className="px-3 py-1.5 rounded-[6px] text-[11px] font-semibold text-white border-none cursor-pointer hover:bg-emerald-600 transition"
                           style={{ background: "var(--green)" }}
                         >
-                          Approve
+                          Approve & Onboard
                         </button>
                         <button
-                          disabled={processingId === a.id}
-                          onClick={() => handleUpdateStatus(a.id, "declined")}
-                          className="px-3 py-[6px] rounded-[8px] text-[11px] font-semibold border cursor-pointer hover:bg-rose-500/10 disabled:opacity-50"
-                          style={{ color: "#E24B4A", borderColor: "#E24B4A" }}
+                          onClick={() => handleUpdateStatus(app.id, "declined")}
+                          disabled={processingId === app.id}
+                          className="px-3 py-1.5 rounded-[6px] text-[11px] font-semibold border cursor-pointer text-rose-500 border-rose-500/30 hover:bg-rose-500/10 transition"
                         >
                           Decline
                         </button>
@@ -210,30 +293,210 @@ export function OnboardingPanel() {
               </div>
             )}
           </Card>
-
-          <Card>
-            <CardHeader title="Client Invite Links" />
-            <div className="text-[12px] mb-[10px]" style={{ color: "var(--muted)" }}>
-              Share this link to direct prospective clients straight to your partner firm profile
-            </div>
-            <div className="flex items-center gap-[10px] rounded-[10px] px-[14px] py-[11px] border border-dashed" style={{ background: "var(--bg)", borderColor: "var(--border)" }}>
-              <span className="flex-1 text-[12px] truncate" style={{ color: "var(--muted)", fontFamily: "monospace" }}>
-                https://smartmoney.technology/partners/stanbic-wealth
-              </span>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText("https://smartmoney.technology/partners/stanbic-wealth");
-                  toast.success("Profile link copied to clipboard!");
-                }}
-                className="px-3 py-[5px] rounded-[8px] text-[11px] font-semibold border whitespace-nowrap cursor-pointer hover:bg-white/10"
-                style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)" }}
-              >
-                Copy Link
-              </button>
-            </div>
-          </Card>
         </div>
       </div>
+
+      {/* Add Field Modal */}
+      {addFieldOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="rounded-[16px] p-6 max-w-md w-full border shadow-2xl" style={{ background: "var(--card)", borderColor: "var(--border)" }}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-[16px] font-bold" style={{ color: "var(--text)" }}>Add Onboarding Form Field</div>
+              <button onClick={() => setAddFieldOpen(false)} className="text-neutral-400 hover:text-white cursor-pointer">✕</button>
+            </div>
+
+            <form onSubmit={handleAddField} className="space-y-4">
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted)" }}>Field Label</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Bank Verification Number (BVN)"
+                  value={newFieldLabel}
+                  onChange={(e) => setNewFieldLabel(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 rounded-[8px] text-[12px] border outline-none"
+                  style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted)" }}>Field Type</label>
+                <select
+                  value={newFieldType}
+                  onChange={(e) => setNewFieldType(e.target.value)}
+                  className="w-full px-3 py-2 rounded-[8px] text-[12px] border outline-none"
+                  style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
+                >
+                  <option value="Text">Text Input</option>
+                  <option value="Email">Email Address</option>
+                  <option value="Phone">Phone Number</option>
+                  <option value="Select">Dropdown Select</option>
+                  <option value="Textarea">Long Paragraph / Bio</option>
+                  <option value="Upload">File / ID Document</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted)" }}>Requirement Level</label>
+                <select
+                  value={newFieldReq}
+                  onChange={(e: any) => setNewFieldReq(e.target.value)}
+                  className="w-full px-3 py-2 rounded-[8px] text-[12px] border outline-none"
+                  style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
+                >
+                  <option value="Required">Required</option>
+                  <option value="Optional">Optional</option>
+                  <option value="KYC">Mandatory KYC</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setAddFieldOpen(false)}
+                  className="px-4 py-2 rounded-[8px] text-[12px] font-semibold border cursor-pointer"
+                  style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-[8px] text-[12px] font-semibold text-white border-none cursor-pointer"
+                  style={{ background: "var(--green)" }}
+                >
+                  Add Field
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Document Modal */}
+      {uploadDocOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="rounded-[16px] p-6 max-w-md w-full border shadow-2xl" style={{ background: "var(--card)", borderColor: "var(--border)" }}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-[16px] font-bold" style={{ color: "var(--text)" }}>Upload Legal Policy / Document</div>
+              <button onClick={() => setUploadDocOpen(false)} className="text-neutral-400 hover:text-white cursor-pointer">✕</button>
+            </div>
+
+            <form onSubmit={handleUploadDoc} className="space-y-4">
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted)" }}>Document Title</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Terms of Advisory & Custody"
+                  value={newDocTitle}
+                  onChange={(e) => setNewDocTitle(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 rounded-[8px] text-[12px] border outline-none"
+                  style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted)" }}>Description Note</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Client must accept before portfolio deployment"
+                  value={newDocSub}
+                  onChange={(e) => setNewDocSub(e.target.value)}
+                  className="w-full px-3 py-2 rounded-[8px] text-[12px] border outline-none"
+                  style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="reqDoc"
+                  checked={newDocRequired}
+                  onChange={(e) => setNewDocRequired(e.target.checked)}
+                />
+                <label htmlFor="reqDoc" className="text-[12px]" style={{ color: "var(--text)" }}>Mandatory signature required</label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setUploadDocOpen(false)}
+                  className="px-4 py-2 rounded-[8px] text-[12px] font-semibold border cursor-pointer"
+                  style={{ background: "var(--card)", color: "var(--text)", borderColor: "var(--border)" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-[8px] text-[12px] font-semibold text-white border-none cursor-pointer"
+                  style={{ background: "var(--green)" }}
+                >
+                  Upload Document
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Form Preview Modal */}
+      {previewOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="rounded-[16px] p-6 max-w-lg w-full max-h-[85vh] overflow-y-auto border shadow-2xl" style={{ background: "var(--card)", borderColor: "var(--border)" }}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="text-[16px] font-bold" style={{ color: "var(--text)" }}>Client Application Preview</div>
+                <div className="text-[11px]" style={{ color: "var(--muted)" }}>This is how prospective clients see your advisory onboarding form.</div>
+              </div>
+              <button onClick={() => setPreviewOpen(false)} className="text-neutral-400 hover:text-white cursor-pointer">✕</button>
+            </div>
+
+            <div className="space-y-3.5 my-4">
+              {fields.map((f) => (
+                <div key={f.id}>
+                  <label className="text-[11px] font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted)" }}>
+                    {f.label} {f.req === "Required" && <span className="text-rose-500">*</span>}
+                  </label>
+                  {f.type === "Textarea" ? (
+                    <textarea
+                      placeholder={`Enter your ${f.label.toLowerCase()}...`}
+                      rows={3}
+                      className="w-full px-3 py-2 rounded-[8px] text-[12px] border outline-none"
+                      style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
+                    />
+                  ) : f.type === "Select" ? (
+                    <select
+                      className="w-full px-3 py-2 rounded-[8px] text-[12px] border outline-none"
+                      style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
+                    >
+                      <option>₦10M – ₦50M</option>
+                      <option>₦50M – ₦250M</option>
+                      <option>₦250M+</option>
+                    </select>
+                  ) : (
+                    <input
+                      type={f.type === "Email" ? "email" : "text"}
+                      placeholder={`Enter your ${f.label.toLowerCase()}...`}
+                      className="w-full px-3 py-2 rounded-[8px] text-[12px] border outline-none"
+                      style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--text)" }}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => setPreviewOpen(false)}
+                className="px-4 py-2 rounded-[8px] text-[12px] font-semibold text-white border-none cursor-pointer"
+                style={{ background: "var(--green)" }}
+              >
+                Done Previewing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

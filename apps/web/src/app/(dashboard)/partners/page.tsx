@@ -2,8 +2,8 @@
 
 import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
-
-import { comingSoon } from "@/components/partner/shared";
+import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 import type { PartnerFirm } from "@/types/partner";
 
 const CATEGORY_FILTERS = [
@@ -85,6 +85,7 @@ function PartnerCard({ firm }: { firm: PartnerFirm }) {
 }
 
 export default function PartnersPage() {
+  const router = useRouter();
   const [firms, setFirms] = useState<PartnerFirm[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("All");
@@ -224,8 +225,11 @@ export default function PartnersPage() {
               Settings → Privacy &amp; Data.
             </div>
             <button
-              onClick={() => comingSoon("Inviting a partner to a chat")}
-              className="px-4 py-[9px] rounded-[10px] text-[13px] font-semibold text-white border-none"
+              onClick={() => {
+                toast.success("Opening AI Buddy chat to initiate partner co-pilot consultation...");
+                router.push("/chat");
+              }}
+              className="px-4 py-[9px] rounded-[10px] text-[13px] font-semibold text-white border-none cursor-pointer hover:bg-emerald-600 transition"
               style={{ background: "var(--green)" }}
             >
               Invite a Partner to This Chat
